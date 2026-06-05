@@ -455,6 +455,16 @@
     <string name="consent_state_view_image_unavailable">No app can open this image.</string>
 
     <!--
+      Waiting state (Phase 2). Shown when the receive bottom sheet is
+      opened from the Quick Settings tile with no transfer yet pending:
+      the device is now discoverable and waiting for a nearby sender to
+      start a transfer. When one arrives the same sheet swaps to the
+      consent prompt in place.
+    -->
+    <string name="consent_state_waiting_title">Ready to receive</string>
+    <string name="consent_state_waiting_body">Waiting for a nearby device to share…</string>
+
+    <!--
       Integer percentage label rendered in the centre of the circular
       progress disc on both the sender's Sending state and the
       receiver's Receiving state. Uses %% so the literal `%` glyph

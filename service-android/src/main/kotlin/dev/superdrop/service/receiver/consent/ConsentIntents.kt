@@ -74,6 +74,26 @@ public object ConsentIntents {
     public const val ACTION_SHOW_CONSENT: String = "dev.superdrop.consent.SHOW"
 
     /**
+     * Activity action used by the Quick Settings tile to open the
+     * receive bottom sheet in **waiting** mode (Phase 2). The activity
+     * shows a "ready to receive / waiting for sender" state in the same
+     * sheet — no [EXTRA_CONNECTION_ID] is attached because no transfer
+     * is pending yet. When an incoming transfer then arrives while the
+     * sheet is foreground, the [ConsentCoordinator]'s foreground path
+     * routes that consent into this already-open activity via
+     * `onNewIntent` (the activity is `singleTop`).
+     */
+    public const val ACTION_OPEN_RECEIVE_SHEET: String = "dev.superdrop.consent.OPEN_RECEIVE_SHEET"
+
+    /**
+     * `Boolean` extra set by the Quick Settings tile launch so the
+     * activity knows the receiver visibility was temporarily elevated
+     * *for the duration of this sheet* and must be restored when the
+     * sheet is dismissed. Read in tandem with [ACTION_OPEN_RECEIVE_SHEET].
+     */
+    public const val EXTRA_TILE_ELEVATED: String = "bada.consent.tile_elevated"
+
+    /**
      * `Long` extra carrying the connection id this consent applies to.
      * The broadcast receiver and the trampoline activity both parse
      * this off the intent before consulting [ConsentRegistry].

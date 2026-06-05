@@ -37,19 +37,21 @@ import androidx.core.view.AccessibilityDelegateCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import androidx.lifecycle.lifecycleScope
-import com.google.android.material.progressindicator.CircularProgressIndicator
 import dev.superdrop.R
 import dev.superdrop.bugreport.BugReportFlowSupport
 import dev.superdrop.protocol.connection.InboundConnection
 import dev.superdrop.protocol.connection.InboundConnectionState
 import dev.superdrop.protocol.connection.ReceivedItem
 import dev.superdrop.protocol.connection.TransferItem
+import dev.superdrop.service.receiver.TileVisibilityElevationHolder
 import dev.superdrop.service.receiver.consent.ConsentBroadcastReceiver
 import dev.superdrop.service.receiver.consent.ConsentDiagnostic
 import dev.superdrop.service.receiver.consent.ConsentIntents
 import dev.superdrop.service.receiver.consent.ConsentModalRegistry
 import dev.superdrop.service.receiver.consent.ConsentNotificationContent
 import dev.superdrop.service.receiver.consent.ConsentRegistry
+import dev.superdrop.ui.sheet.DraggableSheetLayout
+import dev.superdrop.ui.sheet.RoundedProgressBar
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -151,17 +153,44 @@ class ConsentTrampolineActivity : AppCompatActivity() {
         // flags via the shim below.
         applyIncomingCallFlags()
         super.onCreate(savedInstanceState)
-        // Soft alpha + scale-up entrance so the popup feels like it's
-        // emerging from its centre rather than snapping into place.
-        // Paired with `popup_fade_out` in [finish] for a symmetric
-        // dismiss.
-        @Suppress("DEPRECATION")
-        overridePendingTransition(R.anim.popup_fade_in, 0)
+        // The OShare bottom-sheet entrance/exit is driven by the window
+        // slide animation declared on Theme.SuperDrop.ReceiveSheet plus
+        // the DraggableSheetLayout's own overshoot entrance (wired in
+        // [wireBottomSheet]); no per-activity overridePendingTransition
+        // is needed here anymore.
         setContentView(R.layout.activity_consent_trampoline)
         bugReportFlowSupport = BugReportFlowSupport.install(this)
+        wireBottomSheet()
 
         ConsentDiagnostic.log(this, "trampoline.onCreate intent.id=${incomingId(intent)}")
         bindIntent(intent)
+    }
+
+    /**
+     * Wire the OShare-style bottom-sheet presentation (Phase 2), mirroring
+     * [dev.superdrop.send.SendActivity.wireBottomSheet]:
+     *
+     *  - tapping the empty scrim area outside the card dismisses the
+     *    activity (slide-down via the window exit animation),
+     *  - a sufficient drag-down on the card dismisses it,
+     *  - the card slides up with an overshoot bounce on entrance,
+     *  - the card's bottom padding tracks the navigation-bar inset.
+     *
+     * None of the consent / connection-observation logic is touched —
+     * this only governs how the existing panel content is presented.
+     */
+    private fun wireBottomSheet() {
+        val root = findViewById<View>(R.id.consent_sheet_root)
+        val scrim = findViewById<View>(R.id.consent_sheet_scrim)
+        val sheet = findViewById<DraggableSheetLayout>(R.id.consent_sheet)
+        scrim.setOnClickListener { finish() }
+        sheet.setOnDismiss { finish() }
+        DraggableSheetLayout.applyBottomInset(
+            root,
+            sheet,
+            resources.getDimensionPixelSize(R.dimen.send_sheet_base_bottom_padding),
+        )
+        sheet.playEntrance()
     }
 
     /**
@@ -179,10 +208,17 @@ class ConsentTrampolineActivity : AppCompatActivity() {
      * (back-compat shim is still wired in the framework) and is
      * trivially correct for our minSdk = 24 floor.
      */
-    @Suppress("DEPRECATION")
     override fun finish() {
+        // If this sheet was opened by the Quick Settings tile in waiting
+        // mode (which temporarily bumped receiver visibility), restore
+        // the exact prior visibility / service state now that the sheet
+        // is going away. No-op when the sheet was raised by an incoming
+        // transfer (the holder is only armed by the tile path). Done
+        // before super.finish() so the restore runs even if the platform
+        // tears the activity down immediately. The slide-down window exit
+        // animation is supplied by Theme.SuperDrop.ReceiveSheet.
+        TileVisibilityElevationHolder.restoreIfArmed(applicationContext)
         super.finish()
-        overridePendingTransition(0, R.anim.popup_fade_out)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -247,6 +283,18 @@ class ConsentTrampolineActivity : AppCompatActivity() {
         )
 
         if (entry == null) {
+            if (intent?.action == ConsentIntents.ACTION_OPEN_RECEIVE_SHEET) {
+                // Tile-opened "waiting for sender" sheet (Phase 2). No
+                // transfer is pending yet; show the waiting panel and
+                // stay foreground. When an incoming transfer arrives the
+                // ConsentCoordinator's foreground path re-launches this
+                // singleTop activity with a real connection id, which
+                // lands in onNewIntent -> bindIntent and swaps the
+                // waiting panel for the consent prompt in place.
+                ConsentDiagnostic.log(this, "trampoline.waiting open (no pending entry)")
+                showWaitingPanel()
+                return
+            }
             // The notification fired but the underlying connection has
             // already terminated (e.g. the peer cancelled). Show a brief
             // toast and finish — the surface keeps its incoming-call
@@ -263,6 +311,23 @@ class ConsentTrampolineActivity : AppCompatActivity() {
         renderEntry(entry)
         wireButtons(entry)
         registerModal()
+    }
+
+    /**
+     * Show the Phase 2 "ready to receive / waiting for sender" panel.
+     * Hides every other panel so a re-bind from waiting back to waiting
+     * (e.g. a second tile tap) is idempotent, and animates the swap with
+     * the same [ChangeBounds] transition the consent→receiving→completed
+     * path uses so the sheet resizes smoothly if it was showing another
+     * state.
+     */
+    private fun showWaitingPanel() {
+        beginPanelTransition()
+        findViewById<View>(R.id.consent_panel).visibility = View.GONE
+        findViewById<View>(R.id.consent_receiving_panel).visibility = View.GONE
+        findViewById<View>(R.id.consent_completed_panel).visibility = View.GONE
+        findViewById<View>(R.id.consent_failed_panel).visibility = View.GONE
+        findViewById<View>(R.id.consent_waiting_panel).visibility = View.VISIBLE
     }
 
     override fun onDestroy() {
@@ -307,6 +372,19 @@ class ConsentTrampolineActivity : AppCompatActivity() {
     }
 
     private fun renderEntry(entry: ConsentRegistry.Entry) {
+        // Ensure the consent prompt is the visible panel. This matters
+        // when the sheet was previously showing the Phase 2 waiting panel
+        // (tile-opened) and an incoming transfer just arrived via
+        // onNewIntent — swap waiting → consent in place. The other
+        // post-decision panels are always GONE at this point but are
+        // reset defensively in case of an unusual re-bind ordering.
+        beginPanelTransition()
+        findViewById<View>(R.id.consent_waiting_panel).visibility = View.GONE
+        findViewById<View>(R.id.consent_receiving_panel).visibility = View.GONE
+        findViewById<View>(R.id.consent_completed_panel).visibility = View.GONE
+        findViewById<View>(R.id.consent_failed_panel).visibility = View.GONE
+        findViewById<View>(R.id.consent_panel).visibility = View.VISIBLE
+
         val titleView = findViewById<TextView>(R.id.consent_title)
         val pinView = findViewById<TextView>(R.id.consent_pin)
         val list = findViewById<LinearLayout>(R.id.consent_files_list)
@@ -560,7 +638,7 @@ class ConsentTrampolineActivity : AppCompatActivity() {
         bytesReceived: Long,
         totalBytes: Long,
     ) {
-        val progressBar = findViewById<CircularProgressIndicator>(R.id.consent_receiving_progress) ?: return
+        val progressBar = findViewById<RoundedProgressBar>(R.id.consent_receiving_progress) ?: return
         val percentText = findViewById<TextView>(R.id.consent_receiving_progress_pct)
         val pct =
             if (totalBytes > 0) {
@@ -571,13 +649,10 @@ class ConsentTrampolineActivity : AppCompatActivity() {
             } else {
                 0
             }
-        if (totalBytes > 0) {
-            // Once we know the total, switch from the spinning
-            // indeterminate state to a deterministic ratio so the user
-            // can see the bar fill up frame by frame.
-            if (progressBar.isIndeterminate) progressBar.isIndeterminate = false
-            progressBar.setProgressCompat(pct, true)
-        }
+        // The OShare RoundedProgressBar animates the blue pill fill toward
+        // the target fraction; before the total is known we hold it at 0%
+        // (the bar still shows a dot so the panel reads as "started").
+        progressBar.setProgress(pct)
         percentText?.text = getString(R.string.transfer_progress_percent, pct)
         findViewById<TextView>(R.id.consent_receiving_progress_text)?.text =
             getString(

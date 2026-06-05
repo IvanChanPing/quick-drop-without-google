@@ -892,6 +892,12 @@ public class ReceiverForegroundService : Service() {
     }
 
     private fun stopReceiverAndExit() {
+        // Clear any outstanding tile-elevation record: the receiver is
+        // being torn down (explicit stop or process teardown), so a later
+        // receive-sheet dismissal must not try to "restore" by stopping a
+        // service that is already gone or re-toggling an override the user
+        // may have since changed by other means. Best-effort, idempotent.
+        TileVisibilityElevationHolder.disarm()
         stopActiveReceiverSession()
         unregisterConsentReceiverIfNeeded()
 

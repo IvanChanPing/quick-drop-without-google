@@ -46,3 +46,55 @@ entries here cover only fork-specific changes.
     `send_sheet_base_bottom_padding`.
   - Verified: `:app:assembleDebug` BUILD SUCCESSFUL (JDK 17). UI not yet exercised on a
     device — compile-verified only.
+- **Phase 2 — RECEIVE consent surface redesigned into an OShare-style bottom sheet, opened
+  by the Quick Settings tile with a temporary visibility bump.**
+  - Ported `RoundedProgressBar` (shareit-bridge Java → Kotlin) to
+    `dev.superdrop.ui.sheet.RoundedProgressBar`: pill track + animated blue fill
+    (`ValueAnimator`, 180 ms), `setProgress(percent)`, ≥1-dot minimum so 0% reads as
+    "started". `AttributeSet` ctor so it can be inflated from XML.
+  - New translucent theme `Theme.SuperDrop.ReceiveSheet` (parent `Theme.Bada`,
+    mirrors `SendSheet`): `windowIsTranslucent`, transparent `windowBackground`,
+    `windowContentOverlay=@null`, `windowNoTitle`, `backgroundDimEnabled` +
+    `backgroundDimAmount=0.2`, reuses `WindowAnimation.SuperDrop.SendSheet` slide-up/down.
+    Applied to `.consent.ConsentTrampolineActivity` in the manifest, replacing the centered
+    `Theme.Bada.ConsentDialog`.
+  - `activity_consent_trampoline.xml` rebuilt: root is a transparent `FrameLayout`
+    (`consent_sheet_root`) + tap scrim (`consent_sheet_scrim` → dismiss) hosting a
+    bottom-anchored `DraggableSheetLayout` (`consent_sheet`, rounded `send_sheet_background`
+    surface) wrapping the fixed-480dp inner content frame (`consent_root`, the transition
+    scene root). Every consent panel id is preserved verbatim (consent/receiving/completed/
+    failed) so the activity's `findViewById` state machine, `submitUserConsent` broadcast
+    path, `InboundConnection.state` observation, `onNewIntent`, `setShowWhenLocked`/
+    `setTurnScreenOn`, and `ConsentModalRegistry` dismiss hook are untouched. Receiving
+    progress switched from `CircularProgressIndicator` → `RoundedProgressBar`.
+  - `ConsentTrampolineActivity`: added `wireBottomSheet()` (scrim tap → finish, drag-down
+    dismiss, bottom inset, overshoot entrance); dropped the old popup fade transitions (the
+    theme's window slide handles enter/exit now). Added a **WAITING** mode — when launched
+    by the tile with `ConsentIntents.ACTION_OPEN_RECEIVE_SHEET` and no pending consent entry,
+    it shows a "Ready to receive / waiting for sender" panel (`consent_waiting_panel`,
+    new strings `consent_state_waiting_title` / `_body`) instead of finishing. `renderEntry`
+    swaps waiting → consent in place. `renderProgress` updated for `RoundedProgressBar`.
+  - Foreground incoming-consent routing into the open waiting sheet needed NO coordinator
+    change: the open sheet is itself a foregrounded Bada activity, so
+    `AppForegroundState.isForeground` is true and the existing
+    `ConsentCoordinator.raiseConsentSurface` → `Sink.launchModal` →
+    `launchConsentTrampolineAsModal` path re-launches the `singleTop` activity with the new
+    connection id, delivered via `onNewIntent`.
+  - **QS tile (`BadaQuickShareTileService`) replaced the persistent on/off toggle** with a
+    momentary capture→bump→open→restore flow: (a) capture `MdnsVisibilityOverrideHolder.isActive`;
+    (b) if below visible, set override on + `ReceiverForegroundService.start` (recorded in the
+    new `TileVisibilityElevationHolder`); (c) `startActivityAndCollapse` into the receive sheet
+    in waiting mode (`ACTION_OPEN_RECEIVE_SHEET` + `EXTRA_TILE_ELEVATED`); (d) the activity's
+    `finish()` calls `TileVisibilityElevationHolder.restoreIfArmed` to set the override back and
+    stop the service it started. If visibility was ALREADY active, nothing is bumped or restored.
+    FGS-start / activity-launch failures roll the bump back. Permission gate unchanged.
+  - New `dev.superdrop.service.receiver.TileVisibilityElevationHolder` (in-memory one-shot
+    record of the prior visibility/service state; `arm`/`restoreIfArmed`/`disarm`). Cleared on
+    `ReceiverForegroundService.stopReceiverAndExit` so a stale armed flag can't later stop a
+    service the user controls by other means. Best-effort across process death (in-memory only,
+    matching the override holder).
+  - New intent constants `ConsentIntents.ACTION_OPEN_RECEIVE_SHEET` / `EXTRA_TILE_ELEVATED`.
+  - Protocol/transport, `ConsentNotification.kt` (incoming heads-up), `:core-protocol`, wire
+    constants, and discovery networking all untouched.
+  - Verified: `:app:assembleDebug` BUILD SUCCESSFUL (JDK 17); `:service-android` consent unit
+    tests pass. UI is compile-only — NOT click-tested on a device.

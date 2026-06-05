@@ -331,7 +331,7 @@
             android:launchMode="singleTop"
             android:showOnLockScreen="true"
             android:turnScreenOn="true"
-            android:theme="@style/Theme.Bada.ConsentDialog"
+            android:theme="@style/Theme.SuperDrop.ReceiveSheet"
             android:label="@string/consent_activity_label" />
 
         <!--
