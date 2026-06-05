@@ -486,4 +486,8 @@
     <string name="qs_tile_subtitle_off">Off</string>
     <string name="qs_tile_content_desc_on">Bada is discoverable to nearby devices</string>
     <string name="qs_tile_content_desc_off">Bada is not discoverable</string>
+    <!-- HCE service description shown in system NFC settings. The Type-4
+         NDEF service broadcasts the current pairing link to a tapped
+         iPhone so it opens that link in Safari. -->
+    <string name="nfc_hce_service_description">Super Drop NFC link</string>
 </resources>
