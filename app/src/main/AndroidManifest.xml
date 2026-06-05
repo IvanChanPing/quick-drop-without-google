@@ -100,6 +100,17 @@
         android:name="android.permission.BLUETOOTH_CONNECT"
         tools:targetApi="31" />
 
+    <!-- NFC link broadcast (Phase 4). NFC is install-time normal
+         protection; BIND_NFC_SERVICE on the HCE service below is the
+         actual gate and is auto-granted to the system NFC service. The
+         hce feature is required=false so the app still installs on
+         phones without NFC hardware (the service is simply never bound
+         there). -->
+    <uses-permission android:name="android.permission.NFC" />
+    <uses-feature
+        android:name="android.hardware.nfc.hce"
+        android:required="false" />
+
     <!-- Legacy Bluetooth permission model for API ≤ 30. Capped with
          maxSdkVersion=30 so API 31+ devices use the runtime BLUETOOTH_*
          permissions above instead of these grant-at-install variants. -->
@@ -303,6 +314,35 @@
             android:name=".send.ShowQrActivity"
             android:exported="false"
             android:label="@string/show_qr_title" />
+
+        <!--
+          NFC link broadcast HCE service (Phase 4).
+
+          Emulates an NFC Forum Type-4 NDEF tag whose single URI record is
+          the current Super Drop pairing link (NfcLinkHolder.currentUrl,
+          set by SendActivity while the QR/link panel is showing). An
+          iPhone tapped to the back of this phone background-reads the URI
+          and opens it in Safari (the URL is an ordinary web link, not an
+          App Store / universal link).
+
+          exported=true + BIND_NFC_SERVICE: the platform NFC service (in a
+          different process) binds and routes APDUs here; the permission is
+          held only by the system, so this is not a third-party-callable
+          surface. The HOST_APDU_SERVICE intent filter + host_apdu_service
+          meta-data (the AID group) are how the platform discovers and
+          routes the D2760000850101 NDEF Tag Application AID to us.
+        -->
+        <service
+            android:name=".nfc.SuperDropNdefApduService"
+            android:exported="true"
+            android:permission="android.permission.BIND_NFC_SERVICE">
+            <intent-filter>
+                <action android:name="android.nfc.cardemulation.action.HOST_APDU_SERVICE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.nfc.cardemulation.host_apdu_service"
+                android:resource="@xml/superdrop_apduservice" />
+        </service>
 
         <!--
           Consent trampoline (#22) — the screen-on, lock-screen-bypassing

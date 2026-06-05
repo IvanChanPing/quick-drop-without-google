@@ -49,6 +49,7 @@ import dev.superdrop.discovery.bootstrap.BleL2capInitialControlClient
 import dev.superdrop.discovery.bootstrap.BluetoothClassicBootstrapClient
 import dev.superdrop.discovery.diagnostics.DiagnosticLog
 import dev.superdrop.discovery.medium.MediumRegistries
+import dev.superdrop.nfc.NfcLinkHolder
 import dev.superdrop.protocol.connection.CancelCause
 import dev.superdrop.protocol.connection.FileSource
 import dev.superdrop.protocol.connection.OutboundConnection
@@ -301,6 +302,8 @@ public class SendActivity : AppCompatActivity() {
         senderGattServer?.stop()
         senderGattServer = null
         connectionJob?.cancel()
+        // Stop NFC link broadcast when the Send screen is gone.
+        NfcLinkHolder.currentUrl = null
         // Lift the gate veto so the receiver-side mDNS record can come
         // back up if any of the gate's existing publish signals
         // (BLE pulse, always-visible override, QR session) call for it.
@@ -471,6 +474,8 @@ public class SendActivity : AppCompatActivity() {
      * connection status panel can take over when a QR match auto-connects.
      */
     private fun dismissQrPanelForConnect() {
+        // A QR match auto-connected; the link no longer needs broadcasting.
+        NfcLinkHolder.currentUrl = null
         binding.sendQrPanel.animate().cancel()
         binding.sendQrScroll.visibility = View.GONE
         binding.sendPickerContent.alpha = 1f
@@ -1360,6 +1365,10 @@ public class SendActivity : AppCompatActivity() {
         qrFirstBleOnlyMatchAtMs = 0L
         val url = QrUrl.build(generated.qrKeyData)
         binding.sendQrUrl.text = url
+        // Publish the pairing link for the NFC HCE service so an iPhone
+        // tapped to the back of this phone reads this same URL and opens
+        // it in Safari (Phase 4). Cleared when the QR session ends.
+        NfcLinkHolder.currentUrl = url
 
         // Render the bitmap at a high pixel resolution
         // (`QR_SCREEN_FRACTION × min(screenW, screenH)`) so the
@@ -1438,6 +1447,8 @@ public class SendActivity : AppCompatActivity() {
         // so the discovery callback stops auto-matching resolved peers.
         qrDerivedKeys = null
         qrSession = null
+        // Stop broadcasting the link over NFC now that the QR panel is gone.
+        NfcLinkHolder.currentUrl = null
         val panel = binding.sendQrPanel
         panel
             .animate()
