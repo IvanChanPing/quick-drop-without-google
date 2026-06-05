@@ -137,3 +137,13 @@ entries here cover only fork-specific changes.
   - Verified: `:app:assembleDebug` BUILD SUCCESSFUL (JDK 17); `:service-android`
     `compileDebugUnitTestKotlin` + `TransferProgressCoordinatorTest` pass. Compile-only — the
     notification + Open-action click path is NOT device click-tested.
+
+### 2026-06-05 — All 4 UI phases complete + on-device UI check
+- Phase 1 send bottom sheet (cad8d21), Phase 2 receive sheet + tile (ee2fc13), Phase 4 NFC link
+  broadcast (merged d3f1bea), Phase 3 completion notification (14cfd3b). Final assembleDebug green.
+- On-device (redroid A16 x86_64, :5573) UI-verified by screenshot: app renders as "Super Drop"; SEND
+  opens as a bottom sheet over the dimmed home with the picker + QR button; in-sheet QR shows the live
+  pairing link; RECEIVE waiting sheet ("Ready to receive") renders via the tile action.
+- UNVERIFIED (need 2 physical phones / NFC hardware): populated peer icons, real consent/PIN/progress/
+  completion+Open flow, completion notification, tile visibility bump/restore, NFC tap→Safari, and any
+  real Quick Share interop transfer (redroid lacks real Wi-Fi/BLE).
