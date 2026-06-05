@@ -98,3 +98,42 @@ entries here cover only fork-specific changes.
     constants, and discovery networking all untouched.
   - Verified: `:app:assembleDebug` BUILD SUCCESSFUL (JDK 17); `:service-android` consent unit
     tests pass. UI is compile-only — NOT click-tested on a device.
+- **Phase 3 — RECEIVE completion notification with an "Open" action (the missing third
+  notification in the consent / progress / completion trio).**
+  - New `dev.superdrop.service.receiver.progress.TransferCompleteNotification` (object),
+    mirroring `TransferProgressNotification` / `ConsentNotification`: own channel
+    `transfer_complete` (IMPORTANCE_HIGH, sound + vibration — the user wants a heads-up on
+    completion, unlike the quiet progress channel); disjoint stable notification-id base
+    `0x436F_5663` ("CoVc"); `setAutoCancel(true)` + `CATEGORY_STATUS`. Title
+    "Received N file(s) from <sender>" (sender name reused from the same consent/progress
+    metadata). `ensureChannel` / `post` / `dismiss` / `build` surface.
+  - **Open action + body tap**: for a single received FILE whose `content://` Uri resolves
+    from `MediaStore.Downloads` by display name → `ACTION_VIEW` on that Uri with
+    `FLAG_GRANT_READ_URI_PERMISSION` (mirrors `ConsentTrampolineActivity.findReceivedImageUri`
+    but against the Downloads collection, where received files land via
+    `MediaStoreDownloadsEnvironment`); for multiple files, an unresolvable single Uri
+    (collision-suffixed commit name, un-indexed row, user-chosen SAF tree), or pre-API-29 →
+    falls back to the system Downloads view (`DownloadManager.ACTION_VIEW_DOWNLOADS`). Uri
+    resolution is best-effort (a query miss / `SecurityException` → Downloads view), so the
+    action is always tappable.
+  - Wired into the existing terminal path: `TransferProgressCoordinator.Sink` gained a
+    `postComplete(connectionId, sourceDeviceName, items)` method, called from the `Completed`
+    branch of `observeOneConnection` (which already dismisses the progress card on the same
+    transition — so the completion heads-up effectively *replaces* the progress card; the two
+    use disjoint ids). Production `Sink` in `ReceiverForegroundService.startProgressCoordinator`
+    routes it to `TransferCompleteNotification.post`; the `transfer_complete` channel is
+    ensured in `onCreate` alongside the other channels. Not posted on Failed/Cancelled/Rejected.
+  - Foreground case unchanged: `ConsentTrampolineActivity` still shows the inline completion +
+    View-image panel; the notification posts in addition (acceptable per the design).
+  - `ConsentNotification.kt`, `:core-protocol`, the protocol/wire code, and the MediaStore
+    factory were NOT changed (the factory's committed-row Uri is re-resolved by display-name
+    query rather than threading a Uri back through `ReceivedItem`).
+  - New strings in `:service-android` `strings.xml`: `transfer_complete_channel_name` /
+    `_description`, `transfer_complete_title_with_name` / `_unknown_sender`,
+    `transfer_complete_action_open`.
+  - Tests: `RecordingSink` extended with `postComplete`; two new
+    `TransferProgressCoordinatorTest` cases (posts completion with sender name on `Completed`;
+    does NOT post on `Failed`). All `TransferProgressCoordinatorTest` cases pass.
+  - Verified: `:app:assembleDebug` BUILD SUCCESSFUL (JDK 17); `:service-android`
+    `compileDebugUnitTestKotlin` + `TransferProgressCoordinatorTest` pass. Compile-only — the
+    notification + Open-action click path is NOT device click-tested.

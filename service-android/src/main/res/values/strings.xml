@@ -163,4 +163,28 @@
     <!-- Cancel-action label on the progress notification (#46). -->
     <string name="transfer_progress_action_cancel">Cancel</string>
 
+    <!--
+      Transfer completion notification. Posted once a transfer reaches
+      the Completed state; replaces the (dismissed) progress card in the
+      shade. A distinct high-importance channel so completion peeks and
+      plays a sound the same way a finished download alerts — unlike the
+      quiet progress channel above.
+    -->
+    <string name="transfer_complete_channel_name">Transfer complete</string>
+    <string name="transfer_complete_channel_description">Heads-up alert when a Quick Share transfer finishes</string>
+
+    <!--
+      Completion title variants. `with_name` is preferred when the
+      sender device name is known (carried over from the consent /
+      progress metadata); `unknown_sender` is used when the sender
+      advertised in hidden visibility mode. %1$d is the received file
+      count. Pluralisation handled in code today, matching the progress
+      strings; a `plurals` resource lands with the localisation pass.
+    -->
+    <string name="transfer_complete_title_with_name" tools:ignore="PluralsCandidate">Received %1$d file(s) from %2$s</string>
+    <string name="transfer_complete_title_unknown_sender" tools:ignore="PluralsCandidate">Received %1$d file(s)</string>
+
+    <!-- Open-action label on the completion notification. -->
+    <string name="transfer_complete_action_open">Open</string>
+
 </resources>

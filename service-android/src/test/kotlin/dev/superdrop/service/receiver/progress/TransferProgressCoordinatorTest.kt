@@ -105,6 +105,55 @@ class TransferProgressCoordinatorTest {
         }
 
     @Test
+    fun `posts completion notification with sender name when connection completes`() =
+        runTest {
+            val harness = harness(idProvider = { 50L })
+            harness.start()
+
+            val connection = harness.newConnection()
+            harness.activeConnections.tryEmit(connection)
+            advanceUntilIdle()
+            // waitingState carries sourceDeviceName = "Pixel 8" (see the
+            // waitingState() helper); the coordinator captures it so the
+            // completion notification can render "from Pixel 8".
+            harness.transitionTo(connection, waitingState())
+            advanceUntilIdle()
+            harness.transitionTo(connection, receivingState())
+            advanceUntilIdle()
+
+            assertThat(harness.sink.completed).isEmpty()
+
+            harness.transitionTo(connection, InboundConnectionState.Completed(items = emptyList()))
+            advanceUntilIdle()
+
+            assertThat(harness.sink.completed).hasSize(1)
+            val complete = harness.sink.completed.single()
+            assertThat(complete.connectionId).isEqualTo(50L)
+            assertThat(complete.sourceDeviceName).isEqualTo("Pixel 8")
+            harness.close()
+        }
+
+    @Test
+    fun `does not post completion notification when connection fails`() =
+        runTest {
+            val harness = harness(idProvider = { 7L })
+            harness.start()
+
+            val connection = harness.newConnection()
+            harness.activeConnections.tryEmit(connection)
+            advanceUntilIdle()
+            harness.transitionTo(connection, waitingState())
+            advanceUntilIdle()
+            harness.transitionTo(connection, receivingState())
+            advanceUntilIdle()
+            harness.transitionTo(connection, InboundConnectionState.Failed(reason = "I/O"))
+            advanceUntilIdle()
+
+            assertThat(harness.sink.completed).isEmpty()
+            harness.close()
+        }
+
+    @Test
     fun `dismisses progress when connection fails`() =
         runTest {
             val harness = harness(idProvider = { 7L })
@@ -330,8 +379,15 @@ class TransferProgressCoordinatorTest {
             val onCancel: () -> Unit,
         )
 
+        data class Complete(
+            val connectionId: Long,
+            val sourceDeviceName: String?,
+            val items: List<dev.superdrop.protocol.connection.ReceivedItem>,
+        )
+
         val posted: MutableList<Post> = mutableListOf()
         val dismissed: MutableList<Long> = mutableListOf()
+        val completed: MutableList<Complete> = mutableListOf()
         val cancelsRegistered: MutableList<CancelRegistration> = mutableListOf()
         val cancelsUnregistered: MutableList<Long> = mutableListOf()
 
@@ -345,6 +401,14 @@ class TransferProgressCoordinatorTest {
 
         override fun dismissProgress(connectionId: Long) {
             dismissed += connectionId
+        }
+
+        override fun postComplete(
+            connectionId: Long,
+            sourceDeviceName: String?,
+            items: List<dev.superdrop.protocol.connection.ReceivedItem>,
+        ) {
+            completed += Complete(connectionId, sourceDeviceName, items)
         }
 
         override fun registerCancel(

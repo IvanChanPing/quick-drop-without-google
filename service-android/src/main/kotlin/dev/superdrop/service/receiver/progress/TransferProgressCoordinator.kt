@@ -7,6 +7,7 @@ package dev.superdrop.service.receiver.progress
 
 import dev.superdrop.protocol.connection.InboundConnection
 import dev.superdrop.protocol.connection.InboundConnectionState
+import dev.superdrop.protocol.connection.ReceivedItem
 import dev.superdrop.protocol.connection.TransferProgress
 import dev.superdrop.protocol.server.InboundConnectionCompletion
 import kotlinx.coroutines.CoroutineScope
@@ -155,7 +156,20 @@ public class TransferProgressCoordinator(
                         }
                     }
                 }
-                is InboundConnectionState.Completed,
+                is InboundConnectionState.Completed -> {
+                    // Terminal success. Dismiss the (quiet) progress card
+                    // and post the heads-up completion notification in its
+                    // place — different notification id, so the dismiss +
+                    // post read as a single "progress -> done" swap in the
+                    // shade. The completion notification carries the Open
+                    // action; the received items drive its title + Open Uri.
+                    if (posted) {
+                        sink.dismissProgress(connectionId)
+                    }
+                    sink.postComplete(connectionId, sourceDeviceName, state.items)
+                    sink.unregisterCancel(connectionId)
+                    return@collect
+                }
                 is InboundConnectionState.Cancelled,
                 is InboundConnectionState.Failed,
                 is InboundConnectionState.Rejected,
@@ -219,6 +233,20 @@ public class TransferProgressCoordinator(
         )
 
         public fun dismissProgress(connectionId: Long)
+
+        /**
+         * Post the terminal-success completion notification with an Open
+         * action. Called once, when the connection reaches
+         * [InboundConnectionState.Completed]. Production wires this to
+         * [TransferCompleteNotification.post]; the recording fake in
+         * tests records the call. [items] are the successfully received
+         * items (FILE + TEXT) carried by the `Completed` state.
+         */
+        public fun postComplete(
+            connectionId: Long,
+            sourceDeviceName: String?,
+            items: List<ReceivedItem>,
+        )
 
         public fun registerCancel(
             connectionId: Long,

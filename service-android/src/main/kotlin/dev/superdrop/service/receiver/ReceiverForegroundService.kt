@@ -43,6 +43,7 @@ import dev.superdrop.service.receiver.consent.ConsentRegistry
 import dev.superdrop.service.receiver.foreground.AppForegroundState
 import dev.superdrop.service.receiver.foreground.ProcessLifecycleOwnerAppForegroundState
 import dev.superdrop.service.receiver.progress.TransferCancelRegistry
+import dev.superdrop.service.receiver.progress.TransferCompleteNotification
 import dev.superdrop.service.receiver.progress.TransferProgressCoordinator
 import dev.superdrop.service.receiver.progress.TransferProgressNotification
 import kotlinx.coroutines.CoroutineScope
@@ -198,6 +199,10 @@ public class ReceiverForegroundService : Service() {
         // channel (#46) — created upfront so the first chunk's
         // progress post lands.
         TransferProgressNotification.ensureChannel(this)
+        // And the completion-notification channel — created here so the
+        // terminal-success heads-up (which replaces the progress card on
+        // completion) lands on a registered IMPORTANCE_HIGH channel.
+        TransferCompleteNotification.ensureChannel(this)
         registerConsentReceiver()
     }
 
@@ -780,6 +785,26 @@ public class ReceiverForegroundService : Service() {
 
                         override fun dismissProgress(connectionId: Long) {
                             TransferProgressNotification.dismiss(ctx, connectionId)
+                        }
+
+                        override fun postComplete(
+                            connectionId: Long,
+                            sourceDeviceName: String?,
+                            items: List<dev.superdrop.protocol.connection.ReceivedItem>,
+                        ) {
+                            // The progress card is dismissed on the same
+                            // terminal transition; posting the completion
+                            // heads-up here effectively swaps it for the
+                            // "your files arrived" alert with an Open
+                            // action. Also surfaced inline by
+                            // ConsentTrampolineActivity when Bada is
+                            // foregrounded — both surfaces are acceptable.
+                            TransferCompleteNotification.post(
+                                context = ctx,
+                                connectionId = connectionId,
+                                items = items,
+                                sourceDeviceName = sourceDeviceName,
+                            )
                         }
 
                         override fun registerCancel(
