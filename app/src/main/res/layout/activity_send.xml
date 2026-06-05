@@ -638,7 +638,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="16dp">
 
-                        <dev.bluehouse.bada.ui.BackdropBlurView
+                        <dev.superdrop.ui.BackdropBlurView
                             android:id="@+id/send_cancel_blur"
                             android:layout_width="match_parent"
                             android:layout_height="match_parent" />

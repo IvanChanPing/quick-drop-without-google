@@ -13,4 +13,9 @@ entries here cover only fork-specific changes.
   the exact tile↔visibility behavior, the planned app identity
   (`dev.peskoff.superdrop`, name "Super Drop"), and the interop-critical wire
   identifiers that must not be renamed.
-- No code changes yet; protocol/transport stack untouched.
+- Renamed package `dev.bluehouse.bada` → `dev.superdrop` (all 5 modules: source dirs,
+  package/import, 3 Gradle namespaces + applicationId + `.debug` suffix, 3 custom-View
+  FQCNs in XML, Robolectric shadow ref), `rootProject.name`→`SuperDrop`, `app_name`→"Super Drop".
+  Wire identifiers (`_FC9F5ED42C8A._tcp.`, `NearbySharing`, BLE UUIDs) left untouched.
+  Verified: `:app:assembleDebug` BUILD SUCCESSFUL (JDK 17), app-debug.apk produced.
+- Protocol/transport stack untouched.
