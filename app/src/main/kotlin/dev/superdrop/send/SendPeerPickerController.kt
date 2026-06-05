@@ -6,14 +6,13 @@
 package dev.superdrop.send
 
 import android.content.Context
-import android.view.LayoutInflater
 import android.view.View
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import dev.superdrop.R
 import dev.superdrop.databinding.ActivitySendBinding
-import dev.superdrop.databinding.ItemPeerRowBinding
 import dev.superdrop.discovery.NearbyPeer
+import dev.superdrop.ui.sheet.DeviceIconView
 import dev.superdrop.discovery.NearbyPeerDiscovery
 import dev.superdrop.discovery.NearbyPeerEvent
 import dev.superdrop.discovery.NearbyPeerRoute
@@ -255,16 +254,29 @@ internal class SendPeerPickerController(
         // Build the target row payloads up-front so we can compare
         // against the last rendered snapshot before deciding whether
         // the row container needs a rebuild.
+        //
+        // OShare-style presentation (Phase 1): each connectable peer is
+        // drawn as a circular [DeviceIconView] in a horizontal row, and
+        // peers are DEDUPED BY DISPLAY NAME — a receiver's BLE MAC
+        // rotates for privacy, so the same phone is otherwise seen under
+        // several stableIds and would show as several identical circles
+        // (the "two CPH2583" duplicate). We collapse to one chip per name
+        // and keep the first peer seen under that name as the chip's tap
+        // target; the snapshot picks up a later peer for the same name on
+        // the next render if the first is lost.
         data class TargetRow(
             val peer: NearbyPeer,
             val title: String,
             val subtitle: String,
         )
+        val seenNames = HashSet<String>()
         val targetRows =
             peers.mapNotNull { peer ->
                 val plan = planFor(peer)
                 if (!plan.isConnectable) return@mapNotNull null
-                TargetRow(peer, peerLabel(peer), plan.subtitle)
+                val label = peerLabel(peer)
+                if (!seenNames.add(label)) return@mapNotNull null
+                TargetRow(peer, label, plan.subtitle)
             }
         val targetSnapshot =
             targetRows.map { row ->
@@ -296,18 +308,21 @@ internal class SendPeerPickerController(
         lastRenderedRowSnapshot = targetSnapshot
 
         container.removeAllViews()
-        val inflater = LayoutInflater.from(context)
         for (target in targetRows) {
-            val row = ItemPeerRowBinding.inflate(inflater, container, false)
-            row.peerRowTitle.text = target.title
-            row.peerRowSubtitle.text = target.subtitle
-            row.root.isEnabled = true
-            row.root.alpha = 1f
             val stableId = target.peer.stableId
-            row.root.setOnClickListener {
+            val icon = DeviceIconView(context, stableId, target.title)
+            icon.isEnabled = true
+            icon.alpha = 1f
+            icon.setOnClickListener {
+                // Acknowledge the tap with the OShare bounce, then route
+                // through the SAME selection path the old row click used
+                // (resolve a current peer by stableId so a rotated-MAC
+                // re-resolve picks the freshest route). Discovery /
+                // OutboundConnection wiring is unchanged.
+                icon.bounce()
                 peers.firstOrNull { it.stableId == stableId }?.let(onPeerSelected)
             }
-            container.addView(row.root)
+            container.addView(icon)
         }
         // Empty-state visibility is gated on [EmptyPeerHintTimer] inside
         // [updateEmptyPeerHintVisibility] so the "no devices nearby yet"

@@ -15,4 +15,11 @@
          item can scroll clear of the floating bottom-left nav pill that
          overlays the fragment. -->
     <dimen name="settings_content_bottom_padding">24dp</dimen>
+
+    <!-- Design bottom padding for the OShare-style SendActivity bottom
+         sheet (dev.superdrop.ui.sheet.DraggableSheetLayout). The
+         navigation-bar inset is added on top of this at runtime by
+         DraggableSheetLayout.applyBottomInset so the card content clears
+         the system nav buttons. -->
+    <dimen name="send_sheet_base_bottom_padding">8dp</dimen>
 </resources>

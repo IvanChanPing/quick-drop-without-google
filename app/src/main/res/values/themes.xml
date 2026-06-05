@@ -257,6 +257,52 @@
     </style>
 
     <!--
+      Translucent bottom-sheet theme for SendActivity (Phase 1 OShare
+      port). The activity window is made transparent and non-fullscreen
+      so its layout — a transparent FrameLayout scrim hosting a
+      bottom-anchored DraggableSheetLayout card — can float over the
+      app/launcher behind it like the OShare send sheet:
+
+        * windowIsTranslucent / transparent windowBackground /
+          windowContentOverlay=null — the window has no opaque surface;
+          only the sheet card and a light dim layer paint.
+        * windowNoTitle — no action-bar title strip above the sheet.
+        * backgroundDimEnabled + backgroundDimAmount=0.2 — a soft
+          (not heavy) scrim behind the sheet, matching the OShare
+          "light scrim, not fully dark" look.
+        * windowAnimationStyle — slide-up enter / slide-down exit
+          (see WindowAnimation.SuperDrop.SendSheet) so the window rises
+          from the bottom edge in step with the sheet's own overshoot
+          entrance.
+
+      Inherits Theme.Bada so the brand font, button styling and color
+      tokens stay identical to the rest of the app.
+    -->
+    <style name="Theme.SuperDrop.SendSheet" parent="Theme.Bada">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="windowNoTitle">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:backgroundDimAmount">0.2</item>
+        <item name="android:windowAnimationStyle">@style/WindowAnimation.SuperDrop.SendSheet</item>
+    </style>
+
+    <!--
+      Window enter/exit animation pair for Theme.SuperDrop.SendSheet:
+      slide the activity window up from the bottom on open and back
+      down on close. Paired with the inner DraggableSheetLayout's own
+      overshoot entrance so the scrim + card rise together.
+    -->
+    <style name="WindowAnimation.SuperDrop.SendSheet" parent="@android:style/Animation.Activity">
+        <item name="android:activityOpenEnterAnimation">@anim/slide_up_in</item>
+        <item name="android:activityCloseExitAnimation">@anim/slide_down_out</item>
+        <item name="android:taskOpenEnterAnimation">@anim/slide_up_in</item>
+        <item name="android:taskCloseExitAnimation">@anim/slide_down_out</item>
+    </style>
+
+    <!--
       Toolbar title text style — larger and bolder than the platform
       default to match the vivo / OriginOS native header pattern (the
       "연락처" title on a vivo Contacts screen sits at ~26sp bold,

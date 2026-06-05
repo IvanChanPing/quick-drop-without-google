@@ -280,7 +280,8 @@
         <activity
             android:name=".send.SendActivity"
             android:exported="true"
-            android:label="@string/send_activity_label">
+            android:label="@string/send_activity_label"
+            android:theme="@style/Theme.SuperDrop.SendSheet">
             <intent-filter>
                 <action android:name="android.intent.action.SEND" />
                 <category android:name="android.intent.category.DEFAULT" />

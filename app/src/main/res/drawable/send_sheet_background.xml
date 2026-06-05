@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Surface drawable for the OShare-style SendActivity bottom sheet
+  (dev.superdrop.ui.sheet.DraggableSheetLayout). A rounded ~28dp light
+  card with a soft drop shadow approximated by an outer translucent
+  stroke-free fill; the sheet floats over the translucent activity
+  window (Theme.SuperDrop.SendSheet) so the rounded corners read
+  against whatever is behind. Uses surface_card (white in day mode)
+  so the header pill + content sit on a clean light surface, matching
+  the OShare 0xFFF4F4F7 sheet look.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <corners android:radius="28dp" />
+    <solid android:color="@color/surface_card" />
+</shape>

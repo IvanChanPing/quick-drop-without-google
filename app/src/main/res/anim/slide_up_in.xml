@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Window enter animation for the OShare-style SendActivity bottom sheet
+  (Theme.SuperDrop.SendSheet). Slides the window up from below the
+  bottom edge. The inner DraggableSheetLayout also runs its own
+  overshoot entrance (playEntrance) on first layout; this window-level
+  translate gives the activity window a smooth rise so the scrim fades
+  in alongside the sheet instead of snapping on.
+-->
+<translate xmlns:android="http://schemas.android.com/apk/res/android"
+    android:duration="260"
+    android:fromYDelta="100%p"
+    android:interpolator="@android:interpolator/decelerate_quad"
+    android:toYDelta="0" />

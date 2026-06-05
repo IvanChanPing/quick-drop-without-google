@@ -65,6 +65,7 @@ import dev.superdrop.protocol.qr.QrUrl
 import dev.superdrop.service.receiver.AdvertisedDeviceNames
 import dev.superdrop.service.receiver.OutboundSessionActiveHolder
 import dev.superdrop.ui.BackdropBlurView
+import dev.superdrop.ui.sheet.DraggableSheetLayout
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -222,6 +223,7 @@ public class SendActivity : AppCompatActivity() {
         binding.sendNetworkHintDismiss.setOnClickListener { peerPickerController.onHintDismissed() }
         wireHelpLink()
         wireCancelButtonBlur()
+        wireBottomSheet()
 
         // Capture the first image attachment URI now so the success
         // terminal can render a preview without re-resolving the intent.
@@ -946,6 +948,29 @@ public class SendActivity : AppCompatActivity() {
             cornerRadiusDp = CANCEL_BLUR_CORNER_DP,
             tint = ContextCompat.getColor(this, R.color.frosted_button_fill),
         )
+    }
+
+    /**
+     * Wire the OShare-style bottom-sheet presentation (Phase 1):
+     *
+     *  - tapping the empty scrim area outside the card dismisses the
+     *    activity (slide-down via the window exit animation),
+     *  - a sufficient drag-down on the card dismisses it,
+     *  - the card slides up with an overshoot bounce on entrance,
+     *  - the card's bottom padding tracks the navigation-bar inset.
+     *
+     * None of the discovery / OutboundConnection / QR logic is touched —
+     * this only governs how the existing card content is presented.
+     */
+    private fun wireBottomSheet() {
+        binding.sendSheetScrim.setOnClickListener { finish() }
+        binding.sendSheet.setOnDismiss { finish() }
+        DraggableSheetLayout.applyBottomInset(
+            binding.sendSheetRoot,
+            binding.sendSheet,
+            resources.getDimensionPixelSize(R.dimen.send_sheet_base_bottom_padding),
+        )
+        binding.sendSheet.playEntrance()
     }
 
     private fun showHelpSheet() {
