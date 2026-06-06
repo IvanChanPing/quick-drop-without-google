@@ -5,6 +5,26 @@ entries here cover only fork-specific changes.
 
 ## [Unreleased]
 
+### 2026-06-06 (later)
+- **FIX: "Bridge card style" (consent notification option 2) rendered NOTHING on
+  device — root cause found + fixed, verified on a real notification surface.** The
+  `notification_consent_bridge.xml` layout used two bare `<View>` elements as
+  dividers. RemoteViews (which backs every custom notification layout) rejects the
+  base `android.view.View` class — device logcat showed
+  `InflateException: Class not allowed to be inflated android.view.View` at line #75,
+  which aborts the WHOLE custom layout, so the system silently dropped the
+  notification (blank). Option 1 ("Recolored") was unaffected because it only uses
+  `LinearLayout`/`TextView`/`Button`. Fix: both `<View>` dividers replaced with
+  zero-text `TextView` bars (a RemoteViews-allowed view). Re-tested on redroid A16
+  (`:5573`): no inflate error, the dark bridge card now renders (thumbnail + title +
+  subtitle + Decline | Accept). Reproduced + verified via a new debug-only harness.
+- **DEBUG-only harness `ConsentPreviewActivity`** (`app/src/debug`, action
+  `dev.superdrop.debug.CONSENT_PREVIEW`, `--es style bridge|recolored`) posts the
+  consent notification using the real layout resources + the same
+  `DecoratedCustomViewStyle` + RemoteViews path as production `ConsentNotification`,
+  so the custom-layout inflation can be exercised on an emulator (no live transfer
+  needed). Not in release builds.
+
 ### 2026-06-06
 - **NFC tap-to-share (Google Quick Share interop), both directions — compile-only,
   on-device UNVERIFIED.** Implements the Nearby Connections NFC tap path (AID

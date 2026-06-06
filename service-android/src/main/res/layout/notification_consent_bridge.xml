@@ -67,8 +67,12 @@
         </LinearLayout>
     </LinearLayout>
 
-    <!-- Thin light divider above the button row (light, so it shows on dark). -->
-    <View
+    <!-- Thin light divider above the button row (light, so it shows on dark).
+         A bare <View> is NOT in the RemoteViews whitelist (it throws
+         "Class not allowed to be inflated android.view.View", which blanks the
+         whole notification), so the divider is a zero-text TextView — a
+         RemoteViews-allowed view used purely as a 1dp colored bar. -->
+    <TextView
         android:layout_width="match_parent"
         android:layout_height="1dp"
         android:layout_marginTop="14dp"
@@ -93,7 +97,8 @@
             android:textSize="16sp"
             android:textStyle="bold" />
 
-        <View
+        <!-- Vertical divider: TextView (RemoteViews-safe), not a bare <View>. -->
+        <TextView
             android:layout_width="1dp"
             android:layout_height="match_parent"
             android:background="#26FFFFFF" />
