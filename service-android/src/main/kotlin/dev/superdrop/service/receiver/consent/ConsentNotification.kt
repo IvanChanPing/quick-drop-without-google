@@ -185,19 +185,18 @@ public object ConsentNotification {
                 null
             }
 
-        // Custom heads-up content: Decline / Accept pinned to opposite edges
-        // and recolored (Accept = filled blue, Decline = light pill / red
-        // label), instead of the platform's side-by-side action row. Wired
-        // with the same broadcast PendingIntents the action buttons used.
-        val customView =
-            RemoteViews(context.packageName, R.layout.notification_consent).apply {
-                setTextViewText(R.id.notif_consent_title, content.title)
-                setTextViewText(R.id.notif_consent_body, content.body)
-                setTextViewText(R.id.notif_consent_accept, content.acceptLabel)
-                setTextViewText(R.id.notif_consent_decline, content.rejectLabel)
-                setOnClickPendingIntent(R.id.notif_consent_accept, acceptIntent)
-                setOnClickPendingIntent(R.id.notif_consent_decline, rejectIntent)
-            }
+        // The user picks (in Settings) how this consent notification is
+        // presented. Three single-choice styles:
+        //   RECOLORED (default) — custom RemoteViews (notification_consent):
+        //     recolored Decline/Accept centered pair via
+        //     DecoratedCustomViewStyle.
+        //   BRIDGE — same mechanism but the shareit-bridge-style card layout
+        //     (notification_consent_bridge).
+        //   SHEET — no custom view at all: a standard/minimal notification
+        //     (BigTextStyle + addAction Accept/Reject), where the bottom
+        //     sheet raised by the full-screen / content intent is the real
+        //     surface. This is the original pre-custom-view path.
+        val style = ConsentNotificationStylePreferences.from(context).mode()
 
         val builder =
             NotificationCompat
@@ -214,15 +213,56 @@ public object ConsentNotification {
                 .setOngoing(true)
                 .setAutoCancel(false)
                 .setShowWhen(true)
-                // DecoratedCustomViewStyle keeps the native notification
-                // frame (small icon, app name, time) and renders our custom
-                // RemoteViews as the body across collapsed / expanded /
-                // heads-up. The two consent buttons live in the layout, so
-                // no addAction() row is added (which would duplicate them).
-                .setStyle(NotificationCompat.DecoratedCustomViewStyle())
-                .setCustomContentView(customView)
-                .setCustomBigContentView(customView)
-                .setCustomHeadsUpContentView(customView)
+
+        when (style) {
+            ConsentNotificationStylePreferences.Style.SHEET -> {
+                // No custom RemoteViews / DecoratedCustomViewStyle. A plain
+                // BigTextStyle notification plus standard Accept / Reject
+                // action buttons; the full-screen / content intent (added
+                // below for all styles) raises the consent bottom sheet,
+                // which is the real surface in this mode.
+                builder
+                    .setStyle(NotificationCompat.BigTextStyle().bigText(content.bigText))
+                    .addAction(
+                        android.R.drawable.ic_menu_send,
+                        content.acceptLabel,
+                        acceptIntent,
+                    ).addAction(
+                        android.R.drawable.ic_menu_close_clear_cancel,
+                        content.rejectLabel,
+                        rejectIntent,
+                    )
+            }
+            else -> {
+                // RECOLORED or BRIDGE: a custom RemoteViews body wired with
+                // the same broadcast PendingIntents the action buttons would
+                // use. DecoratedCustomViewStyle keeps the native notification
+                // frame (small icon, app name, time) and renders our layout as
+                // the body across collapsed / expanded / heads-up. The two
+                // consent buttons live in the layout, so no addAction() row is
+                // added (which would duplicate them).
+                val layoutRes =
+                    if (style == ConsentNotificationStylePreferences.Style.BRIDGE) {
+                        R.layout.notification_consent_bridge
+                    } else {
+                        R.layout.notification_consent
+                    }
+                val customView =
+                    RemoteViews(context.packageName, layoutRes).apply {
+                        setTextViewText(R.id.notif_consent_title, content.title)
+                        setTextViewText(R.id.notif_consent_body, content.body)
+                        setTextViewText(R.id.notif_consent_accept, content.acceptLabel)
+                        setTextViewText(R.id.notif_consent_decline, content.rejectLabel)
+                        setOnClickPendingIntent(R.id.notif_consent_accept, acceptIntent)
+                        setOnClickPendingIntent(R.id.notif_consent_decline, rejectIntent)
+                    }
+                builder
+                    .setStyle(NotificationCompat.DecoratedCustomViewStyle())
+                    .setCustomContentView(customView)
+                    .setCustomBigContentView(customView)
+                    .setCustomHeadsUpContentView(customView)
+            }
+        }
 
         if (tapIntent != null) {
             builder

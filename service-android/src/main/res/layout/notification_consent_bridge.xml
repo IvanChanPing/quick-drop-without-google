@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  BRIDGE-style custom heads-up content for the incoming-transfer consent
+  notification. Structurally + color-wise mirrors the shareit-bridge
+  receive card (com.bridge.share.ui.ReceiveCard):
+
+    - light card surface (#F4F4F7), rounded
+    - bold dark title (#111114)
+    - gray subtitle (#6A6A70)
+    - a thin horizontal divider (#14000000)
+    - a button ROW: Decline (gray #6A6A70) | thin vertical divider
+      (#14000000) | Accept (blue #0A84FF)
+
+  Rendered via NotificationCompat.DecoratedCustomViewStyle (system keeps the
+  native frame; this controls the body). Only RemoteViews-supported views are
+  used (LinearLayout / TextView / View + a shape background drawable). Bound +
+  wired with the same accept/reject PendingIntents at runtime in
+  ConsentNotification.build().
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/notif_consent_bridge_card_bg"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <TextView
+        android:id="@+id/notif_consent_title"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:ellipsize="end"
+        android:maxLines="1"
+        android:textColor="#FF111114"
+        android:textSize="17sp"
+        android:textStyle="bold" />
+
+    <TextView
+        android:id="@+id/notif_consent_body"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:ellipsize="end"
+        android:maxLines="3"
+        android:textColor="#FF6A6A70"
+        android:textSize="13sp" />
+
+    <!-- Thin horizontal divider above the button row. -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="16dp"
+        android:background="#14000000" />
+
+    <!-- Button row: Decline | vertical divider | Accept -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="6dp"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/notif_consent_decline"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:paddingTop="14dp"
+            android:paddingBottom="6dp"
+            android:textColor="#FF6A6A70"
+            android:textSize="16sp" />
+
+        <View
+            android:layout_width="1dp"
+            android:layout_height="match_parent"
+            android:background="#14000000" />
+
+        <TextView
+            android:id="@+id/notif_consent_accept"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:paddingTop="14dp"
+            android:paddingBottom="6dp"
+            android:textColor="#FF0A84FF"
+            android:textSize="16sp" />
+    </LinearLayout>
+</LinearLayout>

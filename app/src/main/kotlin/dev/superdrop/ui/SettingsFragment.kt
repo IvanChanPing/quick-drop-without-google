@@ -28,6 +28,7 @@ import dev.superdrop.service.downloads.SaveLocationDisplayName
 import dev.superdrop.service.downloads.SaveLocationPreferences
 import dev.superdrop.service.receiver.AdvertisedDeviceNames
 import dev.superdrop.service.receiver.ReceiverForegroundService
+import dev.superdrop.service.receiver.consent.ConsentNotificationStylePreferences
 
 /**
  * Settings tab content for the bottom-navigation shell in
@@ -134,6 +135,39 @@ internal class SettingsFragment : Fragment(R.layout.fragment_settings) {
         }
 
         wireNfcTapShareMode(view)
+        wireConsentNotificationStyle(view)
+    }
+
+    /**
+     * Bind the "Incoming transfer style" 3-way selector to
+     * [ConsentNotificationStylePreferences]. Reflects the stored style and
+     * persists changes; [dev.superdrop.service.receiver.consent.ConsentNotification]
+     * reads this preference when it builds the consent heads-up.
+     */
+    private fun wireConsentNotificationStyle(view: View) {
+        val prefs = ConsentNotificationStylePreferences.from(requireContext())
+        val group = view.findViewById<RadioGroup>(R.id.settings_consent_style_group)
+        val checkedId =
+            when (prefs.mode()) {
+                ConsentNotificationStylePreferences.Style.BRIDGE ->
+                    R.id.settings_consent_style_bridge
+                ConsentNotificationStylePreferences.Style.SHEET ->
+                    R.id.settings_consent_style_sheet
+                ConsentNotificationStylePreferences.Style.RECOLORED ->
+                    R.id.settings_consent_style_recolored
+            }
+        group.check(checkedId)
+        group.setOnCheckedChangeListener { _, id ->
+            val mode =
+                when (id) {
+                    R.id.settings_consent_style_bridge ->
+                        ConsentNotificationStylePreferences.Style.BRIDGE
+                    R.id.settings_consent_style_sheet ->
+                        ConsentNotificationStylePreferences.Style.SHEET
+                    else -> ConsentNotificationStylePreferences.Style.RECOLORED
+                }
+            prefs.setMode(mode)
+        }
     }
 
     /**

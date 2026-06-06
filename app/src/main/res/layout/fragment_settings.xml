@@ -333,6 +333,68 @@
 
         </LinearLayout>
 
+        <!-- ============ Card: Incoming transfer style ============
+             Single-choice control for HOW the incoming-transfer consent
+             notification is presented (recolored heads-up buttons / a
+             shareit-bridge-style card / a minimal notification whose bottom
+             sheet is the surface). Backed by
+             ConsentNotificationStylePreferences; read by
+             ConsentNotification.build(). -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/settings_card_background"
+            android:orientation="vertical"
+            android:padding="20dp">
+
+            <TextView
+                android:id="@+id/settings_consent_style_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/settings_consent_style_title"
+                android:textAppearance="@style/TextAppearance.AppCompat.Subhead"
+                android:textColor="?android:attr/textColorPrimary"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/settings_consent_style_subtitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="@string/settings_consent_style_subtitle"
+                android:textAppearance="@style/TextAppearance.AppCompat.Small"
+                android:textColor="?android:attr/textColorSecondary" />
+
+            <RadioGroup
+                android:id="@+id/settings_consent_style_group"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:orientation="vertical">
+
+                <RadioButton
+                    android:id="@+id/settings_consent_style_recolored"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/settings_consent_style_recolored" />
+
+                <RadioButton
+                    android:id="@+id/settings_consent_style_bridge"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/settings_consent_style_bridge" />
+
+                <RadioButton
+                    android:id="@+id/settings_consent_style_sheet"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/settings_consent_style_sheet" />
+
+            </RadioGroup>
+
+        </LinearLayout>
+
         <!-- ============ Card: Full-screen transfer alerts (API 34+) ============
              Hidden by default; SettingsFragment makes it visible only on
              Android 14+, where USE_FULL_SCREEN_INTENT became a grantable
