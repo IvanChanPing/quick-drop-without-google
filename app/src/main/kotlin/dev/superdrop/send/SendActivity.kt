@@ -50,6 +50,7 @@ import dev.superdrop.discovery.bootstrap.BluetoothClassicBootstrapClient
 import dev.superdrop.discovery.diagnostics.DiagnosticLog
 import dev.superdrop.discovery.medium.MediumRegistries
 import dev.superdrop.nfc.NfcLinkHolder
+import dev.superdrop.nfc.SuperDropTapReader
 import dev.superdrop.protocol.connection.CancelCause
 import dev.superdrop.protocol.connection.FileSource
 import dev.superdrop.protocol.connection.OutboundConnection
@@ -124,6 +125,15 @@ public class SendActivity : AppCompatActivity() {
     private var bleL2capBootstrapClient: BleL2capInitialControlClient? = null
     private var bleGattBootstrapClient: BleGattInitialControlClient? = null
     private var senderGattServer: BleGattInitialControlServer? = null
+
+    /**
+     * Quick Share NFC tap-to-share reader (Phase 4, direction: us-as-sender).
+     * Enabled in reader-mode while the send sheet is up AND the iPhone-link
+     * QR panel is NOT showing (the NDEF HCE owns NFC then — mutually
+     * exclusive on one controller). On a tap we read the receiver's HCE
+     * tag and auto-connect to it as if its peer-icon had been tapped.
+     */
+    private var tapReader: SuperDropTapReader? = null
 
     /**
      * Set to `true` while a connection attempt is being made AND there
@@ -216,6 +226,12 @@ public class SendActivity : AppCompatActivity() {
                 senderEndpointId = senderEndpointId,
             )
 
+        // Quick Share NFC tap-to-share reader. Reader-mode is toggled in
+        // onResume/onPause + the QR open/close handlers so it is active
+        // only while the send sheet is up and the iPhone-link QR panel
+        // (which uses the NDEF HCE) is closed.
+        tapReader = SuperDropTapReader(this, ::onNfcPeerTapped)
+
         binding.sendCancelButton.setOnClickListener { onCancelClicked() }
         binding.sendDoneButton.setOnClickListener { finish() }
         binding.sendShowQrButton.setOnClickListener { onShowQrClicked() }
@@ -302,12 +318,63 @@ public class SendActivity : AppCompatActivity() {
         senderGattServer?.stop()
         senderGattServer = null
         connectionJob?.cancel()
+        // Release NFC reader-mode when the Send screen is gone.
+        tapReader?.disable()
+        tapReader = null
         // Stop NFC link broadcast when the Send screen is gone.
         NfcLinkHolder.currentUrl = null
         // Lift the gate veto so the receiver-side mDNS record can come
         // back up if any of the gate's existing publish signals
         // (BLE pulse, always-visible override, QR session) call for it.
         OutboundSessionActiveHolder.setOutboundSessionActive(false)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Enable NFC reader-mode unless the QR panel (which hands NFC to
+        // the iPhone-link NDEF HCE) is currently showing.
+        if (!binding.sendQrScroll.isVisible) {
+            tapReader?.enable()
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        // Release the NFC controller while we are not the foreground sheet.
+        tapReader?.disable()
+    }
+
+    /**
+     * Reader-mode tap callback. Builds a discovered [NearbyPeer] from the
+     * tapped HCE's Wi-Fi-LAN endpoint + identity and routes it through the
+     * SAME [onPeerSelected] path a tapped peer-icon uses, so the tap
+     * auto-connects over Wi-Fi-LAN. Marshalled onto the UI thread because
+     * the reader callback runs on a binder thread.
+     */
+    private fun onNfcPeerTapped(tapped: SuperDropTapReader.TappedPeer) {
+        runOnUiThread {
+            if (isFinishing || isDestroyed) return@runOnUiThread
+            // A tap commits us to a peer; stop reader-mode so a second tag
+            // cannot race a connection that is already starting.
+            tapReader?.disable()
+            logOutboundDiagnostic(
+                "nfc tap: peer endpointId=${tapped.endpointId} " +
+                    "${tapped.address.hostAddress}:${tapped.port} name=${tapped.endpointInfo.deviceName}",
+            )
+            val peer =
+                NearbyPeer(
+                    stableId = "nfc:${tapped.endpointId}:${tapped.address.hostAddress}:${tapped.port}",
+                    endpointId = tapped.endpointId,
+                    endpointInfo = tapped.endpointInfo,
+                    lanEndpoint =
+                        NearbyPeer.LanEndpoint(
+                            instanceNames = emptySet(),
+                            addresses = listOf(tapped.address),
+                            port = tapped.port,
+                        ),
+                )
+            onPeerSelected(peer)
+        }
     }
 
     @Suppress("ReturnCount")
@@ -1355,6 +1422,11 @@ public class SendActivity : AppCompatActivity() {
     private fun onShowQrClicked() {
         if (binding.sendQrScroll.isVisible) return
 
+        // The QR panel hands the NFC controller to the iPhone-link NDEF
+        // HCE (NfcLinkHolder.currentUrl below), so leave reader-mode now —
+        // reader-mode and HCE are mutually exclusive on one radio.
+        tapReader?.disable()
+
         val generated = QrKeyData.generate()
         // Persist the keypair for this QR session: the discovery callback
         // matches resolved peers against the derived keys and the matched
@@ -1449,6 +1521,9 @@ public class SendActivity : AppCompatActivity() {
         qrSession = null
         // Stop broadcasting the link over NFC now that the QR panel is gone.
         NfcLinkHolder.currentUrl = null
+        // The NDEF HCE is no longer needed; resume tap-to-share reader-mode
+        // so the picker can be NFC-tapped again.
+        tapReader?.enable()
         val panel = binding.sendQrPanel
         panel
             .animate()

@@ -497,4 +497,8 @@
          NDEF service broadcasts the current pairing link to a tapped
          iPhone so it opens that link in Safari. -->
     <string name="nfc_hce_service_description">Super Drop NFC link</string>
+    <!-- HCE service description shown in system NFC settings for the Quick
+         Share tap-to-share receiver (AID F00000FE2C). A tapping Quick Share
+         sender reads our live receiver identity + Wi-Fi-LAN address. -->
+    <string name="nfc_tap_hce_service_description">Super Drop tap to share</string>
 </resources>

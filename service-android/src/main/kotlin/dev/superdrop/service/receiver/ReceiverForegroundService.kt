@@ -32,6 +32,8 @@ import dev.superdrop.discovery.diagnostics.DiagnosticLog
 import dev.superdrop.discovery.medium.MediumRegistries
 import dev.superdrop.protocol.endpoint.BleServiceData
 import dev.superdrop.protocol.endpoint.EndpointInfo
+import dev.superdrop.protocol.endpoint.NearbyServiceId
+import dev.superdrop.protocol.nfc.NfcTapLinkHolder
 import dev.superdrop.service.downloads.DownloadsWriterFactory
 import dev.superdrop.service.receiver.consent.ConsentBroadcastReceiver
 import dev.superdrop.service.receiver.consent.ConsentCoordinator
@@ -59,6 +61,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import java.net.Inet4Address
+import java.net.InetAddress
 import java.util.concurrent.atomic.AtomicReference
 
 /**
@@ -436,6 +440,80 @@ public class ReceiverForegroundService : Service() {
         // debug screen. The cadence is intentionally slow (every 10s)
         // so we don't spam logcat in the steady state.
         startDiscoveryDiagnosticsLogger()
+
+        // Publish / clear the Quick Share NFC tap-to-share link in
+        // lock-step with the receiver's mDNS advertise state so the HCE
+        // (SuperDropTapHceService) only emits a live tag while we are
+        // actually a reachable receiver.
+        startNfcTapLinkPublisher(newSession)
+    }
+
+    /**
+     * Drive [NfcTapLinkHolder] from the receiver's advertise state.
+     *
+     * When the receiver starts advertising (mDNS publish — gated by the
+     * same foreground/sheet/visibility signals as the
+     * [MdnsAdvertisementGate]), build a [NfcTapLinkHolder.Link] from the
+     * live identity (endpointId + EndpointInfo), the Nearby service-id
+     * hash, the device's Wi-Fi-LAN IPv4 address, and the session's bound
+     * TCP port, and publish it so the HCE can serve it to a tapping Quick
+     * Share sender. When advertising stops, clear the holder so a tap
+     * becomes a no-op rather than pointing at a dead port.
+     *
+     * The bound port and LAN IP are re-read on each transition so a Wi-Fi
+     * reconnect (new IP) is reflected the next time advertising flips on.
+     */
+    private fun startNfcTapLinkPublisher(activeSession: ReceiverSession) {
+        serviceScope.launch {
+            ReceiverAdvertisementStateHolder.advertisingFlow.collect { advertising ->
+                if (!advertising || !activeSession.isRunning) {
+                    NfcTapLinkHolder.clear()
+                    return@collect
+                }
+                val endpointInfo = EndpointIdentityHolder.snapshot.get()
+                val ip = firstWifiLanIpv4()
+                val port = runCatching { activeSession.boundPort }.getOrNull()
+                if (endpointInfo == null || ip == null || port == null) {
+                    NfcTapLinkHolder.clear()
+                    return@collect
+                }
+                NfcTapLinkHolder.set(
+                    NfcTapLinkHolder.Link(
+                        endpointId = BleEndpointIdHolder.bytesFor(),
+                        serviceIdHash = NearbyServiceId.hashPrefix,
+                        endpointInfo = endpointInfo.serialize(),
+                        address = ip,
+                        port = port,
+                    ),
+                )
+            }
+        }
+    }
+
+    /**
+     * First non-loopback, non-link-local IPv4 address on a Wi-Fi
+     * transport, matching the address `Discovery` advertises over mDNS.
+     * Returns `null` when Wi-Fi has no usable IPv4 (e.g. cellular-only),
+     * in which case the tap-to-share holder is left cleared.
+     */
+    @Suppress("DEPRECATION")
+    private fun firstWifiLanIpv4(): Inet4Address? {
+        val cm =
+            applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE)
+                as? android.net.ConnectivityManager ?: return null
+        return cm.allNetworks
+            .asSequence()
+            .filter { network ->
+                cm.getNetworkCapabilities(network)
+                    ?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) == true
+            }.mapNotNull { network -> cm.getLinkProperties(network) }
+            .flatMap { linkProperties -> linkProperties.linkAddresses.asSequence() }
+            .map { linkAddress -> linkAddress.address }
+            .filterIsInstance<Inet4Address>()
+            .filterNot { addr: InetAddress ->
+                addr.isAnyLocalAddress || addr.isLoopbackAddress || addr.isLinkLocalAddress
+            }.sortedBy(InetAddress::getHostAddress)
+            .firstOrNull()
     }
 
     /**
@@ -923,6 +1001,11 @@ public class ReceiverForegroundService : Service() {
         // service that is already gone or re-toggling an override the user
         // may have since changed by other means. Best-effort, idempotent.
         TileVisibilityElevationHolder.disarm()
+        // The receiver is going away — make sure a tap can no longer read
+        // a stale tag pointing at the about-to-close TCP listener. The
+        // advertising-flow collector also clears this, but the scope is
+        // cancelled below so we clear eagerly here.
+        NfcTapLinkHolder.clear()
         stopActiveReceiverSession()
         unregisterConsentReceiverIfNeeded()
 

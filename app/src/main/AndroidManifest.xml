@@ -354,6 +354,35 @@
         </service>
 
         <!--
+          Quick Share NFC tap-to-share HCE receiver (AID F00000FE2C).
+
+          Implements the Google Quick Share / Nearby Connections NFC
+          advertiser role: a stock Quick Share sender (or our own
+          reader-mode SendActivity) tapped to this phone while we are
+          receiving SELECTs F00000FE2C and reads our hhwv response (deym
+          NfcTag + Wi-Fi-LAN rxInstantConnectionAdv), then connects to our
+          live TcpReceiverServer over Wi-Fi-LAN. Distinct AID from the
+          iPhone NDEF-link service above so both HCE services coexist.
+
+          The HCE only emits a real tag while a receiver is live, gated in
+          code via NfcTapLinkHolder (driven by the receiver service per the
+          user's NFC tap-to-share availability setting). exported=true +
+          BIND_NFC_SERVICE: only the system NFC service binds and routes
+          APDUs here.
+        -->
+        <service
+            android:name=".nfc.SuperDropTapHceService"
+            android:exported="true"
+            android:permission="android.permission.BIND_NFC_SERVICE">
+            <intent-filter>
+                <action android:name="android.nfc.cardemulation.action.HOST_APDU_SERVICE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.nfc.cardemulation.host_apdu_service"
+                android:resource="@xml/superdrop_tap_apduservice" />
+        </service>
+
+        <!--
           Consent trampoline (#22) — the screen-on, lock-screen-bypassing
           dialog opened by tapping the consent notification body.
 

@@ -5,6 +5,40 @@ entries here cover only fork-specific changes.
 
 ## [Unreleased]
 
+### 2026-06-06
+- **NFC tap-to-share (Google Quick Share interop), both directions — compile-only,
+  on-device UNVERIFIED.** Implements the Nearby Connections NFC tap path (AID
+  `F00000FE2C`) so a tap hands off identity + Wi-Fi-LAN IP:port and the transfer
+  runs over the existing mDNS/TCP stack.
+  - `core-protocol/.../nfc/QuickShareNfcCodec.kt` — hand-rolled encoders/decoders for
+    the `hhww`/`hhwv` protobuf messages, the `deym` NfcTag blob, and the Wi-Fi-LAN
+    `rxInstantConnectionAdv` Nearby Data-Element TLV. Byte layout verified from GMS
+    26.18.33 smali (`docs/NFC_INTEROP_BYTEMAP.md` §1/§3/§4 — incl. `denp.g()` for the
+    IP:port encoding and the `dfdo.run` NfcTag deserializer). 8 round-trip + golden-byte
+    tests (`QuickShareNfcCodecTest`) PASS.
+  - `core-protocol/.../nfc/NfcTapLinkHolder.kt` — process-global bridge carrying the
+    live receiver's {endpointId, serviceIdHash, endpointInfo, ip, port} from the
+    receiver service to the HCE.
+  - RECEIVER (HCE): `app/.../nfc/SuperDropTapHceService.kt` on AID `F00000FE2C`
+    (+ `superdrop_tap_apduservice.xml`, manifest `<service>`). Answers SELECT → 9000
+    and ADVERTISEMENT → `hhwv{deym NfcTag + Wi-Fi-LAN rxAdv}`. Liveness gated on
+    `NfcTapLinkHolder`; the existing iPhone-link NDEF HCE (`D2760000850101`) is untouched.
+  - `service-android` `ReceiverForegroundService` publishes/clears `NfcTapLinkHolder`
+    in lock-step with the receiver's mDNS advertise state (same foreground/sheet/
+    visibility gating as `MdnsAdvertisementGate`), reading the Wi-Fi LAN IPv4 via
+    `ConnectivityManager` and the bound TCP port.
+  - SENDER (reader-mode): `app/.../nfc/SuperDropTapReader.kt` + `SendActivity` wiring.
+    Reader-mode is enabled while the send sheet is up and the QR panel is closed
+    (mutually exclusive with the NDEF HCE on one radio); on tap it transceives
+    SELECT + ADVERTISEMENT, parses the peer's tag, and injects a `NearbyPeer`
+    (Wi-Fi-LAN route) through the same `onPeerSelected` auto-connect path a tapped
+    peer-icon uses.
+  - Uses only standard `android.nfc` (HostApduService / NfcAdapter reader-mode /
+    IsoDep) at minSdk 24; no toolchain/version bump. `:app:assembleDebug` SUCCESSFUL.
+  - FLAGGED best-effort (need on-device validation): rxAdv random NC encryption key
+    (parser only checks size/type); PCP↔Strategy int (= 2/P2P_STAR). NO NFC/transfer
+    tested — no hardware in the build environment.
+
 ### 2026-06-05
 - Forked `kyujin-cho/Bada` at upstream HEAD `62d60f3` (release `20260604.02`).
 - Renamed git remote `origin` → `upstream`; created working branch `fork/superdrop-ui`.
