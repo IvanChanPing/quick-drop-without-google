@@ -115,7 +115,9 @@ internal class SettingsFragment : Fragment(R.layout.fragment_settings) {
         }
 
         view.findViewById<Button>(R.id.settings_battery_open).setOnClickListener {
-            MainActivity.openBatterySettings(requireContext())
+            // One-tap system "Allow battery optimization exemption?" popup
+            // (falls back to the settings list on OEMs that can't launch it).
+            MainActivity.requestIgnoreBatteryOptimizations(requireContext())
         }
 
         view.findViewById<Button>(R.id.settings_fsi_open).setOnClickListener {

@@ -8,6 +8,7 @@ package dev.superdrop
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
 import android.util.Log
@@ -427,6 +428,39 @@ class MainActivity : AppCompatActivity() {
          * Settings list page unexpectedly fails to resolve still
          * have somewhere to land.
          */
+        /**
+         * One-tap battery-exemption request (#fork): fire the system
+         * `ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` dialog — the
+         * "Allow this app to ignore battery optimizations? [Deny]
+         * [Allow]" popup the user can grant in a single tap, without
+         * digging through the settings list. Backed by the
+         * `REQUEST_IGNORE_BATTERY_OPTIMIZATIONS` permission already
+         * declared in the manifest.
+         *
+         * No-op when already exempt. If the device cannot launch the
+         * direct request (some OEM ROMs strip the action, and on a few —
+         * vivo OriginOS — tapping Allow is a silent no-op), we fall back
+         * to [openBatterySettings] so there is always a working path; the
+         * caller's `refreshBatteryStatus()` on resume reflects whichever
+         * route actually flipped the platform flag.
+         */
+        internal fun requestIgnoreBatteryOptimizations(context: Context) {
+            if (BatteryOptimizationOemHelper.isAlreadyExempt(context)) return
+            val request =
+                Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS)
+                    .setData(Uri.fromParts("package", context.packageName, null))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            try {
+                context.startActivity(request)
+            } catch (e: ActivityNotFoundException) {
+                Log.w(TAG, "Direct battery-exemption request not launchable; using settings list", e)
+                openBatterySettings(context)
+            } catch (e: SecurityException) {
+                Log.w(TAG, "Direct battery-exemption request denied; using settings list", e)
+                openBatterySettings(context)
+            }
+        }
+
         internal fun openBatterySettings(context: Context) {
             val primaryIntent =
                 Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)

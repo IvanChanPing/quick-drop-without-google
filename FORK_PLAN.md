@@ -46,7 +46,24 @@ Kotlin + Views/ViewBinding world (NOT Compose); keep Bada's protocol controllers
   QrTlvMatcher) into the sheet as an inline "Show QR" panel (SendActivity already has the
   sendShowQrButton + onQrPeersResolved auto-connect hooks — reuse that logic, new presentation).
 - **NFC — two separate things:**
-  - *General tap-to-send* (auto-pick peer): DEFERRED (user, 2026-06-05). Bada has zero NFC today.
+  - *Link broadcast gating (DONE/verified 2026-06-05):* `NfcLinkHolder.currentUrl` is set ONLY in
+    SendActivity.onShowQrClicked (the QR button) and cleared on panel-dismiss/auto-connect/onDestroy;
+    HCE serves empty NDEF when null → iPhone tap broadcasts the link ONLY while the QR/link panel is open.
+    (Optional further tightening — fully disable the HCE service component except while the panel is open —
+    NOT done; offered to user.)
+  - *Tap-to-share (NEW, user wants it; CORRECTED 2026-06-06):* the real Google Quick Share NFC tap-to-share.
+    Mechanism mapped = ISO-DEP/APDU, AID F00000FE2C, HCE(receiver/advertiser) + reader-mode(sender). CORRECTION:
+    it DOES work stock-to-stock when both are in the QS app (NFC is in the advertising/connection/discovery
+    medium sets; only the *instant* set excludes it) — user confirmed by tapping 2 phones. So STOCK INTEROP is
+    plausibly feasible on the non-GMS phone (it can own F00000FE2C; no GMS to collide). Full mechanism +
+    corrected verdict in memory [[reference_quickshare_nfc_tap_to_share_apdu_2026_06_05]]. A 2nd RE pass is
+    pinning the byte-exact hhww/hhwv protos + the POST-TAP connection medium (the crux: does stock connect over
+    Wi-Fi-LAN/mDNS which we host, or BT/Wi-Fi-Direct) before implementing. Do NOT build until that map is done.
+    - **Receiver-side NFC availability (user, 2026-06-06): make it configurable — always on / only when a
+      receive (share) sheet is open / always in background.** Fold into the receiver visibility model: when the
+      receiver HCE tag-advertising is active mirrors the chosen mode (tie to the existing Off/10-min/Always
+      visibility setting + a background option). Sender-side NFC reader-mode runs while the send sheet is open
+      (and switches to the iPhone-link NDEF HCE only while the QR panel is open — they're mutually exclusive).
   - *NFC link broadcast* (WANTED): an HCE NDEF Type-4 tag that broadcasts the live QR/pairing link
     (Bada's `QrUrl`), modeled on our `oshare-nfc-tap` (NdefAppStoreApduService, AID D2760000850101) BUT
     serving the REAL pairing URL instead of the App Store URL — so an iPhone tapped to the phone opens

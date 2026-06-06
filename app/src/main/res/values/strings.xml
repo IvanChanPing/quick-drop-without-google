@@ -184,7 +184,7 @@
     <string name="settings_battery_subtitle">Exempt this app from battery optimization so it can keep receiving Quick Share files when the screen is off.</string>
     <string name="settings_battery_status_exempt">Currently: exempt from battery optimization</string>
     <string name="settings_battery_status_not_exempt">Currently: not exempt — receiving may stop in the background</string>
-    <string name="settings_battery_open">Open battery settings</string>
+    <string name="settings_battery_open">Turn off battery optimization</string>
 
     <!-- Settings tab "Full-screen transfer alerts" row + first-launch
          dialog (Android 14+). On API 34+ USE_FULL_SCREEN_INTENT is a

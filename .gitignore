@@ -45,3 +45,4 @@ release/
 # Detekt / ktlint
 .editorconfig.bak
 build/reports/
+super-drop-debug.apk

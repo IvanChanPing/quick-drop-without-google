@@ -147,3 +147,6 @@ entries here cover only fork-specific changes.
 - UNVERIFIED (need 2 physical phones / NFC hardware): populated peer icons, real consent/PIN/progress/
   completion+Open flow, completion notification, tile visibility bump/restore, NFC tap→Safari, and any
   real Quick Share interop transfer (redroid lacks real Wi-Fi/BLE).
+
+### 2026-06-06 — Battery: one-tap exemption popup
+- Settings "Background activity" button now fires the system ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS one-tap "Allow" popup (MainActivity.requestIgnoreBatteryOptimizations), with auto-fallback to the settings list on OEMs that strip/no-op it. Button relabeled "Turn off battery optimization". REQUEST_IGNORE_BATTERY_OPTIMIZATIONS perm was already declared.
