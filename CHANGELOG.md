@@ -158,3 +158,6 @@ entries here cover only fork-specific changes.
 
 ### 2026-06-06 — Custom consent notification (#1)
 - Recolored Accept/Decline on OPPOSITE sides via custom RemoteViews (DecoratedCustomViewStyle). Decline left (light/red), Accept right (blue). Replaces the side-by-side action row. Render device-unverified (needs a real incoming transfer).
+
+### 2026-06-06 — NFC tap-to-share setting (dedicated, separate)
+- New Settings card "NFC tap to share" with a 3-way selector (Only while a receive sheet is open [default] / While the app is open / Always in background), backed by NfcTapSharePreferences. Separate from the visible toggle, per request. Renders verified on redroid; the receiver HCE wires to it when tap-to-share lands.

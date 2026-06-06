@@ -275,6 +275,64 @@
 
         </LinearLayout>
 
+        <!-- ============ Card: NFC tap to share ============
+             A dedicated (NOT tied to the "visible" toggle) control for when
+             this device is tappable for NFC tap-to-share. -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:background="@drawable/settings_card_background"
+            android:orientation="vertical"
+            android:padding="20dp">
+
+            <TextView
+                android:id="@+id/settings_nfc_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/settings_nfc_title"
+                android:textAppearance="@style/TextAppearance.AppCompat.Subhead"
+                android:textColor="?android:attr/textColorPrimary"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/settings_nfc_subtitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="@string/settings_nfc_subtitle"
+                android:textAppearance="@style/TextAppearance.AppCompat.Small"
+                android:textColor="?android:attr/textColorSecondary" />
+
+            <RadioGroup
+                android:id="@+id/settings_nfc_mode_group"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:orientation="vertical">
+
+                <RadioButton
+                    android:id="@+id/settings_nfc_mode_sheet"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/settings_nfc_mode_sheet" />
+
+                <RadioButton
+                    android:id="@+id/settings_nfc_mode_foreground"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/settings_nfc_mode_foreground" />
+
+                <RadioButton
+                    android:id="@+id/settings_nfc_mode_background"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/settings_nfc_mode_background" />
+
+            </RadioGroup>
+
+        </LinearLayout>
+
         <!-- ============ Card: Full-screen transfer alerts (API 34+) ============
              Hidden by default; SettingsFragment makes it visible only on
              Android 14+, where USE_FULL_SCREEN_INTENT became a grantable

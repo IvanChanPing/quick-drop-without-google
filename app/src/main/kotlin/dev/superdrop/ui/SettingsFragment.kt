@@ -11,6 +11,7 @@ import android.util.Log
 import android.view.View
 import android.widget.Button
 import android.widget.EditText
+import android.widget.RadioGroup
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.ActivityResultLauncher
@@ -21,6 +22,7 @@ import dev.superdrop.MainActivity
 import dev.superdrop.R
 import dev.superdrop.battery.BatteryOptimizationOemHelper
 import dev.superdrop.bugreport.BugReportPreferences
+import dev.superdrop.nfc.NfcTapSharePreferences
 import dev.superdrop.consent.FullScreenIntentPermission
 import dev.superdrop.service.downloads.SaveLocationDisplayName
 import dev.superdrop.service.downloads.SaveLocationPreferences
@@ -129,6 +131,35 @@ internal class SettingsFragment : Fragment(R.layout.fragment_settings) {
         bugReportSwitch.isChecked = bugReportPreferences.isShakeToReportEnabled()
         bugReportSwitch.setOnCheckedChangeListener { _, checked ->
             bugReportPreferences.setShakeToReportEnabled(checked)
+        }
+
+        wireNfcTapShareMode(view)
+    }
+
+    /**
+     * Bind the dedicated "NFC tap to share" 3-way selector to
+     * [NfcTapSharePreferences] (a separate setting from the visible toggle,
+     * by user request). Reflects the stored mode and persists changes; the
+     * receiver-side NFC HCE reads this preference once tap-to-share lands.
+     */
+    private fun wireNfcTapShareMode(view: View) {
+        val prefs = NfcTapSharePreferences.from(requireContext())
+        val group = view.findViewById<RadioGroup>(R.id.settings_nfc_mode_group)
+        val checkedId =
+            when (prefs.mode()) {
+                NfcTapSharePreferences.Mode.APP_FOREGROUND -> R.id.settings_nfc_mode_foreground
+                NfcTapSharePreferences.Mode.BACKGROUND -> R.id.settings_nfc_mode_background
+                NfcTapSharePreferences.Mode.SHEET_OPEN -> R.id.settings_nfc_mode_sheet
+            }
+        group.check(checkedId)
+        group.setOnCheckedChangeListener { _, id ->
+            val mode =
+                when (id) {
+                    R.id.settings_nfc_mode_foreground -> NfcTapSharePreferences.Mode.APP_FOREGROUND
+                    R.id.settings_nfc_mode_background -> NfcTapSharePreferences.Mode.BACKGROUND
+                    else -> NfcTapSharePreferences.Mode.SHEET_OPEN
+                }
+            prefs.setMode(mode)
         }
     }
 
