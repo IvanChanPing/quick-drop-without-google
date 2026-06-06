@@ -164,6 +164,23 @@ internal class SettingsFragment : Fragment(R.layout.fragment_settings) {
         // immediately after the user grants the exemption, instead
         // of waiting for the next manual tab switch.
         refreshBatteryStatus()
+        maybeEscalateBatteryExemption()
+    }
+
+    /**
+     * After the one-tap battery popup, if the exemption still didn't take
+     * (some OEMs — OnePlus ColorOS / vivo OriginOS — show the dialog but
+     * silently ignore "Allow"), bounce the user once to App Info, where
+     * the battery toggle reliably flips the flag. Guarded by the one-shot
+     * [MainActivity.batteryExemptionAwaitingResult] flag so it fires at
+     * most once per attempt and never when the popup actually worked.
+     */
+    private fun maybeEscalateBatteryExemption() {
+        if (!MainActivity.batteryExemptionAwaitingResult) return
+        MainActivity.batteryExemptionAwaitingResult = false
+        if (!BatteryOptimizationOemHelper.isAlreadyExempt(requireContext())) {
+            MainActivity.openAppInfo(requireContext())
+        }
     }
 
     /**

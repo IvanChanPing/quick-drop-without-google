@@ -150,3 +150,8 @@ entries here cover only fork-specific changes.
 
 ### 2026-06-06 — Battery: one-tap exemption popup
 - Settings "Background activity" button now fires the system ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS one-tap "Allow" popup (MainActivity.requestIgnoreBatteryOptimizations), with auto-fallback to the settings list on OEMs that strip/no-op it. Button relabeled "Turn off battery optimization". REQUEST_IGNORE_BATTERY_OPTIMIZATIONS perm was already declared.
+
+### 2026-06-06 — Real-device bug fixes (4)
+- #4/#5 tile: ConsentTrampolineActivity taskAffinity="" (own floating task, not the app) + restore on onDestroy + onUserLeaveHint (leaving restores the visibility bump).
+- #2 battery: escalate to App Info when the one-tap popup no-ops on OEM ROMs (OnePlus/vivo).
+- #3 device name: never show the raw IP/stableId; hidden peers show a generic label.

@@ -368,6 +368,7 @@
             android:name=".consent.ConsentTrampolineActivity"
             android:exported="false"
             android:excludeFromRecents="true"
+            android:taskAffinity=""
             android:launchMode="singleTop"
             android:showOnLockScreen="true"
             android:turnScreenOn="true"

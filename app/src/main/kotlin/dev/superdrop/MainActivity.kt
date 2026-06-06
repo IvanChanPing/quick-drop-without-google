@@ -452,11 +452,42 @@ class MainActivity : AppCompatActivity() {
                     .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             try {
                 context.startActivity(request)
+                // Re-checked on the next resume; if the popup silently
+                // no-ops (OnePlus ColorOS / vivo OriginOS), the caller
+                // escalates to App Info via [openAppInfo].
+                batteryExemptionAwaitingResult = true
             } catch (e: ActivityNotFoundException) {
                 Log.w(TAG, "Direct battery-exemption request not launchable; using settings list", e)
                 openBatterySettings(context)
             } catch (e: SecurityException) {
                 Log.w(TAG, "Direct battery-exemption request denied; using settings list", e)
+                openBatterySettings(context)
+            }
+        }
+
+        /**
+         * `true` after the one-tap battery popup was shown; consumed on
+         * the next resume to escalate to App Info if the exemption still
+         * didn't take (OEM silent no-op — OnePlus ColorOS / vivo OriginOS).
+         */
+        @Volatile
+        internal var batteryExemptionAwaitingResult: Boolean = false
+
+        /**
+         * Open this app's App Info ("App details") page — the reliable
+         * fallback when the one-tap battery popup silently no-ops on an
+         * OEM ROM. The user can flip the battery toggle there. Falls back
+         * to the battery settings list if App Info can't resolve.
+         */
+        internal fun openAppInfo(context: Context) {
+            val intent =
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS)
+                    .setData(Uri.fromParts("package", context.packageName, null))
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            try {
+                context.startActivity(intent)
+            } catch (e: ActivityNotFoundException) {
+                Log.w(TAG, "App Info not launchable; using battery settings list", e)
                 openBatterySettings(context)
             }
         }

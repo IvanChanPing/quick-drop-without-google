@@ -253,6 +253,23 @@ class ConsentTrampolineActivity : AppCompatActivity() {
         ConsentDiagnostic.log(this, "trampoline.onStop id=$connectionId finishing=$isFinishing")
     }
 
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        // The tile-opened receive sheet is transient: when the user
+        // leaves it (Home / Recents) before deciding on a transfer,
+        // dismiss it so the temporary visibility bump is restored
+        // (finish() -> restoreIfArmed). Without this, leaving via Home
+        // never calls finish() and the receiver stays discoverable with
+        // the tile stuck on. Gated on the tile arm + no decision so an
+        // in-flight receive (post-Accept) is never killed by the user
+        // glancing away, and notification-raised consent sheets (which
+        // are not tile-armed) are left in place.
+        if (TileVisibilityElevationHolder.isArmed && !decisionSubmitted) {
+            ConsentDiagnostic.log(this, "trampoline.onUserLeaveHint finishing waiting sheet id=$connectionId")
+            finish()
+        }
+    }
+
     private fun incomingId(intent: Intent?): Long =
         intent?.getLongExtra(
             ConsentIntents.EXTRA_CONNECTION_ID,
@@ -331,6 +348,11 @@ class ConsentTrampolineActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        // Backstop for the tile's temporary visibility bump: restore on
+        // any teardown that didn't run through finish() (recents swipe,
+        // system kill while finishing). Idempotent with finish()'s call
+        // (restoreIfArmed compare-and-sets the armed flag).
+        TileVisibilityElevationHolder.restoreIfArmed(applicationContext)
         // If the user dismissed the activity without an explicit
         // decision (e.g. swipe-back, screen lock), DO NOT auto-reject —
         // the issue's acceptance criteria explicitly call out that
