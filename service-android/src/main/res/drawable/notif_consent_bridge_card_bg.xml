@@ -1,9 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Light rounded card surface for the BRIDGE-style consent heads-up,
-     mirroring the shareit-bridge ReceiveCard background (#F4F4F7, ~28dp
-     corners). RemoteViews-safe (a plain shape drawable). -->
+<!-- BRIDGE-style consent heads-up card surface (option 2): a DARK rounded card
+     with a slight white outline, so it reads as a distinct "designed" card
+     vs the plain recolored heads-up (option 1). RemoteViews-safe shape. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
-    <solid android:color="#FFF4F4F7" />
-    <corners android:radius="20dp" />
+    <solid android:color="#FF202024" />
+    <corners android:radius="22dp" />
+    <stroke
+        android:width="1dp"
+        android:color="#40FFFFFF" />
 </shape>

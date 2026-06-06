@@ -1,21 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  BRIDGE-style custom heads-up content for the incoming-transfer consent
-  notification. Structurally + color-wise mirrors the shareit-bridge
-  receive card (com.bridge.share.ui.ReceiveCard):
-
-    - light card surface (#F4F4F7), rounded
-    - bold dark title (#111114)
-    - gray subtitle (#6A6A70)
-    - a thin horizontal divider (#14000000)
-    - a button ROW: Decline (gray #6A6A70) | thin vertical divider
-      (#14000000) | Accept (blue #0A84FF)
+  BRIDGE-style custom heads-up content (option 2) — a heavily restyled heads-up
+  (NO overlay) made to resemble the shareit-bridge receive card more strongly
+  than option 1: a DARK rounded card with a slight white outline, a placeholder
+  thumbnail, the text moved beside it, and a Decline | Accept button row.
 
   Rendered via NotificationCompat.DecoratedCustomViewStyle (system keeps the
-  native frame; this controls the body). Only RemoteViews-supported views are
-  used (LinearLayout / TextView / View + a shape background drawable). Bound +
-  wired with the same accept/reject PendingIntents at runtime in
-  ConsentNotification.build().
+  native frame; this is the body). RemoteViews-safe views only (LinearLayout /
+  ImageView / TextView / View + shape drawables). The four ids
+  (notif_consent_title/body/accept/decline) are bound + wired with the
+  accept/reject PendingIntents in ConsentNotification.build().
+
+  NOTE: a real file thumbnail isn't available before the user accepts an
+  incoming transfer, so the thumbnail is a static placeholder square. A dark
+  custom body inside the system notification frame can render slightly
+  differently across OEMs / light-dark; this is a best-effort RemoteViews
+  approximation and only appears on a real transfer (device-unverified).
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
@@ -24,38 +24,61 @@
     android:orientation="vertical"
     android:padding="16dp">
 
-    <TextView
-        android:id="@+id/notif_consent_title"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:ellipsize="end"
-        android:maxLines="1"
-        android:textColor="#FF111114"
-        android:textSize="17sp"
-        android:textStyle="bold" />
-
-    <TextView
-        android:id="@+id/notif_consent_body"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
-        android:ellipsize="end"
-        android:maxLines="3"
-        android:textColor="#FF6A6A70"
-        android:textSize="13sp" />
-
-    <!-- Thin horizontal divider above the button row. -->
-    <View
-        android:layout_width="match_parent"
-        android:layout_height="1dp"
-        android:layout_marginTop="16dp"
-        android:background="#14000000" />
-
-    <!-- Button row: Decline | vertical divider | Accept -->
+    <!-- Top row: placeholder thumbnail + title/subtitle column beside it. -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
+        android:orientation="horizontal">
+
+        <ImageView
+            android:id="@+id/notif_consent_thumb"
+            android:layout_width="52dp"
+            android:layout_height="52dp"
+            android:background="@drawable/notif_consent_thumb_bg"
+            android:contentDescription="@null" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
+            android:layout_marginStart="14dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/notif_consent_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="#FFFFFFFF"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/notif_consent_body"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="3dp"
+                android:ellipsize="end"
+                android:maxLines="2"
+                android:textColor="#FFB4B4BC"
+                android:textSize="13sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Thin light divider above the button row (light, so it shows on dark). -->
+    <View
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="14dp"
+        android:background="#26FFFFFF" />
+
+    <!-- Button row: Decline | vertical divider | Accept. -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
         android:orientation="horizontal">
 
         <TextView
@@ -66,13 +89,14 @@
             android:gravity="center"
             android:paddingTop="14dp"
             android:paddingBottom="6dp"
-            android:textColor="#FF6A6A70"
-            android:textSize="16sp" />
+            android:textColor="#FFB4B4BC"
+            android:textSize="16sp"
+            android:textStyle="bold" />
 
         <View
             android:layout_width="1dp"
             android:layout_height="match_parent"
-            android:background="#14000000" />
+            android:background="#26FFFFFF" />
 
         <TextView
             android:id="@+id/notif_consent_accept"
@@ -82,7 +106,8 @@
             android:gravity="center"
             android:paddingTop="14dp"
             android:paddingBottom="6dp"
-            android:textColor="#FF0A84FF"
-            android:textSize="16sp" />
+            android:textColor="#FF4FA3FF"
+            android:textSize="16sp"
+            android:textStyle="bold" />
     </LinearLayout>
 </LinearLayout>
