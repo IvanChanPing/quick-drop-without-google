@@ -215,6 +215,7 @@
     <string name="settings_consent_style_recolored">Recolored buttons</string>
     <string name="settings_consent_style_bridge">Bridge card style</string>
     <string name="settings_consent_style_sheet">Bottom sheet only</string>
+    <string name="settings_consent_style_sheet_needs_fsi">Bottom sheet only needs full-screen access to pop the sheet over other apps. Allow it on the next screen.</string>
 
     <!-- Permissions onboarding (#26 + #31). -->
     <string name="onboarding_title">App permissions</string>

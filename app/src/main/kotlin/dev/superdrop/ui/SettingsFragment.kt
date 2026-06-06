@@ -167,6 +167,23 @@ internal class SettingsFragment : Fragment(R.layout.fragment_settings) {
                     else -> ConsentNotificationStylePreferences.Style.RECOLORED
                 }
             prefs.setMode(mode)
+            // "Bottom sheet only" raises the consent sheet via a full-screen
+            // intent when a transfer arrives in the background. On Android 14+
+            // that needs the full-screen-notification permission — without it
+            // the platform blocks the background activity launch and only a
+            // plain notification shows (the sheet never pops). Route the user
+            // to grant it so this style actually delivers the bottom sheet.
+            if (mode == ConsentNotificationStylePreferences.Style.SHEET &&
+                FullScreenIntentPermission.isRequestable(requireContext())
+            ) {
+                Toast
+                    .makeText(
+                        requireContext(),
+                        R.string.settings_consent_style_sheet_needs_fsi,
+                        Toast.LENGTH_LONG,
+                    ).show()
+                FullScreenIntentPermission.openSettings(requireContext())
+            }
         }
     }
 
