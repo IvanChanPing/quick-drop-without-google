@@ -265,16 +265,20 @@ public object ConsentNotification {
         }
 
         if (tapIntent != null) {
-            builder
-                .setContentIntent(tapIntent)
-                // Make sure the heads-up tap routes to the trampoline
-                // activity rather than just expanding the shade. The
-                // full-screen-intent path is what wakes the device on
-                // API 27+; the trampoline activity itself handles the
-                // setShowWhenLocked / setTurnScreenOn flags.
-                // highPriority = true so API 29+ surfaces the activity
-                // immediately rather than collapsing the heads-up.
-                .setFullScreenIntent(tapIntent, true)
+            // Tapping the notification body opens the consent sheet for
+            // details in every style.
+            builder.setContentIntent(tapIntent)
+            // ONLY the SHEET style uses the full-screen-intent to raise the
+            // bottom sheet as the surface (and wake/show over the lock screen
+            // on API 27+). For RECOLORED / BRIDGE the custom heads-up IS the
+            // surface — Accept/Decline live in its RemoteViews — so we must
+            // NOT set a full-screen-intent: when the platform can fire it
+            // (FSI permission granted, or on the lock screen) it launches the
+            // sheet activity and the custom heads-up never shows at all, which
+            // is exactly why "Bridge card style" appeared to do nothing.
+            if (style == ConsentNotificationStylePreferences.Style.SHEET) {
+                builder.setFullScreenIntent(tapIntent, true)
+            }
         }
 
         return builder.build()
