@@ -140,6 +140,16 @@ public object TransferProgressNotification {
                 .setOnlyAlertOnce(true)
                 .setShowWhen(false)
                 .setSilent(true)
+                // TODO(live-updates): promote this to an Android 16 Live Update
+                // (status-bar chip / OEM dynamic island) with
+                // `.setRequestPromotedOngoing(true)`. Blocked on a toolchain
+                // bump — the compat API is only in androidx.core >= 1.17.0,
+                // which requires AGP >= 8.9.1 (project is on 8.7.3), and the
+                // installed android-36 (rev 2) lacks the platform method. The
+                // POST_PROMOTED_NOTIFICATIONS permission + the qualifying
+                // notification shape (ongoing, contentTitle, smallIcon, LOW
+                // channel, no custom view) are already in place; only the
+                // one-line request call + toolchain bump remain.
                 .addAction(
                     NotificationCompat.Action
                         .Builder(

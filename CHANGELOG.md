@@ -161,3 +161,6 @@ entries here cover only fork-specific changes.
 
 ### 2026-06-06 — NFC tap-to-share setting (dedicated, separate)
 - New Settings card "NFC tap to share" with a 3-way selector (Only while a receive sheet is open [default] / While the app is open / Always in background), backed by NfcTapSharePreferences. Separate from the visible toggle, per request. Renders verified on redroid; the receiver HCE wires to it when tap-to-share lands.
+
+### 2026-06-06 — Live Updates groundwork (blocked on toolchain)
+- Added POST_PROMOTED_NOTIFICATIONS manifest permission; the progress notification already meets the promotion shape. Actual Live Update (status-bar chip / OEM island via setRequestPromotedOngoing) is BLOCKED: the compat API needs androidx.core >= 1.17.0 which requires AGP >= 8.9.1 (project on 8.7.3), and android-36 rev2 lacks the platform method. TODO left in TransferProgressNotification.kt. Per-OEM: Pixel Live Updates + Xiaomi HyperOS 3.1 Hyper Island consume the standard API; OnePlus Live Alerts is currently allowlist-limited.
