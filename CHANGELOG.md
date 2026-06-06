@@ -155,3 +155,6 @@ entries here cover only fork-specific changes.
 - #4/#5 tile: ConsentTrampolineActivity taskAffinity="" (own floating task, not the app) + restore on onDestroy + onUserLeaveHint (leaving restores the visibility bump).
 - #2 battery: escalate to App Info when the one-tap popup no-ops on OEM ROMs (OnePlus/vivo).
 - #3 device name: never show the raw IP/stableId; hidden peers show a generic label.
+
+### 2026-06-06 — Custom consent notification (#1)
+- Recolored Accept/Decline on OPPOSITE sides via custom RemoteViews (DecoratedCustomViewStyle). Decline left (light/red), Accept right (blue). Replaces the side-by-side action row. Render device-unverified (needs a real incoming transfer).

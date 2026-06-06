@@ -12,6 +12,7 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import android.widget.RemoteViews
 import androidx.core.app.NotificationCompat
 import dev.superdrop.service.R
 
@@ -184,13 +185,26 @@ public object ConsentNotification {
                 null
             }
 
+        // Custom heads-up content: Decline / Accept pinned to opposite edges
+        // and recolored (Accept = filled blue, Decline = light pill / red
+        // label), instead of the platform's side-by-side action row. Wired
+        // with the same broadcast PendingIntents the action buttons used.
+        val customView =
+            RemoteViews(context.packageName, R.layout.notification_consent).apply {
+                setTextViewText(R.id.notif_consent_title, content.title)
+                setTextViewText(R.id.notif_consent_body, content.body)
+                setTextViewText(R.id.notif_consent_accept, content.acceptLabel)
+                setTextViewText(R.id.notif_consent_decline, content.rejectLabel)
+                setOnClickPendingIntent(R.id.notif_consent_accept, acceptIntent)
+                setOnClickPendingIntent(R.id.notif_consent_decline, rejectIntent)
+            }
+
         val builder =
             NotificationCompat
                 .Builder(context, CHANNEL_ID)
                 .setSmallIcon(android.R.drawable.stat_sys_download)
                 .setContentTitle(content.title)
                 .setContentText(content.body)
-                .setStyle(NotificationCompat.BigTextStyle().bigText(content.bigText))
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setCategory(NotificationCompat.CATEGORY_CALL)
                 // Dismissing the notification (swipe) does NOT auto-reject
@@ -200,21 +214,15 @@ public object ConsentNotification {
                 .setOngoing(true)
                 .setAutoCancel(false)
                 .setShowWhen(true)
-                .addAction(
-                    NotificationCompat.Action
-                        .Builder(
-                            android.R.drawable.ic_menu_send,
-                            content.acceptLabel,
-                            acceptIntent,
-                        ).build(),
-                ).addAction(
-                    NotificationCompat.Action
-                        .Builder(
-                            android.R.drawable.ic_menu_close_clear_cancel,
-                            content.rejectLabel,
-                            rejectIntent,
-                        ).build(),
-                )
+                // DecoratedCustomViewStyle keeps the native notification
+                // frame (small icon, app name, time) and renders our custom
+                // RemoteViews as the body across collapsed / expanded /
+                // heads-up. The two consent buttons live in the layout, so
+                // no addAction() row is added (which would duplicate them).
+                .setStyle(NotificationCompat.DecoratedCustomViewStyle())
+                .setCustomContentView(customView)
+                .setCustomBigContentView(customView)
+                .setCustomHeadsUpContentView(customView)
 
         if (tapIntent != null) {
             builder

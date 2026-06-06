@@ -52,3 +52,6 @@ final verification needs the user's phones.
 - #4 tile: ConsentTrampolineActivity now android:taskAffinity="" so it floats in its own task over the current screen instead of pulling the Super Drop app forward.
 - #5 tile restore: restoreIfArmed now also runs from onDestroy (backstop) and onUserLeaveHint finishes the tile-opened waiting sheet on Home/Recents (gated on armed && !decisionSubmitted), so leaving restores the temporary visibility bump.
 - #1 notification buttons: still standard side-by-side (DECISION PENDING: custom RemoteViews for opposite-side/custom-color).
+
+## #1 notification — DONE (custom RemoteViews) 2026-06-06
+- Consent heads-up now uses a custom RemoteViews layout (notification_consent.xml) via DecoratedCustomViewStyle: Decline pinned far-LEFT (light pill, red label), Accept far-RIGHT (filled blue), recolored, opposite sides. addAction row removed. Buttons wired to the same accept/reject broadcast PendingIntents. ⚠️ device-UNVERIFIED render: the heads-up only appears on a real incoming transfer (needs a peer); compile-only here.
