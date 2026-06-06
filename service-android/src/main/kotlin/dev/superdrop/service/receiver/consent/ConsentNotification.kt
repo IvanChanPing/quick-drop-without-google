@@ -268,17 +268,17 @@ public object ConsentNotification {
             // Tapping the notification body opens the consent sheet for
             // details in every style.
             builder.setContentIntent(tapIntent)
-            // ONLY the SHEET style uses the full-screen-intent to raise the
-            // bottom sheet as the surface (and wake/show over the lock screen
-            // on API 27+). For RECOLORED / BRIDGE the custom heads-up IS the
-            // surface — Accept/Decline live in its RemoteViews — so we must
-            // NOT set a full-screen-intent: when the platform can fire it
-            // (FSI permission granted, or on the lock screen) it launches the
-            // sheet activity and the custom heads-up never shows at all, which
-            // is exactly why "Bridge card style" appeared to do nothing.
-            if (style == ConsentNotificationStylePreferences.Style.SHEET) {
-                builder.setFullScreenIntent(tapIntent, true)
-            }
+            // Full-screen-intent on EVERY style so the LOCK-SCREEN / screen-off
+            // behavior is identical for all three: the consent bottom sheet
+            // pops full-screen (incoming-call style). When the device is
+            // UNLOCKED and in use, the platform automatically falls back to a
+            // heads-up — which is the per-style notification (the recolored or
+            // bridge custom RemoteViews, or the plain Accept/Reject for SHEET).
+            // So the style only changes the in-use heads-up; the lock screen is
+            // the same sheet for every option. (Showing the sheet over other
+            // apps WHILE the device is in use is NOT possible via a
+            // full-screen-intent — that requires a draw-over-apps overlay.)
+            builder.setFullScreenIntent(tapIntent, true)
         }
 
         return builder.build()
