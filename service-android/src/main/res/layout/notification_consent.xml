@@ -1,13 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Custom heads-up content for the incoming-transfer consent notification.
-  Used via NotificationCompat.DecoratedCustomViewStyle so the system frame
-  (small icon + app name + timestamp) stays native while this controls the
-  body: a title, a one-line summary, and the two consent buttons pinned to
-  OPPOSITE edges (Decline far-left, Accept far-right) and recolored. Bound +
+  Custom heads-up content for the incoming-transfer consent notification,
+  shown via NotificationCompat.DecoratedCustomViewStyle (the system keeps the
+  native frame: small icon + app name + time; this controls the body). Bound +
   wired with PendingIntents at runtime in ConsentNotification.build().
-  Only RemoteViews-supported layouts/widgets are used (LinearLayout,
-  RelativeLayout, TextView, Button).
+
+  Layout: title, one-line summary (sender + files + PIN), then the two consent
+  buttons as a centered pair with a small gap (Decline left / Accept right,
+  recolored). Only RemoteViews-supported views are used.
+
+  NOTE: the dismiss animation is system-owned — an app cannot make a heads-up
+  "slide away" on tap. For a slide-away popup, use the bottom sheet / overlay
+  surface (our own windows), not the notification.
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
@@ -29,24 +33,27 @@
         android:id="@+id/notif_consent_body"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="2dp"
+        android:layout_marginTop="3dp"
         android:ellipsize="end"
         android:maxLines="2"
         android:textSize="13sp" />
 
-    <RelativeLayout
+    <!-- Buttons as a centered pair with a small gap (moved closer together,
+         no longer pinned to the opposite edges). -->
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="12dp">
+        android:layout_marginTop="12dp"
+        android:gravity="center"
+        android:orientation="horizontal">
 
         <Button
             android:id="@+id/notif_consent_decline"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_alignParentStart="true"
-            android:layout_alignParentLeft="true"
+            android:layout_marginEnd="8dp"
             android:background="@drawable/notif_btn_decline_bg"
-            android:minWidth="104dp"
+            android:minWidth="112dp"
             android:textAllCaps="false"
             android:textColor="#FFD93025"
             android:textStyle="bold" />
@@ -55,12 +62,11 @@
             android:id="@+id/notif_consent_accept"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_alignParentEnd="true"
-            android:layout_alignParentRight="true"
+            android:layout_marginStart="8dp"
             android:background="@drawable/notif_btn_accept_bg"
-            android:minWidth="104dp"
+            android:minWidth="112dp"
             android:textAllCaps="false"
             android:textColor="#FFFFFFFF"
             android:textStyle="bold" />
-    </RelativeLayout>
+    </LinearLayout>
 </LinearLayout>
