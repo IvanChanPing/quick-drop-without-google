@@ -41,6 +41,7 @@ import dev.superdrop.service.receiver.consent.ConsentDiagnostic
 import dev.superdrop.service.receiver.consent.ConsentIntents
 import dev.superdrop.service.receiver.consent.ConsentModalRegistry
 import dev.superdrop.service.receiver.consent.ConsentNotification
+import dev.superdrop.service.receiver.consent.ConsentNotificationStylePreferences
 import dev.superdrop.service.receiver.consent.ConsentRegistry
 import dev.superdrop.service.receiver.foreground.AppForegroundState
 import dev.superdrop.service.receiver.foreground.ProcessLifecycleOwnerAppForegroundState
@@ -733,6 +734,22 @@ public class ReceiverForegroundService : Service() {
                                 entry = entry,
                                 trampolineTarget = consentTrampolineTarget,
                             )
+                            // "Bottom sheet only" style: also launch the consent
+                            // sheet directly (startActivity) on a BACKGROUND
+                            // incoming — the same thing the bridge app does with
+                            // overlay disabled — so the sheet pops over the
+                            // current screen even while the device is in use, not
+                            // only on the lock screen via the notification's FSI.
+                            // Best-effort: launchConsentTrampolineAsModal catches
+                            // the SecurityException strict OEMs throw for a
+                            // background activity launch, leaving the just-posted
+                            // notification as the fallback. RECOLORED / BRIDGE do
+                            // NOT do this — their heads-up is the in-use surface.
+                            if (ConsentNotificationStylePreferences.from(ctx).mode() ==
+                                ConsentNotificationStylePreferences.Style.SHEET
+                            ) {
+                                launchConsentTrampolineAsModal(connectionId)
+                            }
                         }
 
                         override fun dismissConsent(connectionId: Long) {
