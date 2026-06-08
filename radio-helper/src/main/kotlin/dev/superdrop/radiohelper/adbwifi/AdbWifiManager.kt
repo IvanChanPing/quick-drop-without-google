@@ -133,6 +133,17 @@ internal class AdbWifiManager private constructor(
     internal companion object {
         private const val TAG = "AdbWifi"
 
+        /**
+         * The actual exception from the last [runShell]/[connect] attempt (class +
+         * message), or null on success. Surfaced up through [AdbWifiRadio.lastStatus]
+         * so a connect failure says WHY ("ConnectException: Connection refused" =
+         * wrong host/port not listening; an SSL/handshake error = key not trusted)
+         * instead of a generic "adbd unreachable". Diagnostics only.
+         */
+        @Volatile
+        var lastError: String? = null
+            private set
+
         @Volatile
         private var providersReady = false
 
@@ -203,10 +214,12 @@ internal class AdbWifiManager private constructor(
                         stream.openInputStream().bufferedReader().readText()
                     }
                 }
-            }.getOrElse {
-                Log.w(TAG, "runShell '$command' failed: ${it.message}")
-                null
-            }
+            }.onSuccess { lastError = null }
+                .getOrElse {
+                    lastError = "${it.javaClass.simpleName}: ${it.message}"
+                    Log.w(TAG, "runShell '$command' @ $host:$port failed: $lastError")
+                    null
+                }
 
         /**
          * Enable Android-11 Wireless Debugging by writing the secure setting

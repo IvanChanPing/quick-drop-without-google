@@ -55,6 +55,16 @@ internal object AdbWifiRadio {
     private var cachedPort: Int = -1
 
     /**
+     * Last adbd HOST resolved via mDNS (the device's own Wi-Fi IP), or null.
+     * We connect to this resolved IP FIRST, then fall back to [LOOPBACK]: on the
+     * user's ColorOS, pairing to the resolved Wi-Fi IP SUCCEEDED while connecting
+     * to 127.0.0.1 FAILED ("adbd unreachable"), i.e. adbd binds to the Wi-Fi IP,
+     * not loopback. Re-discovered every [ensureReady] (the Wi-Fi IP can change).
+     */
+    @Volatile
+    private var cachedHost: String? = null
+
+    /**
      * Human-readable result of the last [setWifi]/[ensureReady] attempt, for
      * on-screen + logcat diagnostics (mirrors [ShizukuRadio.lastStatus]). Lets
      * the Wi-Fi ladder report WHY the self-ADB rung did/didn't fire instead of a
@@ -74,63 +84,83 @@ internal object AdbWifiRadio {
      */
     fun ensureReady(context: Context): Int {
         if (!isPaired(context)) {
-            lastStatus = "NOT PAIRED — run 'Radio Helper: ADB-WiFi Setup' once"
+            lastStatus = "NOT PAIRED — pair once via the notification, then this works across reboots"
             Log.w(TAG, "ensureReady: $lastStatus")
             return -1
         }
         val enabled = AdbWifiManager.enableWirelessDebugging(context)
         Log.i(TAG, "ensureReady: enableWirelessDebugging(adb_wifi_enabled=1)=$enabled")
-        val port = AdbMdns.discoverPort(context)
-        if (port < 0) {
+        // Resolve BOTH the host (device Wi-Fi IP) and port — adbd may bind only to
+        // the Wi-Fi IP, not loopback (see cachedHost). Falls back to loopback host.
+        val hp = AdbMdns.discoverHostPort(context, AdbMdns.SERVICE_CONNECT)
+        if (hp == null) {
             lastStatus =
                 "no adbd port via mDNS (enableWirelessDebugging=$enabled — " +
                     "WSS granted? wireless debugging on?)"
             Log.w(TAG, "ensureReady: $lastStatus")
             cachedPort = -1
+            cachedHost = null
             return -1
         }
-        cachedPort = port
-        Log.i(TAG, "ensureReady: warm on port $port (enableWirelessDebugging=$enabled)")
-        return port
+        cachedPort = hp.port
+        cachedHost = hp.host
+        Log.i(TAG, "ensureReady: warm on ${hp.host}:${hp.port} (enableWirelessDebugging=$enabled)")
+        return hp.port
     }
 
     /**
      * TAP job. Flip Wi-Fi on/off via `svc wifi` over the warm connection. If the
-     * cached port is unknown/stale, re-runs [ensureReady] once then retries.
-     * @return true only if the `svc wifi` command actually ran (connection OK);
-     * caller should still verify the radio state. Sets [lastStatus] either way.
+     * cached endpoint is unknown/stale, re-runs [ensureReady] once then retries.
+     * Tries the resolved Wi-Fi IP FIRST, then [LOOPBACK]. @return true only if the
+     * `svc wifi` command actually ran (connection OK). Sets [lastStatus] (incl. the
+     * real connect error from [AdbWifiManager.lastError]) either way.
      */
     fun setWifi(
         context: Context,
         on: Boolean,
     ): Boolean {
         if (!isPaired(context)) {
-            lastStatus = "NOT PAIRED — run 'Radio Helper: ADB-WiFi Setup' once"
+            lastStatus = "NOT PAIRED — pair once via the notification, then this works across reboots"
             Log.w(TAG, "setWifi: $lastStatus")
             return false
         }
         val port = if (cachedPort > 0) cachedPort else ensureReady(context)
         if (port < 0) {
-            // ensureReady already set a descriptive lastStatus.
             Log.w(TAG, "setWifi: no port (cached=$cachedPort); status='$lastStatus'")
             return false
         }
-        if (AdbWifiManager.setWifi(context, LOOPBACK, port, on)) {
-            lastStatus = "svc wifi ${if (on) "enable" else "disable"} ran via ADB port $port"
-            Log.i(TAG, "setWifi: $lastStatus")
-            return true
-        }
-        // Stale port (adbd re-advertised on a new port after a re-enable?) —
-        // re-warm once and retry before giving up to the next ladder rung.
-        Log.w(TAG, "setWifi: cmd failed on port $port — re-warming and retrying once")
+        if (tryToggle(context, port, on)) return true
+        // Cached endpoint stale (adbd re-advertised after re-enable, or IP changed)
+        // — re-warm once and retry before giving up to the next ladder rung.
+        Log.w(TAG, "setWifi: failed on cached endpoint — re-warming and retrying once")
         val fresh = ensureReady(context)
-        if (fresh > 0 && AdbWifiManager.setWifi(context, LOOPBACK, fresh, on)) {
-            lastStatus = "svc wifi ${if (on) "enable" else "disable"} ran via ADB port $fresh (after re-warm)"
-            Log.i(TAG, "setWifi: $lastStatus")
-            return true
-        }
-        lastStatus = "ADB connect/exec failed (port $port, re-warm port $fresh) — paired but adbd unreachable"
+        if (fresh > 0 && tryToggle(context, fresh, on)) return true
+        lastStatus =
+            "ADB connect/exec failed (port $port) — paired but adbd unreachable. " +
+                "last error: ${AdbWifiManager.lastError ?: "?"}"
         Log.w(TAG, "setWifi: $lastStatus")
+        return false
+    }
+
+    /**
+     * One `svc wifi` attempt: try the resolved Wi-Fi IP ([cachedHost]) first, then
+     * [LOOPBACK]. Returns true if the command ran on either; sets [lastStatus] on
+     * success with which host worked.
+     */
+    private fun tryToggle(
+        context: Context,
+        port: Int,
+        on: Boolean,
+    ): Boolean {
+        val hosts = listOfNotNull(cachedHost, LOOPBACK).distinct()
+        for (host in hosts) {
+            if (AdbWifiManager.setWifi(context, host, port, on)) {
+                lastStatus = "svc wifi ${if (on) "enable" else "disable"} ran via $host:$port"
+                Log.i(TAG, "setWifi: $lastStatus")
+                return true
+            }
+            Log.w(TAG, "setWifi: $host:$port failed (${AdbWifiManager.lastError})")
+        }
         return false
     }
 }

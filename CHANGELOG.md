@@ -5,6 +5,26 @@ entries here cover only fork-specific changes.
 
 ## [Unreleased]
 
+### 2026-06-08 (later 14) — self-ADB connect: use resolved Wi-Fi IP (not loopback) + real error in status
+- **Device evidence:** notification-reply pairing SUCCEEDED (status showed "PAIRED" — the truthful
+  marker), but the self-ADB CONNECT then failed ("adbd unreachable", port 40697). The Wi-Fi toggle that
+  "started working" was the **Shizuku** rung of the ladder (status showed "Shizuku: available"), NOT
+  self-ADB — and Shizuku doesn't self-start on boot, so it doesn't meet the no-per-restart rule.
+- **Root-cause hypothesis (strong):** pairing connected to the device's resolved Wi-Fi IP (via
+  `discoverHostPort`) and worked, but the connect path was hardcoded to `127.0.0.1`. On ColorOS adbd
+  appears to bind to the Wi-Fi IP, not loopback → pair OK, connect refused.
+- **Fix:** `AdbWifiRadio.ensureReady` now resolves BOTH host+port (`discoverHostPort`) and caches them;
+  `setWifi` tries the resolved Wi-Fi IP FIRST, then falls back to loopback (`tryToggle`). The Wi-Fi IP is
+  re-discovered every ensureReady (it can change across networks/reboots).
+- **Observability:** `AdbWifiManager.lastError` now records the actual connect exception (class +
+  message); `AdbWifiRadio.lastStatus` includes it, so a failure says e.g. "ConnectException: Connection
+  refused" (wrong host) vs an SSL/handshake error (key not trusted) instead of a generic "unreachable".
+- Goal: make the SELF-STARTING self-ADB path actually toggle Wi-Fi so Shizuku is unnecessary and nothing
+  needs setup after a restart.
+- **Build:** `:radio-helper:assembleDebug` BUILD SUCCESSFUL. radio-helper-debug.apk refreshed.
+- **Status:** compile-only / device-UNVERIFIED. Next on-device test: tap "3. Test self-ADB Wi-Fi" — it
+  should now connect via the Wi-Fi IP (or the status will show the precise remaining error).
+
 ### 2026-06-08 (later 13) — Boot persistence hardened: FOREGROUND warm-up + retry (adb-auto-enable model)
 - **Persistence is the requirement**, and it is a SOLVED problem on this device family: the
   adb-auto-enable reference (libadb-android based, README explicitly covers OnePlus/ColorOS Android 14)
