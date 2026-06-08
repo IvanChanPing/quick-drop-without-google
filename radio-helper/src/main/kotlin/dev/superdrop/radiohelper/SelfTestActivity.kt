@@ -10,6 +10,7 @@ import android.os.Bundle
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import dev.superdrop.radiohelper.adbwifi.AdbWifiRadio
 import rikka.shizuku.Shizuku
 
 /**
@@ -60,25 +61,21 @@ internal class SelfTestActivity : Activity() {
                 setOnClickListener {
                     val ctx = this@SelfTestActivity
                     render("working…")
-                    // MUST run off the UI thread: the Shizuku bind waits up to
-                    // 8s, which would ANR/crash the app if done on the main
-                    // thread. Render + panel-launch hop back to the UI thread.
+                    // MUST run off the UI thread: the self-ADB (socket/mDNS) and
+                    // Shizuku (8s bind) rungs block, which would ANR on the main
+                    // thread. Render hops back to the UI thread.
                     Thread {
                         val target = !RadioToggler.isWifiOn(ctx)
-                        val direct = RadioToggler.setWifi(ctx, target)
-                        val shiz = if (direct) false else ShizukuRadio.trySetWifi(ctx, target)
+                        // Run the SAME full ladder RadioService uses, incl. the
+                        // self-ADB rung (was previously missing here — Toggle
+                        // Wi-Fi only tried direct→Shizuku→panel, so the ADB path
+                        // never fired). With panel as the final fallback.
+                        val result = RadioToggler.setWifiWithDiagnostics(ctx, target)
                         runOnUiThread {
-                            val outcome =
-                                when {
-                                    direct -> "direct setWifiEnabled OK (silent)"
-                                    shiz -> "Shizuku OK (silent)"
-                                    else -> "no silent path -> panel opened=${RadioToggler.openWifiPanel(ctx)}"
-                                }
                             render(
-                                "target=$target\n" +
-                                    "direct setWifiEnabled returned=$direct\n" +
-                                    "Shizuku: ${ShizukuRadio.lastStatus}\n" +
-                                    "=> $outcome",
+                                "Toggle Wi-Fi (target=${if (target) "ON" else "OFF"})\n" +
+                                    "won by: ${result.path} (silent=${result.success})\n\n" +
+                                    result.steps.joinToString("\n"),
                             )
                         }
                     }.start()
@@ -118,9 +115,16 @@ internal class SelfTestActivity : Activity() {
                 ShizukuRadio.needsPermission -> "running, permission NOT granted"
                 else -> "not available"
             }
+        val selfAdb =
+            if (AdbWifiRadio.isPaired(this)) {
+                "PAIRED — last: ${AdbWifiRadio.lastStatus}"
+            } else {
+                "NOT PAIRED (open 'Radio Helper: ADB-WiFi Setup' to pair)"
+            }
         shizukuButton.visibility = if (ShizukuRadio.needsPermission) Button.VISIBLE else Button.GONE
         status.text =
             "Wi-Fi: $wifi    Bluetooth: $bt\n" +
+            "self-ADB: $selfAdb\n" +
             "Shizuku: $shizuku\n\n$message"
     }
 

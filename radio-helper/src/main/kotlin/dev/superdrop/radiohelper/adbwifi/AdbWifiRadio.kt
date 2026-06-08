@@ -54,6 +54,16 @@ internal object AdbWifiRadio {
     @Volatile
     private var cachedPort: Int = -1
 
+    /**
+     * Human-readable result of the last [setWifi]/[ensureReady] attempt, for
+     * on-screen + logcat diagnostics (mirrors [ShizukuRadio.lastStatus]). Lets
+     * the Wi-Fi ladder report WHY the self-ADB rung did/didn't fire instead of a
+     * silent `false`. Tag for logcat filtering: `AdbWifi/Radio`.
+     */
+    @Volatile
+    var lastStatus: String = "not attempted"
+        private set
+
     /** True once the device has been paired (key+cert persisted). */
     fun isPaired(context: Context): Boolean = AdbWifiManager.isPaired(context)
 
@@ -64,18 +74,23 @@ internal object AdbWifiRadio {
      */
     fun ensureReady(context: Context): Int {
         if (!isPaired(context)) {
-            Log.w(TAG, "ensureReady: not paired yet — skipping (run the pairing test once)")
+            lastStatus = "NOT PAIRED — run 'Radio Helper: ADB-WiFi Setup' once"
+            Log.w(TAG, "ensureReady: $lastStatus")
             return -1
         }
         val enabled = AdbWifiManager.enableWirelessDebugging(context)
+        Log.i(TAG, "ensureReady: enableWirelessDebugging(adb_wifi_enabled=1)=$enabled")
         val port = AdbMdns.discoverPort(context)
         if (port < 0) {
-            Log.w(TAG, "ensureReady: no adbd port (enableWirelessDebugging=$enabled; WSS granted?)")
+            lastStatus =
+                "no adbd port via mDNS (enableWirelessDebugging=$enabled — " +
+                    "WSS granted? wireless debugging on?)"
+            Log.w(TAG, "ensureReady: $lastStatus")
             cachedPort = -1
             return -1
         }
         cachedPort = port
-        Log.i(TAG, "ensureReady: warm on port $port")
+        Log.i(TAG, "ensureReady: warm on port $port (enableWirelessDebugging=$enabled)")
         return port
     }
 
@@ -83,18 +98,39 @@ internal object AdbWifiRadio {
      * TAP job. Flip Wi-Fi on/off via `svc wifi` over the warm connection. If the
      * cached port is unknown/stale, re-runs [ensureReady] once then retries.
      * @return true only if the `svc wifi` command actually ran (connection OK);
-     * caller should still verify the radio state.
+     * caller should still verify the radio state. Sets [lastStatus] either way.
      */
     fun setWifi(
         context: Context,
         on: Boolean,
     ): Boolean {
-        if (!isPaired(context)) return false
+        if (!isPaired(context)) {
+            lastStatus = "NOT PAIRED — run 'Radio Helper: ADB-WiFi Setup' once"
+            Log.w(TAG, "setWifi: $lastStatus")
+            return false
+        }
         val port = if (cachedPort > 0) cachedPort else ensureReady(context)
-        if (port < 0) return false
-        if (AdbWifiManager.setWifi(context, LOOPBACK, port, on)) return true
-        // Stale port (adbd re-advertised on a new port?) — re-warm once and retry.
+        if (port < 0) {
+            // ensureReady already set a descriptive lastStatus.
+            Log.w(TAG, "setWifi: no port (cached=$cachedPort); status='$lastStatus'")
+            return false
+        }
+        if (AdbWifiManager.setWifi(context, LOOPBACK, port, on)) {
+            lastStatus = "svc wifi ${if (on) "enable" else "disable"} ran via ADB port $port"
+            Log.i(TAG, "setWifi: $lastStatus")
+            return true
+        }
+        // Stale port (adbd re-advertised on a new port after a re-enable?) —
+        // re-warm once and retry before giving up to the next ladder rung.
+        Log.w(TAG, "setWifi: cmd failed on port $port — re-warming and retrying once")
         val fresh = ensureReady(context)
-        return fresh > 0 && AdbWifiManager.setWifi(context, LOOPBACK, fresh, on)
+        if (fresh > 0 && AdbWifiManager.setWifi(context, LOOPBACK, fresh, on)) {
+            lastStatus = "svc wifi ${if (on) "enable" else "disable"} ran via ADB port $fresh (after re-warm)"
+            Log.i(TAG, "setWifi: $lastStatus")
+            return true
+        }
+        lastStatus = "ADB connect/exec failed (port $port, re-warm port $fresh) — paired but adbd unreachable"
+        Log.w(TAG, "setWifi: $lastStatus")
+        return false
     }
 }

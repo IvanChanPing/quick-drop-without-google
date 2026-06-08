@@ -167,6 +167,8 @@ internal class AdbWifiManager private constructor(
         ): Boolean =
             runCatching {
                 manager(context).use { it.pair(host, port, code) }
+            }.onSuccess {
+                Log.i(TAG, "pair($host:$port) result=$it")
             }.getOrElse {
                 Log.w(TAG, "pair failed: ${it.message}")
                 false

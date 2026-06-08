@@ -5,6 +5,31 @@ entries here cover only fork-specific changes.
 
 ## [Unreleased]
 
+### 2026-06-08 (later 11) — Wi-Fi ladder: FIX self-ADB never tried in test UI + add full per-rung logging
+- **Bug (user-reported):** with Shizuku disabled, tapping "Toggle Wi-Fi" on the "Super Drop Radio
+  Helper" screen just opened the Wi-Fi settings — the self-ADB rung was NEVER attempted. Root cause:
+  `SelfTestActivity`'s Toggle Wi-Fi ran only direct→Shizuku→panel; the self-ADB rung had only been
+  added to `RadioToggler.setWifiSilent`/`setWifiSmart`, not to that button. And there was NO logging,
+  so the fall-through to the panel was invisible.
+- **Fix:** single source-of-truth ladder `RadioToggler.runWifiLadder(ctx,on,allowPanel)` →
+  `WifiLadderResult(success, path, steps)`. Order: direct setWifiEnabled → self-ADB → Shizuku → panel
+  (panel only if allowPanel). EVERY rung logs to logcat (tags `RadioToggler`, `AdbWifi/Radio`,
+  `ShizukuRadio`) AND appends a human-readable step line. `setWifiSilent` (RadioService),
+  `setWifiSmart`, and the new `setWifiWithDiagnostics` (test UI) all call it.
+- `AdbWifiRadio` now has a `lastStatus` (mirrors ShizukuRadio): reports "NOT PAIRED", "no adbd port via
+  mDNS (WSS granted?)", "svc wifi ran via ADB port N", or "paired but adbd unreachable" — so a skipped
+  self-ADB rung says WHY instead of a silent false.
+- `SelfTestActivity`: Toggle Wi-Fi now runs the FULL ladder (incl. self-ADB) on a bg thread and prints
+  every rung's outcome; the status header shows self-ADB paired state ("PAIRED — last: …" / "NOT
+  PAIRED"). `AdbWifiManager.pair` logs its result.
+- **IMPORTANT (still required, by design):** the self-ADB rung only works AFTER the one-time pairing in
+  the "Radio Helper: ADB-WiFi Setup" launcher (steps 1 Pair → 2 Self-grant WSS → 3 Toggle). Until then
+  it correctly reports "NOT PAIRED" and the ladder falls to Shizuku/panel.
+- **Build:** `:radio-helper:assembleDebug` BUILD SUCCESSFUL. radio-helper-debug.apk refreshed at root.
+- **Status:** compile-only / device-UNVERIFIED. Whether self-ADB `svc wifi` actually flips Wi-Fi on the
+  user's ColorOS is still the open on-device question — the new on-screen steps + logcat are exactly the
+  instrument to answer it.
+
 ### 2026-06-08 (later 10) — self-ADB Wi-Fi: MIGRATED into :radio-helper + boot self-start (architecture fix)
 - **Why:** the self-ADB Wi-Fi stack was wrongly prototyped inside Super Drop `:app`. It belongs in the
   universal `:radio-helper` so every sharing app (Super Drop, Bridge, O+ Connect, …) reaches ONE helper
