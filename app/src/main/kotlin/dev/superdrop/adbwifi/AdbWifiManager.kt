@@ -7,6 +7,7 @@ package dev.superdrop.adbwifi
 
 import android.content.Context
 import android.os.Build
+import android.provider.Settings
 import android.util.Log
 import io.github.muntashirakon.adb.AbsAdbConnectionManager
 import io.github.muntashirakon.adb.AdbStream
@@ -172,6 +173,47 @@ internal class AdbWifiManager private constructor(
                 Log.w(TAG, "runShell '$command' failed: ${it.message}")
                 null
             }
+
+        /**
+         * Enable Android-11 Wireless Debugging by writing the secure setting
+         * (needs WRITE_SECURE_SETTINGS, which we self-grant after the first
+         * pairing). @return true if the write succeeded. After this, adbd comes
+         * up on a RANDOM port → discover it via mDNS before connecting.
+         */
+        fun enableWirelessDebugging(context: Context): Boolean =
+            runCatching {
+                Settings.Global.putInt(context.contentResolver, "adb_wifi_enabled", 1)
+                true
+            }.getOrElse {
+                Log.w(TAG, "enable wireless debugging failed (WSS not granted?): ${it.message}")
+                false
+            }
+
+        /** Self-grant WRITE_SECURE_SETTINGS over the ADB shell (one-time, after pairing). */
+        fun selfGrantWriteSecureSettings(
+            context: Context,
+            host: String,
+            port: Int,
+        ): Boolean =
+            runShell(
+                context,
+                host,
+                port,
+                "pm grant ${context.packageName} android.permission.WRITE_SECURE_SETTINGS",
+            ) != null
+
+        /**
+         * Flip Wi-Fi via `svc wifi` over the ADB shell (shell UID → works even
+         * where setWifiEnabled is clamped). @return true if the command ran
+         * (connection succeeded); caller should verify the radio state.
+         */
+        fun setWifi(
+            context: Context,
+            host: String,
+            port: Int,
+            on: Boolean,
+        ): Boolean =
+            runShell(context, host, port, "svc wifi ${if (on) "enable" else "disable"}") != null
     }
 }
 
