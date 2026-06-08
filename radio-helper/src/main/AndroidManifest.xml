@@ -4,8 +4,9 @@
 
     <uses-sdk tools:overrideLibrary="rikka.shizuku.provider, rikka.shizuku.api, rikka.shizuku.shared, rikka.shizuku.aidl" />
 
-    <!-- Shizuku = silent Wi-Fi fallback (shell-UID `svc wifi`) when the OEM
-         clamps setWifiEnabled even with WRITE_SECURE_SETTINGS. -->
+    <!-- Shizuku = OPTIONAL silent Wi-Fi path (runs `svc wifi` as the shell UID)
+         for OEMs (e.g. ColorOS) that clamp setWifiEnabled. Not required — the
+         default Wi-Fi fallback is the system Wi-Fi panel (one tap). -->
     <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
 
     <!-- Legacy radio-toggle capability (works because targetSdk = 28). -->

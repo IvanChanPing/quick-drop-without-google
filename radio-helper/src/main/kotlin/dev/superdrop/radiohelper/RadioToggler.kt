@@ -53,8 +53,10 @@ internal object RadioToggler {
 
     /**
      * Wi-Fi enable/disable ladder, in order of preference:
-     * 1. direct `setWifiEnabled` — silent; works after the one-time ADB
-     *    WRITE_SECURE_SETTINGS grant (Tasker's method) on devices that honour it.
+     * 1. direct `setWifiEnabled` — silent; works only on OEMs that still honour
+     *    the legacy targetSdk path (NOT ColorOS). No ADB grant helps: the gate
+     *    is the signature-level NETWORK_SETTINGS, and WRITE_SECURE_SETTINGS is
+     *    not consulted by this API.
      * 2. Shizuku — silent; the shell-UID `svc wifi` path for OEMs (ColorOS)
      *    that clamp #1.
      * 3. NEEDS_USER — neither silent path is available; caller pops the Wi-Fi

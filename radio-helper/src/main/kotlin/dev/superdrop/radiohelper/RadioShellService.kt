@@ -9,8 +9,9 @@ package dev.superdrop.radiohelper
  * Shizuku **user service** implementation. Shizuku spawns this class in a
  * separate process running as the **shell UID** (or root), so the shell
  * commands below have the privilege to flip Wi-Fi that a normal app lacks —
- * this is the robust fallback when `setWifiEnabled()` is clamped by the OEM
- * even with WRITE_SECURE_SETTINGS.
+ * this is the optional silent path when `setWifiEnabled()` is clamped by the
+ * OEM (e.g. ColorOS) — no app permission can unlock it (the gate is the
+ * signature-level NETWORK_SETTINGS), only running as shell/root.
  *
  * Not a normal Android Service: Shizuku instantiates it via `app_process`,
  * so it needs a no-arg (or Context) constructor and must NOT be declared in

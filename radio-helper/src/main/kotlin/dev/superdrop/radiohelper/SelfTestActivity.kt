@@ -15,9 +15,9 @@ import rikka.shizuku.Shizuku
 /**
  * On-device test for the radio-toggle ladder. Install ONLY this APK and tap:
  *  - **Toggle Bluetooth** — direct `BluetoothAdapter.enable()` (zero setup).
- *  - **Toggle Wi-Fi** — runs the ladder: direct `setWifiEnabled` (needs the
- *    ADB WRITE_SECURE_SETTINGS grant) → Shizuku (silent) → Wi-Fi panel pop-up
- *    (one tap). The status line shows which prerequisites are present.
+ *  - **Toggle Wi-Fi** — runs the ladder: direct `setWifiEnabled` (works only on
+ *    lenient OEMs, NOT ColorOS) → Shizuku (silent, optional) → Wi-Fi panel
+ *    pop-up (one tap, the default). The status line shows the Shizuku state.
  *  - **Request Shizuku permission** — appears when Shizuku is running but not
  *    yet granted to this app.
  *
