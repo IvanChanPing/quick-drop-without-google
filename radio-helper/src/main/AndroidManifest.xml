@@ -55,18 +55,10 @@
             </intent-filter>
         </activity>
 
-        <!-- On-device self-ADB Wi-Fi SETUP + TEST screen. Launcher label
-             "Radio Helper: ADB-WiFi Setup". Do the one-time pairing here
-             (steps 1→2→3) — creates the pairing key in the helper's filesDir. -->
-        <activity
-            android:name=".AdbWifiTestActivity"
-            android:exported="true"
-            android:label="Radio Helper: ADB-WiFi Setup">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-        </activity>
+        <!-- NOTE: the separate "Radio Helper: ADB-WiFi Setup" launcher was
+             REMOVED — the user refused a second home-screen icon. The one-time
+             pairing controls now live as buttons on SelfTestActivity (the single
+             "Super Drop Radio Helper" launcher). -->
 
         <!-- Bound by :app via Messenger to flip radios on an NFC tap. -->
         <service

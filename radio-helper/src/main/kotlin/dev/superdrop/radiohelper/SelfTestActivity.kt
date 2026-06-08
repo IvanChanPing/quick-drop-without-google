@@ -6,27 +6,72 @@
 package dev.superdrop.radiohelper
 
 import android.app.Activity
+import android.content.Context
+import android.content.Intent
+import android.net.wifi.WifiManager
 import android.os.Bundle
+import android.provider.Settings
+import android.text.InputType
 import android.widget.Button
+import android.widget.EditText
 import android.widget.LinearLayout
+import android.widget.ScrollView
 import android.widget.TextView
+import dev.superdrop.radiohelper.adbwifi.AdbMdns
+import dev.superdrop.radiohelper.adbwifi.AdbWifiManager
 import dev.superdrop.radiohelper.adbwifi.AdbWifiRadio
 import rikka.shizuku.Shizuku
 
 /**
- * On-device test for the radio-toggle ladder. Install ONLY this APK and tap:
- *  - **Toggle Bluetooth** — direct `BluetoothAdapter.enable()` (zero setup).
- *  - **Toggle Wi-Fi** — runs the ladder: direct `setWifiEnabled` (works only on
- *    lenient OEMs, NOT ColorOS) → Shizuku (silent, optional) → Wi-Fi panel
- *    pop-up (one tap, the default). The status line shows the Shizuku state.
- *  - **Request Shizuku permission** — appears when Shizuku is running but not
- *    yet granted to this app.
+ * WHAT THIS IS
+ * ------------
+ * `SelfTestActivity` — the ONE and ONLY screen of the Radio Helper APK. Launcher
+ * label: **"Super Drop Radio Helper"**. Everything lives here: the radio toggle
+ * test buttons AND the one-time self-ADB Wi-Fi pairing setup. There is
+ * deliberately NO second launcher icon — the user refused to hunt for a separate
+ * "Setup" icon (2026-06-08), so the pairing controls are buttons on THIS screen.
  *
- * Pure programmatic UI so the module needs no resources.
+ * SCREEN LAYOUT (top → bottom), all inside a ScrollView:
+ *  - statusText — live state: Wi-Fi / Bluetooth / self-ADB paired+lastStatus /
+ *    Shizuku, plus the result of the last action.
+ *  - "Toggle Bluetooth" — direct BluetoothAdapter.enable()/disable() (zero setup).
+ *  - "Toggle Wi-Fi" — runs the FULL ladder (direct → self-ADB → Shizuku → panel)
+ *    and prints every rung's outcome.
+ *  - "Request Shizuku permission" — only visible if Shizuku is running but not
+ *    granted.
+ *  - --- Silent Wi-Fi setup (one-time) --- section header.
+ *  - "Open Wireless debugging settings" — jumps to Developer options to get the
+ *    pairing port + code.
+ *  - pairPortField / pairCodeField — number inputs for the pairing dialog values.
+ *  - "1. Pair" — one-time pairing with the device's own Wireless debugging.
+ *  - "2. Self-grant WRITE_SECURE_SETTINGS" — over ADB, lets the helper re-enable
+ *    wireless debugging on boot.
+ *  - "3. Test self-ADB Wi-Fi" — flips Wi-Fi through AdbWifiRadio only (the same
+ *    engine the NFC tap / RadioService uses).
+ *
+ * WHY IT EXISTS
+ * -------------
+ * Self-ADB is the silent Wi-Fi path that needs no Shizuku and self-starts on
+ * boot, but it requires a one-time pairing. Putting that pairing on the main
+ * screen keeps it a single, supported, in-app flow (one-time setup is allowed;
+ * recurring manual steps are not).
+ *
+ * THREADING / STATUS
+ * ------------------
+ * All ADB / Shizuku / ladder calls block → run on a background Thread, render on
+ * the UI thread. Self-ADB on ColorOS is compile-only / device-UNVERIFIED; running
+ * this screen's steps 1→2→3 IS the verification.
  */
 internal class SelfTestActivity : Activity() {
+    // statusText — multi-line label at the top; live radio + self-ADB + Shizuku
+    // state plus the last action's result.
     private lateinit var status: TextView
     private lateinit var shizukuButton: Button
+
+    // pairPortField / pairCodeField — number inputs for the Wireless-debugging
+    // "Pair device with pairing code" port + 6-digit code.
+    private lateinit var portField: EditText
+    private lateinit var codeField: EditText
 
     private val shizukuPermissionListener =
         Shizuku.OnRequestPermissionResultListener { _, _ -> render("Shizuku permission result") }
@@ -45,6 +90,8 @@ internal class SelfTestActivity : Activity() {
                 setPadding(0, 0, 0, pad)
             }
         root.addView(status)
+
+        // --- Radio toggles ---
         root.addView(
             Button(this).apply {
                 text = "Toggle Bluetooth"
@@ -61,15 +108,10 @@ internal class SelfTestActivity : Activity() {
                 setOnClickListener {
                     val ctx = this@SelfTestActivity
                     render("working…")
-                    // MUST run off the UI thread: the self-ADB (socket/mDNS) and
-                    // Shizuku (8s bind) rungs block, which would ANR on the main
-                    // thread. Render hops back to the UI thread.
+                    // Off the UI thread: self-ADB (socket/mDNS) + Shizuku (8s
+                    // bind) block → ANR if on main. Render hops back to UI.
                     Thread {
                         val target = !RadioToggler.isWifiOn(ctx)
-                        // Run the SAME full ladder RadioService uses, incl. the
-                        // self-ADB rung (was previously missing here — Toggle
-                        // Wi-Fi only tried direct→Shizuku→panel, so the ADB path
-                        // never fired). With panel as the final fallback.
                         val result = RadioToggler.setWifiWithDiagnostics(ctx, target)
                         runOnUiThread {
                             render(
@@ -91,7 +133,115 @@ internal class SelfTestActivity : Activity() {
                 }
             }
         root.addView(shizukuButton)
-        setContentView(root)
+
+        // --- Silent Wi-Fi setup (one-time, self-ADB) ---
+        // sectionHeader — plain bold-ish divider label introducing the pairing
+        // controls so they read as a distinct one-time-setup group.
+        root.addView(
+            TextView(this).apply {
+                text = "— Silent Wi-Fi setup (one-time) —"
+                setPadding(0, pad, 0, 0)
+                textSize = 13f
+            },
+        )
+        root.addView(
+            Button(this).apply {
+                text = "Open Wireless debugging settings"
+                setOnClickListener {
+                    // Public action only opens Developer options; ColorOS has no
+                    // public deep-link to the pairing dialog, so the user taps
+                    // "Wireless debugging → Pair device with pairing code" there.
+                    val opened =
+                        runCatching {
+                            startActivity(
+                                Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                            )
+                            true
+                        }.getOrDefault(false)
+                    if (!opened) render("Couldn't open Developer options — open it manually")
+                }
+            },
+        )
+        portField =
+            EditText(this).apply {
+                hint = "pairing port (from Wireless debugging dialog)"
+                inputType = InputType.TYPE_CLASS_NUMBER
+            }
+        codeField =
+            EditText(this).apply {
+                hint = "6-digit pairing code"
+                inputType = InputType.TYPE_CLASS_NUMBER
+            }
+        root.addView(portField)
+        root.addView(codeField)
+        root.addView(
+            Button(this).apply {
+                text = "1. Pair"
+                setOnClickListener {
+                    val ctx = this@SelfTestActivity
+                    val port = portField.text.toString().toIntOrNull()
+                    val code = codeField.text.toString().trim()
+                    if (port == null || code.isEmpty()) {
+                        render("Enter pairing port + 6-digit code first")
+                        return@setOnClickListener
+                    }
+                    render("Pairing 127.0.0.1:$port…")
+                    Thread {
+                        val ok = AdbWifiManager.pair(ctx, "127.0.0.1", port, code)
+                        runOnUiThread {
+                            render(if (ok) "Paired OK (key stored)" else "Pair FAILED (check port/code; dialog still open?)")
+                        }
+                    }.start()
+                }
+            },
+        )
+        root.addView(
+            Button(this).apply {
+                text = "2. Self-grant WRITE_SECURE_SETTINGS"
+                setOnClickListener {
+                    val ctx = this@SelfTestActivity
+                    render("Discovering port + granting…")
+                    Thread {
+                        val p = AdbMdns.discoverPort(ctx)
+                        val msg =
+                            if (p < 0) {
+                                "No adbd port via mDNS — is Wireless debugging ON?"
+                            } else if (AdbWifiManager.selfGrantWriteSecureSettings(ctx, "127.0.0.1", p)) {
+                                "WSS self-granted via ADB (port $p)"
+                            } else {
+                                "Grant FAILED (paired? port $p)"
+                            }
+                        runOnUiThread { render(msg) }
+                    }.start()
+                }
+            },
+        )
+        root.addView(
+            Button(this).apply {
+                text = "3. Test self-ADB Wi-Fi"
+                setOnClickListener {
+                    val ctx = this@SelfTestActivity
+                    render("AdbWifiRadio.setWifi…")
+                    Thread {
+                        val wm = ctx.applicationContext.getSystemService(Context.WIFI_SERVICE) as WifiManager
+                        val target = !wm.isWifiEnabled
+                        val ran = AdbWifiRadio.setWifi(ctx, target)
+                        runOnUiThread {
+                            render(
+                                "self-ADB setWifi(target=${if (target) "ON" else "OFF"}) ran=$ran\n" +
+                                    "status: ${AdbWifiRadio.lastStatus}\n" +
+                                    "Wi-Fi now ${if (wm.isWifiEnabled) "ON" else "OFF"}",
+                            )
+                        }
+                    }.start()
+                }
+            },
+        )
+
+        // Wrap in a ScrollView — the setup section makes the screen taller than a
+        // phone viewport.
+        setContentView(ScrollView(this).apply { addView(root) })
         runCatching { Shizuku.addRequestPermissionResultListener(shizukuPermissionListener) }
         render("ready")
     }
@@ -119,7 +269,7 @@ internal class SelfTestActivity : Activity() {
             if (AdbWifiRadio.isPaired(this)) {
                 "PAIRED — last: ${AdbWifiRadio.lastStatus}"
             } else {
-                "NOT PAIRED (open 'Radio Helper: ADB-WiFi Setup' to pair)"
+                "NOT PAIRED (use the setup buttons below)"
             }
         shizukuButton.visibility = if (ShizukuRadio.needsPermission) Button.VISIBLE else Button.GONE
         status.text =
