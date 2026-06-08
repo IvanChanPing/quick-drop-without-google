@@ -175,6 +175,17 @@ public class ReceiverForegroundService : Service() {
     @Volatile
     private var mdnsGate: MdnsAdvertisementGate? = null
 
+    /**
+     * Bounded cold-tap wake window (NFC tap-to-receive). Cancelled/replaced
+     * on each [ACTION_NFC_WAKE]; on expiry it restores the visibility
+     * override unless the user already had it on before the tap.
+     */
+    @Volatile
+    private var nfcWakeJob: Job? = null
+
+    /** Visibility-override state captured when a fresh wake window opened. */
+    private var nfcWakePriorOverride: Boolean = false
+
     @Volatile
     private var discoveryDiagnosticsJob: Job? = null
 
@@ -261,7 +272,44 @@ public class ReceiverForegroundService : Service() {
             startReceiverSession()
         }
 
+        // Cold NFC tap-to-receive: a tap on our idle HCE starts the service
+        // with this action. Force a bounded visibility window so we
+        // advertise and the tapping sender can connect; the normal inbound
+        // path then posts the Accept consent notification (no app takeover).
+        if (intent?.action == ACTION_NFC_WAKE) {
+            armNfcWakeWindow()
+        }
+
         return START_STICKY
+    }
+
+    /**
+     * Open a bounded visibility window in response to a cold NFC tap
+     * (mirrors stock Quick Share's `djvf.f` -> `PendingIntent.send`: the
+     * tapped-while-idle HCE wakes the receiver into a discoverable state).
+     * Forces [MdnsVisibilityOverrideHolder] on so the
+     * [MdnsAdvertisementGate] publishes immediately, then auto-restores
+     * after [NFC_WAKE_WINDOW_MILLIS] — unless the user already had
+     * always-visible on before the tap, in which case it is left untouched.
+     * A transfer that starts inside the window keeps its own session alive
+     * regardless of the override, so expiring the window does not interrupt
+     * an in-flight receive.
+     */
+    private fun armNfcWakeWindow() {
+        if (nfcWakeJob?.isActive != true) {
+            nfcWakePriorOverride = MdnsVisibilityOverrideHolder.isActive
+        }
+        MdnsVisibilityOverrideHolder.setAlwaysVisible(true)
+        DiagnosticLog.w(NFC_WAKE_TAG, "nfc-wake: visibility forced for ${NFC_WAKE_WINDOW_MILLIS}ms")
+        nfcWakeJob?.cancel()
+        nfcWakeJob =
+            serviceScope.launch {
+                delay(NFC_WAKE_WINDOW_MILLIS)
+                if (!nfcWakePriorOverride) {
+                    MdnsVisibilityOverrideHolder.setAlwaysVisible(false)
+                    DiagnosticLog.w(NFC_WAKE_TAG, "nfc-wake: window expired -> visibility restored")
+                }
+            }
     }
 
     /**
@@ -1060,6 +1108,27 @@ public class ReceiverForegroundService : Service() {
          * is hardcoded into the package, not exported.
          */
         public const val ACTION_STOP: String = "dev.superdrop.service.receiver.ACTION_STOP"
+
+        /**
+         * Action sent by [dev.superdrop.nfc.SuperDropTapHceService] when our
+         * NFC HCE is tapped while the receiver is idle (no live tap link).
+         * Brings the service up and opens a bounded visibility window so the
+         * tapping sender can discover + connect to us — the cold tap-to-receive
+         * wake. Not exported (package-internal control intent).
+         */
+        public const val ACTION_NFC_WAKE: String = "dev.superdrop.service.receiver.ACTION_NFC_WAKE"
+
+        /** Logcat tag for cold NFC-wake lifecycle lines. */
+        private const val NFC_WAKE_TAG: String = "BadaNfcWake"
+
+        /**
+         * How long a cold NFC tap keeps the receiver forcibly visible/
+         * advertising so the sender can connect. After this the visibility
+         * override is restored (unless the user had it on already). 60 s
+         * mirrors the [MdnsAdvertisementGate] debounce so a tap that lands
+         * just before a sender's first connect attempt still rendezvous.
+         */
+        private const val NFC_WAKE_WINDOW_MILLIS: Long = 60_000L
 
         /**
          * Intent extra carrying a serialized [EndpointInfo] when the

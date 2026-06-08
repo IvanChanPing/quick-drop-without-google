@@ -5,11 +5,13 @@
  */
 package dev.superdrop.nfc
 
+import android.content.Intent
 import android.nfc.cardemulation.HostApduService
 import android.os.Bundle
 import android.util.Log
 import dev.superdrop.protocol.nfc.NfcTapLinkHolder
 import dev.superdrop.protocol.nfc.QuickShareNfcCodec
+import dev.superdrop.service.receiver.ReceiverForegroundService
 import java.security.SecureRandom
 
 /**
@@ -83,6 +85,28 @@ public class SuperDropTapHceService : HostApduService() {
     }
 
     /**
+     * Cold tap-to-receive wake. Android starts this [HostApduService] on a
+     * tap even if our process was dead, so this is the one cold-wake path a
+     * non-privileged app has (a BLE-scan wake needs the app already
+     * running). We ask [ReceiverForegroundService] to come up and open a
+     * bounded visibility window ([ReceiverForegroundService.ACTION_NFC_WAKE]);
+     * the tapping sender then connects and the normal inbound path posts the
+     * Accept consent notification — no app UI is forced to the foreground.
+     *
+     * Best-effort: a background foreground-service start can be refused on
+     * some OEMs/API levels (logged, not fatal). NOT device-verified.
+     */
+    private fun fireReceiveWake() {
+        runCatching {
+            val intent =
+                Intent(this, ReceiverForegroundService::class.java).apply {
+                    action = ReceiverForegroundService.ACTION_NFC_WAKE
+                }
+            startForegroundService(intent)
+        }.onFailure { Log.w(TAG, "receive wake failed: ${it.message}") }
+    }
+
+    /**
      * Build the `hhwv` response for an ADVERTISEMENT APDU. Parses the
      * reader's `hhww` (best-effort; we do not require a particular
      * serviceId — Super Drop only advertises one service) and returns our
@@ -92,10 +116,14 @@ public class SuperDropTapHceService : HostApduService() {
     private fun handleAdvertisement(apdu: ByteArray): ByteArray {
         val link = NfcTapLinkHolder.current
         if (link == null) {
-            Log.d(TAG, "ADVERTISEMENT while no live receiver -> empty hhwv")
-            // An empty NfcTag (zero-length) keeps the field present but
-            // carries nothing actionable; a reader that requires a valid
-            // tag simply finds no endpoint.
+            Log.d(TAG, "ADVERTISEMENT while idle -> firing receive wake + empty hhwv")
+            // Cold tap-to-receive: we have no live tag (idle/background =
+            // not advertising), so wake the receiver into a discoverable
+            // window — mirroring stock Quick Share, whose idle HCE fires a
+            // PendingIntent (djvf.f) instead of serving a tag. The tapping
+            // sender then connects and the normal inbound path shows the
+            // Accept consent notification. This round still answers empty.
+            fireReceiveWake()
             return QuickShareNfcCodec.encodeHhwvResponse(
                 QuickShareNfcCodec.HhwvResponse(nfcTag = ByteArray(0)),
             ) + QuickShareNfcCodec.SW_OK

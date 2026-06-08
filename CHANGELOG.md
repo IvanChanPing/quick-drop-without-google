@@ -5,6 +5,35 @@ entries here cover only fork-specific changes.
 
 ## [Unreleased]
 
+### 2026-06-08 (later) — cold NFC tap-to-receive wake
+- **FEAT: tapping our idle HCE now wakes the receiver into a discoverable
+  window, so a cold "just browsing" phone starts receiving on tap** (matches
+  stock Quick Share's behaviour). Root-cause of why native works on a cold
+  phone, verified from GMS smali: an idle/visible receiver advertises BLE-only
+  (per-mode medium flags `ifkw`: FOREGROUND incl. NFC, BACKGROUND = BLE only)
+  and registers NO NFC tag — instead the long-lived `NearbySharingChimeraService`
+  registers a wake `PendingIntent` (`djvf.i`), and when the idle HCE is tapped it
+  has no tag (`djvf.g`==null) so it calls `djvf.f` → `PendingIntent.send()`,
+  launching the receive flow. Android starts a registered `HostApduService` on
+  tap even if the process was dead → the one cold-wake path a non-privileged app
+  has. Mirrored here:
+  - `SuperDropTapHceService.handleAdvertisement`: when idle (`NfcTapLinkHolder`
+    null) it now calls `fireReceiveWake()` (startForegroundService with
+    `ACTION_NFC_WAKE`) before returning the empty response.
+  - `ReceiverForegroundService`: new `ACTION_NFC_WAKE` →
+    `armNfcWakeWindow()` forces `MdnsVisibilityOverrideHolder` visible for 60 s
+    (so the gate advertises + the sender can connect), then auto-restores —
+    preserving a user's pre-existing always-visible state, and not interrupting an
+    in-flight transfer. The existing inbound path then posts the **Accept consent
+    notification** (no app-UI takeover), as requested.
+  - `:app:assembleDebug` succeeds. **NOT device-tested.** Device-test items:
+    (1) background foreground-service start from the HCE on the target OEM/API
+    (may be refused → would need a full-screen-intent fallback); (2) single-tap
+    timing (the first cold tap answers empty + wakes; the sender connects once we
+    advertise, or a second tap returns the real tag); (3) AID `F00000FE2C`
+    collides with GMS on a phone that has stock Quick Share, so this cold-wake is
+    for the non-GMS target / Super Drop↔Super Drop.
+
 ### 2026-06-08
 - **FIX (NFC tap interop): deym NfcTag PCP corrected 2 → 3 so a stock Google Quick
   Share tap actually registers Super Drop as a peer.** Root cause (verified from GMS
