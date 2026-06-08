@@ -8,6 +8,7 @@ package dev.superdrop.radiohelper
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.os.Build
 import android.util.Log
 
 /**
@@ -50,8 +51,15 @@ internal class AdbWifiBootReceiver : BroadcastReceiver() {
         // AdbWifiRadio.ensureReady() itself if the boot warm-up didn't run.
         // (Device-UNVERIFIED on ColorOS, which may delay/suppress boot broadcasts
         // to sideloaded apps until the app is first launched.)
+        val svc = Intent(context, AdbWifiBootService::class.java)
         runCatching {
-            context.startService(Intent(context, AdbWifiBootService::class.java))
+            // FGS so the warm-up survives ColorOS background limits; from
+            // BOOT_COMPLETED a foreground start is permitted.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(svc)
+            } else {
+                context.startService(svc)
+            }
         }.onFailure { Log.w(TAG, "could not start boot service: ${it.message}") }
     }
 

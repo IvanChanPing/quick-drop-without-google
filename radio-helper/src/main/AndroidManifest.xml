@@ -32,6 +32,9 @@
     <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS"
         tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- FOREGROUND_SERVICE: the boot warm-up runs ~60-90s; foreground so ColorOS
+         background limits don't kill it before it re-establishes the connection. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
 
     <!-- Only apps signed with the same key (Super Drop) may bind the
          radio service. The in-process self-test activity is unaffected. -->

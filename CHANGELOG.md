@@ -5,6 +5,25 @@ entries here cover only fork-specific changes.
 
 ## [Unreleased]
 
+### 2026-06-08 (later 13) — Boot persistence hardened: FOREGROUND warm-up + retry (adb-auto-enable model)
+- **Persistence is the requirement**, and it is a SOLVED problem on this device family: the
+  adb-auto-enable reference (libadb-android based, README explicitly covers OnePlus/ColorOS Android 14)
+  does persistent wireless-ADB across reboot, no root, no per-boot manual step, with our exact mechanism
+  (BootReceiver → re-enable `adb_wifi_enabled` via WSS → mDNS port → connect with the STORED paired key).
+  The pairing key + device-side trust persist across reboot; we just re-enable + reconnect.
+- Hardened `AdbWifiBootService` to match the reference's ColorOS boot pacing: now a FOREGROUND service
+  (so ColorOS background limits don't kill the ~60-90s warm-up), waits 60s for the system to settle,
+  then retries `ensureReady` up to 3× (15s apart) until adbd advertises a port. Brief low-importance
+  "Radio helper / Preparing…" notification, removed when done.
+- `AdbWifiBootReceiver` now `startForegroundService` on O+. Manifest: added `FOREGROUND_SERVICE`.
+- **Defense in depth:** even if the boot warm-up is killed/skipped, the TAP path self-heals —
+  `AdbWifiRadio.setWifi` calls `ensureReady` itself on the first NFC tap, so persistence does NOT depend
+  on the boot service succeeding; worst case the first post-reboot tap is ~10-15s slower. No manual step
+  either way.
+- **Build:** `:radio-helper:assembleDebug` BUILD SUCCESSFUL. radio-helper-debug.apk refreshed.
+- **Status:** compile-only / device-UNVERIFIED. The reboot test (pair once → reboot → toggle with no
+  manual step) is the proof; the mechanism is proven on ColorOS by the reference.
+
 ### 2026-06-08 (later 12) — NOTIFICATION-reply pairing (the Brevent trick) — makes pairing POSSIBLE
 - **Problem:** on the user's ColorOS the Wireless-debugging "Pair device with pairing code" dialog
   CLOSES the moment you switch apps, and Settings can't be put in split screen — so the
