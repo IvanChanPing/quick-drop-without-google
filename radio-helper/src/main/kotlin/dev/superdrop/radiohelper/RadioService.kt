@@ -26,7 +26,7 @@ internal class RadioService : Service() {
             val on = msg.arg1 == 1
             val result =
                 when (msg.what) {
-                    MSG_SET_WIFI -> RadioToggler.setWifi(this, on)
+                    MSG_SET_WIFI -> RadioToggler.setWifiSilent(this, on)
                     MSG_SET_BLUETOOTH -> RadioToggler.setBluetooth(on)
                     MSG_QUERY ->
                         return@Handler replyState(msg)

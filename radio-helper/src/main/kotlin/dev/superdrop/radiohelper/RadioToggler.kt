@@ -70,6 +70,17 @@ internal object RadioToggler {
     }
 
     /**
+     * Silent-only Wi-Fi toggle: direct `setWifiEnabled` then Shizuku, NO
+     * panel. For the headless [RadioService] (bound by the main app) — returns
+     * `true` only if a silent path succeeded, so the caller knows whether it
+     * must fall back to the panel ([openWifiPanel]) itself (foreground).
+     */
+    fun setWifiSilent(
+        context: Context,
+        on: Boolean,
+    ): Boolean = setWifi(context, on) || ShizukuRadio.trySetWifi(context, on)
+
+    /**
      * Open the system Wi-Fi settings panel (API 29+ inline slide-up; older =
      * full Wi-Fi settings) so the user can flip Wi-Fi with one tap. There is
      * no one-tap "allow turn on Wi-Fi" dialog like Bluetooth's

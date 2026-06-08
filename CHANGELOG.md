@@ -5,6 +5,18 @@ entries here cover only fork-specific changes.
 
 ## [Unreleased]
 
+### 2026-06-08 (later 5) — radio-helper RadioService returns silent-only Wi-Fi result
+- Per the finalized auto-toggle spec (BT automatic; Wi-Fi silent if WRITE_SECURE_SETTINGS/Shizuku
+  else panel): the bound `RadioService` (called by the main app) now routes `MSG_SET_WIFI` through
+  `RadioToggler.setWifiSilent` (direct `setWifiEnabled` → Shizuku, **no panel**) and replies success.
+  So the main app learns whether the silent path worked and, if not, shows the Wi-Fi settings panel
+  itself (foreground) — the panel must NOT be launched from the headless helper/background service
+  (Android 14 background-activity-launch limits). Build OK; root APK refreshed.
+- Spec recorded; remaining main-app integration (bind RadioService on the cold-tap wake → capture
+  each radio's prior state → BT auto-enable + Wi-Fi silent-or-panel-only-if-off → restore what we
+  turned on after the transfer terminal) is the next step. Wi-Fi branch (automatic vs two-tap panel)
+  depends on the device-test of the silent path on the user's ColorOS phone.
+
 ### 2026-06-08 (later 4) — radio-helper Wi-Fi ladder: Shizuku fallback + panel pop-up
 - Added the full Wi-Fi enable ladder to `:radio-helper` (`RadioToggler.setWifiSmart`):
   1. direct `setWifiEnabled` (silent; works after the one-time ADB WRITE_SECURE_SETTINGS grant),
