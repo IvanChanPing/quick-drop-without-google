@@ -67,8 +67,8 @@ class QuickShareNfcCodecTest {
                 serviceIdHash = serviceIdHash,
                 endpointInfo = endpointInfo,
             )
-        // header = (1<<5)|2 = 0x22.
-        assertThat(tag[0]).isEqualTo(0x22.toByte())
+        // header = (1<<5)|3 = 0x23 (PCP 3 = P2P_POINT_TO_POINT, Quick Share's strategy).
+        assertThat(tag[0]).isEqualTo(0x23.toByte())
         // endpointId bytes 1..4.
         assertThat(tag.copyOfRange(1, 5)).isEqualTo(endpointId)
         // serviceIdHash bytes 5..7.
@@ -97,7 +97,7 @@ class QuickShareNfcCodecTest {
         val parsed = QuickShareNfcCodec.parseNfcTag(tag)
         assertThat(parsed).isNotNull()
         assertThat(parsed!!.version).isEqualTo(1)
-        assertThat(parsed.pcp).isEqualTo(QuickShareNfcCodec.PCP_P2P_STAR)
+        assertThat(parsed.pcp).isEqualTo(QuickShareNfcCodec.PCP_P2P_POINT_TO_POINT)
         assertThat(parsed.endpointId).isEqualTo(endpointId)
         assertThat(parsed.serviceIdHash).isEqualTo(serviceIdHash)
         assertThat(parsed.endpointInfo).isEqualTo(endpointInfo)
@@ -131,7 +131,7 @@ class QuickShareNfcCodecTest {
 
     @Test
     fun hhwvResponse_roundTrips_andHasVerifiedTags() {
-        val nfcTag = byteArrayOf(0x22, 1, 2, 3, 4)
+        val nfcTag = byteArrayOf(0x23, 1, 2, 3, 4)
         val rxAdv = byteArrayOf(0x55, 0x66)
         val resp = QuickShareNfcCodec.HhwvResponse(nfcTag = nfcTag, rxAdv = rxAdv)
         val bytes = QuickShareNfcCodec.encodeHhwvResponse(resp)

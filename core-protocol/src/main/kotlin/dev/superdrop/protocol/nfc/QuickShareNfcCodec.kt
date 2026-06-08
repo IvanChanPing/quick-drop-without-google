@@ -77,12 +77,17 @@ public object QuickShareNfcCodec {
     private const val BT_MAC_LEN = 6
 
     /**
-     * Strategy/PCP value we advertise. `2` = P2P_STAR, Quick Share's
-     * default. The deserializer accepts {1,2,3}; the exact int is not
-     * cross-verified against `dfet.x` so this is best-effort (FLAGGED in
-     * the bytemap doc §3).
+     * Strategy/PCP value we advertise. Quick Share's file-transfer session
+     * uses Strategy **P2P_POINT_TO_POINT**, and the stock receiver's post-tap
+     * handler (`dfdo.run`) DISCARDS the tag unless its PCP equals
+     * `dfet.x(localStrategy)`. Verified from GMS 26.18.33 smali: `dfet.x`
+     * maps P2P_STAR=1, P2P_CLUSTER=2, P2P_POINT_TO_POINT=3, and the Quick
+     * Share Sharing connector pins `Strategy.c` (P2P_POINT_TO_POINT) -> PCP 3
+     * -> deym header byte `(1<<5)|3 = 0x23`. (The previous value `2` was both
+     * the wrong strategy — that's P2P_CLUSTER — and mislabeled "P2P_STAR".)
+     * The deserializer accepts {1,2,3}.
      */
-    public const val PCP_P2P_STAR: Int = 2
+    public const val PCP_P2P_POINT_TO_POINT: Int = 3
 
     private const val NFC_TAG_VERSION = 1
     private const val UNSIGNED_BYTE = 0xFF
@@ -231,14 +236,14 @@ public object QuickShareNfcCodec {
      * @param endpointInfo the Nearby EndpointInfo blob (same as mDNS/BLE).
      * @param btMac optional 6-byte BT-Classic MAC; defaults to all-zero
      *   (the "no MAC" sentinel — the Wi-Fi/multi-medium path needs no MAC).
-     * @param pcp Strategy/PCP int (default [PCP_P2P_STAR]).
+     * @param pcp Strategy/PCP int (default [PCP_P2P_POINT_TO_POINT]).
      */
     public fun encodeNfcTag(
         endpointId: ByteArray,
         serviceIdHash: ByteArray,
         endpointInfo: ByteArray,
         btMac: ByteArray = ByteArray(BT_MAC_LEN),
-        pcp: Int = PCP_P2P_STAR,
+        pcp: Int = PCP_P2P_POINT_TO_POINT,
     ): ByteArray {
         require(endpointId.size == ENDPOINT_ID_LEN) {
             "endpointId must be $ENDPOINT_ID_LEN bytes, got ${endpointId.size}"

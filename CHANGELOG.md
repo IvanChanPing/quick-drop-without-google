@@ -5,6 +5,27 @@ entries here cover only fork-specific changes.
 
 ## [Unreleased]
 
+### 2026-06-08
+- **FIX (NFC tap interop): deym NfcTag PCP corrected 2 → 3 so a stock Google Quick
+  Share tap actually registers Super Drop as a peer.** Root cause (verified from GMS
+  26.18.33 smali, classes.dex/classes8 disasm): Quick Share's file-transfer session
+  uses Strategy `P2P_POINT_TO_POINT`, and the stock receiver's post-tap handler
+  `dfdo.run` DISCARDS the tapped tag unless `deym.pcp == dfet.x(localStrategy)`.
+  `dfet.x` maps P2P_STAR=1, P2P_CLUSTER=2, P2P_POINT_TO_POINT=3, so the required
+  header byte is `(1<<5)|3 = 0x23`. Super Drop's `QuickShareNfcCodec` emitted PCP 2
+  (`0x22`, actually P2P_CLUSTER and mislabeled "P2P_STAR") → every native-QS read of
+  our HCE failed the Pcp check silently. Changed `PCP_P2P_STAR=2` →
+  `PCP_P2P_POINT_TO_POINT=3` (`QuickShareNfcCodec.kt`), updated the `encodeNfcTag`
+  default + KDoc, and updated the codec unit tests' golden bytes (`0x22` → `0x23`).
+  All 8 `QuickShareNfcCodecTest` cases pass; `:app:assembleDebug` succeeds.
+  Also corrected `docs/NFC_INTEROP_BYTEMAP.md` (PCP now VERIFIED = 3, not flagged).
+  Mechanism note: native QS NFC tap is UI-driven — the sender's share sheet arms
+  `NfcAdapter.enableReaderMode` and rebroadcasts the read tag into GMS as
+  `ACTION_TAG_DISCOVERED`; the receiver answers on HCE AID `F00000FE2C`. NFC
+  advertising/discovery is gated by a server-pushed phenotype flag (`ifif.aC()`),
+  enabled on real devices. NOT device-tested here (no NFC hardware) — byte/Strategy
+  facts verified from smali, build + unit tests verified locally.
+
 ### 2026-06-06 (later)
 - **FIX: "Bridge card style" (consent notification option 2) rendered NOTHING on
   device — root cause found + fixed, verified on a real notification surface.** The
