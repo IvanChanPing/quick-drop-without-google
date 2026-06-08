@@ -5,6 +5,16 @@ entries here cover only fork-specific changes.
 
 ## [Unreleased]
 
+### 2026-06-08 (later 7) — self-ADB Wi-Fi (option 2): foundation
+- Decided Wi-Fi silent path = **Android-11 wireless-debugging self-ADB** (not Tasker's legacy tcpip,
+  not Brevent which needs ADB every boot). Reference: adb-auto-enable (proves no-PC-after-install:
+  pair once on-device -> self-grant WRITE_SECURE_SETTINGS via `pm grant` -> BootReceiver re-enables
+  `adb_wifi_enabled` + mDNS port discovery + self-connect with stored key).
+- Step 1 (this commit): added `com.github.MuntashirAkon:libadb-android:1.0.1` (jitpack) + Conscrypt +
+  BouncyCastle to `:app`; added jitpack repo to settings. `:app:assembleDebug` succeeds (deps resolve,
+  no class conflicts). NOT device-tested. Next: AdbWifiManager (pair/connect/exec) -> pairing UI ->
+  self-grant -> boot service -> `svc wifi` toggle -> slot into the Wi-Fi ladder.
+
 ### 2026-06-08 (later 6) — radio-helper: remove WSS dead-end, fix ANR at the source, harden Shizuku
 - **Removed `WRITE_SECURE_SETTINGS`** from the helper: it does NOT affect `setWifiEnabled` (AOSP
   exemptions are DO/PO/system only), so granting it never helped and was misleading. Silent Wi-Fi on
