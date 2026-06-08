@@ -23,6 +23,7 @@ dependencyResolutionManagement {
 rootProject.name = "SuperDrop"
 
 include(":app")
+include(":radio-helper")
 include(":service-android")
 include(":discovery-android")
 include(":core-protocol")

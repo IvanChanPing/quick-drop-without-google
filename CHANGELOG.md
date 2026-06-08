@@ -5,6 +5,26 @@ entries here cover only fork-specific changes.
 
 ## [Unreleased]
 
+### 2026-06-08 (later 2) — radio-helper companion APK (targetSdk-28 Wi-Fi/BT toggle)
+- **NEW MODULE `:radio-helper`** — standalone companion APK (`dev.superdrop.radiohelper`,
+  **targetSdk 28**) that can silently toggle Wi-Fi and Bluetooth, for the NFC-tap "force radios on"
+  feature. Rationale (verified verbatim from AOSP docs): the radio-enable APIs are
+  **targetSdkVersion-gated, not permission-gated** — `WifiManager.setWifiEnabled()` works for
+  targetSdk ≤ 28, `BluetoothAdapter.enable()/disable()` for targetSdk ≤ 32. The main app targets a
+  modern SDK so it cannot hold this capability; a separate API-28 APK can (same trick as Tasker
+  Settings / MacroDroid Helper). Corrects an earlier wrong assumption that silent toggle needs
+  Shizuku/root.
+  - `RadioToggler` (the framework calls), `RadioService` (signature-permission-guarded Messenger API:
+    MSG_SET_WIFI / MSG_SET_BLUETOOTH / MSG_QUERY for the main app to bind), and `SelfTestActivity`
+    (launch the helper alone, tap to toggle, see the call's return value).
+  - `:radio-helper:assembleDebug` succeeds → `radio-helper-debug.apk` (~0.8 MB). Only deprecation
+    warnings (expected — we deliberately use the legacy APIs).
+  - **DEVICE-TEST FIRST (esp. OnePlus/ColorOS):** the AOSP gating is documented, but OEMs may clamp
+    it. Install ONLY this APK and use SelfTestActivity to confirm both radios actually flip before the
+    main-app integration (bind on cold NFC tap → capture prior state → enable off radio(s) → restore
+    after transfer) is built on top. Fallback if the OEM blocks it: ACTION_REQUEST_ENABLE +
+    Settings.Panel.ACTION_WIFI, or Shizuku.
+
 ### 2026-06-08 (later) — cold NFC tap-to-receive wake
 - **FEAT: tapping our idle HCE now wakes the receiver into a discoverable
   window, so a cold "just browsing" phone starts receiving on tap** (matches
