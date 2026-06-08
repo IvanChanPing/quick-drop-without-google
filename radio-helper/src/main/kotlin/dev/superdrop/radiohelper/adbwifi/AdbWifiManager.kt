@@ -16,7 +16,6 @@ import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter
 import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder
-import org.conscrypt.Conscrypt
 import java.io.ByteArrayInputStream
 import java.io.File
 import java.math.BigInteger
@@ -151,7 +150,10 @@ internal class AdbWifiManager private constructor(
         private fun ensureProviders() {
             if (providersReady) return
             runCatching {
-                Security.insertProviderAt(Conscrypt.newProvider(), 1)
+                // libadb 3.1.1's SslUtils instantiates org.conscrypt.OpenSSLProvider
+                // itself for TLSv1.3 — we do NOT insert Conscrypt as a global provider
+                // (that was needed for 1.0.1 and could interfere). We only ensure the
+                // BouncyCastle provider for our self-signed cert generation.
                 if (Security.getProvider("BC") == null) Security.addProvider(BouncyCastleProvider())
             }.onFailure { Log.w(TAG, "security providers: ${it.message}") }
             providersReady = true
@@ -197,19 +199,28 @@ internal class AdbWifiManager private constructor(
                 false
             }
 
+        /** mDNS discovery + connect budget for [autoConnect] (per attempt). */
+        private const val AUTOCONNECT_TIMEOUT_MS = 10_000L
+
         /**
-         * Connect to adbd at host:port, run a shell command, return its stdout
-         * (empty string on failure). Blocking — call off the main thread.
+         * Connect to the device's OWN adbd via libadb's `autoConnect` (mDNS
+         * discovery of `_adb-tls-connect._tcp` + TLSv1.3, the library's intended
+         * path as of 3.1.1), run a shell command, return its stdout (null on
+         * failure). Replaces the old manual `connect(host, port)` that hit
+         * IOException on ColorOS. Requires wireless debugging to be ON (the caller
+         * runs [enableWirelessDebugging] first) and a prior successful [pair].
+         * Blocking — call off the main thread. Records [lastError] on failure
+         * (incl. `AdbPairingRequiredException` when the key isn't trusted).
          */
         fun runShell(
             context: Context,
-            host: String,
-            port: Int,
             command: String,
         ): String? =
             runCatching {
                 manager(context).use { mgr ->
-                    mgr.connect(host, port)
+                    if (!mgr.autoConnect(context.applicationContext, AUTOCONNECT_TIMEOUT_MS)) {
+                        throw java.io.IOException("autoConnect returned false")
+                    }
                     mgr.openStream("shell:$command").use { stream ->
                         stream.openInputStream().bufferedReader().readText()
                     }
@@ -217,15 +228,15 @@ internal class AdbWifiManager private constructor(
             }.onSuccess { lastError = null }
                 .getOrElse {
                     lastError = "${it.javaClass.simpleName}: ${it.message}"
-                    Log.w(TAG, "runShell '$command' @ $host:$port failed: $lastError")
+                    Log.w(TAG, "runShell '$command' failed: $lastError")
                     null
                 }
 
         /**
          * Enable Android-11 Wireless Debugging by writing the secure setting
          * (needs WRITE_SECURE_SETTINGS, which we self-grant after the first
-         * pairing). @return true if the write succeeded. After this, adbd comes
-         * up on a RANDOM port → discover it via mDNS before connecting.
+         * pairing). @return true if the write succeeded. After this, adbd comes up
+         * on a RANDOM port → [runShell]'s autoConnect discovers it via mDNS.
          */
         fun enableWirelessDebugging(context: Context): Boolean =
             runCatching {
@@ -237,15 +248,9 @@ internal class AdbWifiManager private constructor(
             }
 
         /** Self-grant WRITE_SECURE_SETTINGS over the ADB shell (one-time, after pairing). */
-        fun selfGrantWriteSecureSettings(
-            context: Context,
-            host: String,
-            port: Int,
-        ): Boolean =
+        fun selfGrantWriteSecureSettings(context: Context): Boolean =
             runShell(
                 context,
-                host,
-                port,
                 "pm grant ${context.packageName} android.permission.WRITE_SECURE_SETTINGS",
             ) != null
 
@@ -256,11 +261,8 @@ internal class AdbWifiManager private constructor(
          */
         fun setWifi(
             context: Context,
-            host: String,
-            port: Int,
             on: Boolean,
-        ): Boolean =
-            runShell(context, host, port, "svc wifi ${if (on) "enable" else "disable"}") != null
+        ): Boolean = runShell(context, "svc wifi ${if (on) "enable" else "disable"}") != null
     }
 }
 

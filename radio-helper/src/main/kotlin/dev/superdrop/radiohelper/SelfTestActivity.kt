@@ -15,7 +15,6 @@ import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
-import dev.superdrop.radiohelper.adbwifi.AdbMdns
 import dev.superdrop.radiohelper.adbwifi.AdbWifiManager
 import dev.superdrop.radiohelper.adbwifi.AdbWifiRadio
 import rikka.shizuku.Shizuku
@@ -195,16 +194,15 @@ internal class SelfTestActivity : Activity() {
                 text = "2. Self-grant WRITE_SECURE_SETTINGS"
                 setOnClickListener {
                     val ctx = this@SelfTestActivity
-                    render("Discovering port + granting…")
+                    render("Connecting (autoConnect) + granting…")
                     Thread {
-                        val p = AdbMdns.discoverPort(ctx)
+                        // autoConnect (inside selfGrant) does mDNS + TLS itself.
+                        AdbWifiManager.enableWirelessDebugging(ctx)
                         val msg =
-                            if (p < 0) {
-                                "No adbd port via mDNS — is Wireless debugging ON?"
-                            } else if (AdbWifiManager.selfGrantWriteSecureSettings(ctx, "127.0.0.1", p)) {
-                                "WSS self-granted via ADB (port $p)"
+                            if (AdbWifiManager.selfGrantWriteSecureSettings(ctx)) {
+                                "WSS self-granted via self-ADB"
                             } else {
-                                "Grant FAILED (paired? port $p)"
+                                "Grant FAILED — ${AdbWifiManager.lastError ?: "paired? wireless debugging on?"}"
                             }
                         runOnUiThread { render(msg) }
                     }.start()

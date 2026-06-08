@@ -69,8 +69,8 @@ internal class PairingReplyReceiver : BroadcastReceiver() {
                                 "dialog open? Try toggling Wireless debugging off/on, reopen the dialog, retry."
                         AdbWifiManager.pair(appContext, hp.host, hp.port, code) -> {
                             // Paired → re-enable wireless debugging + warm the connection.
-                            val port = AdbWifiRadio.ensureReady(appContext)
-                            "Paired OK at ${hp.host}:${hp.port}. self-ADB ${if (port > 0) "ready (port $port)" else "warm-up: ${AdbWifiRadio.lastStatus}"}"
+                            val ready = AdbWifiRadio.ensureReady(appContext)
+                            "Paired OK at ${hp.host}:${hp.port}. self-ADB ${if (ready) "ready" else "warm-up: ${AdbWifiRadio.lastStatus}"}"
                         }
                         else ->
                             "Pair FAILED at ${hp.host}:${hp.port} — wrong code or it expired. " +

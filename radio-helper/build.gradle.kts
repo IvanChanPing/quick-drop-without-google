@@ -75,11 +75,19 @@ dependencies {
 
     // Self-ADB Wi-Fi (silent, no Shizuku): pure-Java Android-11 ADB client. The
     // helper pairs ONCE with the device's own Wireless Debugging, then self-
-    // connects to localhost adbd (shell UID) to run `svc wifi`. Self-starts on
-    // boot (adb-auto-enable model) so there's NO per-reboot manual step.
-    // Conscrypt + BouncyCastle = the TLS/cert stack libadb's pairing needs.
-    implementation("com.github.MuntashirAkon:libadb-android:1.0.1")
+    // connects via the library's autoConnect() (mDNS + TLSv1.3) to run `svc wifi`.
+    // Self-starts on boot (adb-auto-enable model) so there's NO per-reboot step.
+    // 3.1.1 (was 1.0.1): fixes the "connect after pairing fails" class of issue
+    // (libadb-android #4) and provides autoConnect()/connectTls() which discover
+    // and connect correctly — the manual discover+connect(127.0.0.1) on 1.0.1 hit
+    // IOException on ColorOS (paired but adbd unreachable).
+    implementation("com.github.MuntashirAkon:libadb-android:3.1.1")
+    // conscrypt: libadb's SslUtils reflectively instantiates org.conscrypt.
+    // OpenSSLProvider for a self-contained TLSv1.3 (avoids the hidden-API path the
+    // platform conscrypt would need). We do NOT register it as a global provider.
     implementation("org.conscrypt:conscrypt-android:2.5.2")
-    implementation("org.bouncycastle:bcprov-jdk15on:1.70")
-    implementation("org.bouncycastle:bcpkix-jdk15on:1.70")
+    // BouncyCastle = our self-signed cert generation. Aligned to jdk15to18:1.81 to
+    // match the bcprov libadb 3.1.1 pulls in (avoid a bcprov/bcpkix version skew).
+    implementation("org.bouncycastle:bcprov-jdk15to18:1.81")
+    implementation("org.bouncycastle:bcpkix-jdk15to18:1.81")
 }

@@ -5,6 +5,35 @@ entries here cover only fork-specific changes.
 
 ## [Unreleased]
 
+### 2026-06-08 (later 15) — libadb 1.0.1 → 3.1.1 + autoConnect (the real fix for "adbd unreachable")
+- **Device evidence:** notification pairing SUCCEEDED, but the self-ADB CONNECT failed with the real
+  error **`IOException: null`** (surfaced by "later 14"'s diagnostics) — TCP connected but the ADB/TLS
+  handshake then failed, even trying the Wi-Fi IP. The Wi-Fi toggle "working" was the Shizuku rung.
+- **Root cause:** we were on **libadb-android 1.0.1** (2022); the maintainer has a known **"Connect
+  after pairing fails"** issue (#4) from that era, and the current version is **3.1.1**. The fix is the
+  version bump PLUS using the library's own **`autoConnect(context, timeout)`** (added in 3.x), which
+  does mDNS discovery + TLSv1.3 connect internally — instead of our hand-rolled discover + connect(host,
+  port) that 1.0.1 couldn't complete on ColorOS.
+- **Changes:**
+  - `build.gradle.kts`: libadb `1.0.1 → 3.1.1`; BouncyCastle aligned to `jdk15to18:1.81` (matches the
+    bcprov libadb 3.1.1 pulls in); kept `conscrypt-android` (libadb's SslUtils instantiates
+    `org.conscrypt.OpenSSLProvider` itself for TLSv1.3, avoiding the hidden-API path).
+  - `AdbWifiManager`: removed the manual `Conscrypt.newProvider()` global insertion (needed for 1.0.1,
+    now redundant/interfering — libadb sets up TLS itself). `runShell(context, command)` now uses
+    `mgr.autoConnect(context, 10s)` (no manual host/port); `setWifi(context,on)` /
+    `selfGrantWriteSecureSettings(context)` updated. `pair(host,port,code)` unchanged (notification flow
+    still resolves the pairing host/port via mDNS).
+  - `AdbWifiRadio`: dropped the cachedHost/cachedPort/loopback logic; `ensureReady` now returns Boolean
+    (probe via autoConnect) and `setWifi` delegates to the autoConnect path. `lastStatus` still surfaces
+    `AdbWifiManager.lastError`.
+  - Updated callers: `AdbWifiBootService` (Boolean), `PairingReplyReceiver` (Boolean), `SelfTestActivity`
+    step 2 (self-grant via autoConnect, no manual port).
+- **Build:** `:radio-helper:assembleDebug` BUILD SUCCESSFUL. radio-helper-debug.apk ≈ 15.5 MB (libadb
+  3.1.1 + bundled BouncyCastle/spake2).
+- **Status:** compile-only / device-UNVERIFIED. Next test: "3. Test self-ADB Wi-Fi" — autoConnect should
+  now complete the handshake and run `svc wifi`; if not, the status shows the precise new error
+  (e.g. `AdbPairingRequiredException` would mean the pairing didn't actually stick).
+
 ### 2026-06-08 (later 14) — self-ADB connect: use resolved Wi-Fi IP (not loopback) + real error in status
 - **Device evidence:** notification-reply pairing SUCCEEDED (status showed "PAIRED" — the truthful
   marker), but the self-ADB CONNECT then failed ("adbd unreachable", port 40697). The Wi-Fi toggle that

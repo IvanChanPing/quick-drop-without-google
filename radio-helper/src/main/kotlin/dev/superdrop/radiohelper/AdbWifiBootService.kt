@@ -66,16 +66,16 @@ internal class AdbWifiBootService : Service() {
             .onFailure { Log.w(TAG, "startForeground failed: ${it.message}") }
         Thread {
             runCatching { Thread.sleep(INITIAL_DELAY_MS) }
-            var port = -1
+            var ready = false
             var attempt = 0
             while (attempt < MAX_ATTEMPTS) {
                 attempt++
-                port = runCatching { AdbWifiRadio.ensureReady(this) }.getOrDefault(-1)
-                Log.i(TAG, "boot warm-up attempt $attempt/$MAX_ATTEMPTS -> port=$port")
-                if (port > 0) break
+                ready = runCatching { AdbWifiRadio.ensureReady(this) }.getOrDefault(false)
+                Log.i(TAG, "boot warm-up attempt $attempt/$MAX_ATTEMPTS -> ready=$ready")
+                if (ready) break
                 if (attempt < MAX_ATTEMPTS) runCatching { Thread.sleep(RETRY_DELAY_MS) }
             }
-            Log.i(TAG, "boot warm-up done (port=$port). Tap path self-heals if this failed.")
+            Log.i(TAG, "boot warm-up done (ready=$ready). Tap path self-heals if this failed.")
             // Short-lived: drop the foreground notification and stop.
             runCatching {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
