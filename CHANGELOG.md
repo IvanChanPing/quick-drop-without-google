@@ -5,6 +5,37 @@ entries here cover only fork-specific changes.
 
 ## [Unreleased]
 
+### 2026-06-08 (later 10) — self-ADB Wi-Fi: MIGRATED into :radio-helper + boot self-start (architecture fix)
+- **Why:** the self-ADB Wi-Fi stack was wrongly prototyped inside Super Drop `:app`. It belongs in the
+  universal `:radio-helper` so every sharing app (Super Drop, Bridge, O+ Connect, …) reaches ONE helper
+  instead of each embedding an ADB client. Also corrected a design error: the *enable-wireless-debugging
+  + mDNS-discover + connect* step was about to be done lazily inside `RadioService` on each tap — it must
+  run on BOOT instead (the OS resets `adb_wifi_enabled` every reboot), so the first transfer after a
+  reboot doesn't eat a ~10s cold-start.
+- **Moved** `AdbWifiManager` + `AdbMdns` from `app/.../adbwifi/` into
+  `radio-helper/.../adbwifi/` (repackaged `dev.superdrop.radiohelper.adbwifi`). Moved the libadb +
+  Conscrypt + BouncyCastle deps from `:app` to `:radio-helper`. Removed the `:app` debug "SuperDrop
+  ADB-WiFi Test" launcher.
+- **New `AdbWifiRadio`** (shared engine) splits the two jobs explicitly: `ensureReady()` = BOOT job
+  (re-enable wireless debugging + discover/cache adbd port); `setWifi(on)` = TAP job (`svc wifi` over the
+  warm connection, re-warms once if the port is stale).
+- **New `AdbWifiBootReceiver` (RECEIVE_BOOT_COMPLETED) → `AdbWifiBootService`** = self-start on boot,
+  calls `ensureReady()` on a background thread. NO per-reboot manual step (the HARD RULE).
+- **New helper launcher `AdbWifiTestActivity`** ("Radio Helper: ADB-WiFi Setup") — one-time pairing
+  (steps 1 Pair → 2 Self-grant WSS → 3 Toggle Wi-Fi via `AdbWifiRadio`); its key/cert live in the
+  helper's filesDir (same process as the boot service + RadioService).
+- **Wired the Wi-Fi ladder** (`RadioToggler.setWifiSilent`/`setWifiSmart`): direct `setWifiEnabled` →
+  **self-ADB** (preferred; self-starts on boot) → Shizuku (optional) → panel. `RadioService` already runs
+  this on its background HandlerThread.
+- **Manifest:** added INTERNET, WRITE_SECURE_SETTINGS (declared so the one-time `pm grant` self-grant is
+  allowed; only re-enables wireless debugging, NOT for setWifiEnabled), RECEIVE_BOOT_COMPLETED; registered
+  the activity, receiver, boot service.
+- **Build:** `:radio-helper:assembleDebug` BUILD SUCCESSFUL (only expected legacy-API deprecation warnings
+  for BluetoothAdapter.enable/disable). `radio-helper-debug.apk` ≈ 11.9 MB (now bundles libadb).
+- **Status:** compile-only / device-UNVERIFIED. The make-or-break on-device test (pair → self-grant →
+  toggle on ColorOS, then reboot-persistence) is run from the helper's "Radio Helper: ADB-WiFi Setup"
+  launcher.
+
 ### 2026-06-08 (later 9) — self-ADB Wi-Fi: on-device TEST screen (debug)
 - Step 5: `AdbMdns` (mDNS `_adb-tls-connect._tcp` port discovery) + debug-only
   `AdbWifiTestActivity` (launcher "SuperDrop ADB-WiFi Test"). Drives the full loop on-device:

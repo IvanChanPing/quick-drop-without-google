@@ -22,20 +22,9 @@
             </intent-filter>
         </activity>
 
-        <!-- Debug-only: launcher icon "SuperDrop ADB-WiFi Test" to exercise the
-             self-ADB Wi-Fi loop (pair → self-grant WSS → svc wifi) on-device. -->
-        <activity
-            android:name=".debug.AdbWifiTestActivity"
-            android:exported="true"
-            android:label="SuperDrop ADB-WiFi Test">
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
-            <intent-filter>
-                <action android:name="dev.superdrop.debug.ADB_WIFI_TEST" />
-                <category android:name="android.intent.category.DEFAULT" />
-            </intent-filter>
-        </activity>
+        <!-- NOTE: the "SuperDrop ADB-WiFi Test" launcher was REMOVED — the
+             self-ADB Wi-Fi feature now lives in :radio-helper, whose own
+             "Radio Helper: ADB-WiFi Setup" launcher (AdbWifiTestActivity) does
+             the one-time pairing + on-device test. -->
     </application>
 </manifest>

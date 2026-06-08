@@ -72,4 +72,14 @@ dependencies {
     // unlike binding the hidden IWifiManager AIDL (transaction codes shift).
     implementation("dev.rikka.shizuku:api:13.1.5")
     implementation("dev.rikka.shizuku:provider:13.1.5")
+
+    // Self-ADB Wi-Fi (silent, no Shizuku): pure-Java Android-11 ADB client. The
+    // helper pairs ONCE with the device's own Wireless Debugging, then self-
+    // connects to localhost adbd (shell UID) to run `svc wifi`. Self-starts on
+    // boot (adb-auto-enable model) so there's NO per-reboot manual step.
+    // Conscrypt + BouncyCastle = the TLS/cert stack libadb's pairing needs.
+    implementation("com.github.MuntashirAkon:libadb-android:1.0.1")
+    implementation("org.conscrypt:conscrypt-android:2.5.2")
+    implementation("org.bouncycastle:bcprov-jdk15on:1.70")
+    implementation("org.bouncycastle:bcpkix-jdk15on:1.70")
 }

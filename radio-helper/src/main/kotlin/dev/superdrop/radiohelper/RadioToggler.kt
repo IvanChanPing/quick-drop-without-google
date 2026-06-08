@@ -11,6 +11,7 @@ import android.content.Intent
 import android.net.wifi.WifiManager
 import android.os.Build
 import android.provider.Settings
+import dev.superdrop.radiohelper.adbwifi.AdbWifiRadio
 
 /**
  * The actual radio toggling. Works only because this APK targets API 28:
@@ -57,30 +58,41 @@ internal object RadioToggler {
      *    the legacy targetSdk path (NOT ColorOS). No ADB grant helps: the gate
      *    is the signature-level NETWORK_SETTINGS, and WRITE_SECURE_SETTINGS is
      *    not consulted by this API.
-     * 2. Shizuku — silent; the shell-UID `svc wifi` path for OEMs (ColorOS)
-     *    that clamp #1.
-     * 3. NEEDS_USER — neither silent path is available; caller pops the Wi-Fi
-     *    settings panel ([openWifiPanel]) so the user flips it with one tap.
+     * 2. self-ADB ([AdbWifiRadio]) — silent; `svc wifi` over the helper's OWN
+     *    paired Wireless-Debugging connection (shell UID). Preferred over Shizuku
+     *    because it self-starts on boot with NO per-reboot manual step. Requires
+     *    the one-time pairing; no-ops (returns false) until then.
+     * 3. Shizuku — silent; the shell-UID `svc wifi` path, only if the user
+     *    already runs Shizuku (manual per-reboot start → optional fallback only).
+     * 4. NEEDS_USER — no silent path available; caller pops the Wi-Fi settings
+     *    panel ([openWifiPanel]) so the user flips it with one tap.
      */
     fun setWifiSmart(
         context: Context,
         on: Boolean,
     ): WifiOutcome {
         if (setWifi(context, on)) return WifiOutcome.SILENT_OK
+        if (AdbWifiRadio.setWifi(context, on)) return WifiOutcome.SILENT_OK
         if (ShizukuRadio.trySetWifi(context, on)) return WifiOutcome.SILENT_OK
         return WifiOutcome.NEEDS_USER
     }
 
     /**
-     * Silent-only Wi-Fi toggle: direct `setWifiEnabled` then Shizuku, NO
+     * Silent-only Wi-Fi toggle: direct `setWifiEnabled` → self-ADB → Shizuku, NO
      * panel. For the headless [RadioService] (bound by the main app) — returns
      * `true` only if a silent path succeeded, so the caller knows whether it
      * must fall back to the panel ([openWifiPanel]) itself (foreground).
+     *
+     * NOTE: blocks (self-ADB does socket/mDNS I/O) — [RadioService] already calls
+     * this on its background HandlerThread, never the main thread.
      */
     fun setWifiSilent(
         context: Context,
         on: Boolean,
-    ): Boolean = setWifi(context, on) || ShizukuRadio.trySetWifi(context, on)
+    ): Boolean =
+        setWifi(context, on) ||
+            AdbWifiRadio.setWifi(context, on) ||
+            ShizukuRadio.trySetWifi(context, on)
 
     /**
      * Open the system Wi-Fi settings panel (API 29+ inline slide-up; older =

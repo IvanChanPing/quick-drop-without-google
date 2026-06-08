@@ -16,10 +16,22 @@
     <uses-permission android:name="android.permission.BLUETOOTH" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
 
-    <!-- NOTE: WRITE_SECURE_SETTINGS is intentionally NOT declared. It does
-         NOT affect WifiManager.setWifiEnabled() — that API's only exemptions
-         are Device-Owner / Profile-Owner / system apps (per the AOSP doc).
-         Silent Wi-Fi on a clamping OEM (ColorOS) = Shizuku only; else panel. -->
+    <!-- Self-ADB Wi-Fi path (silent toggle without Shizuku, survives reboots):
+         * INTERNET — open the localhost TCP socket to the device's own adbd.
+         * WRITE_SECURE_SETTINGS — write Settings.Global.adb_wifi_enabled to bring
+           Wireless debugging back up after each reboot. We can't hold this at
+           install; the helper SELF-GRANTS it once via `pm grant ... ` over the
+           first ADB pairing (AdbWifiTestActivity step 2). It is declared here so
+           that self-grant is permitted (pm grant only works for declared perms).
+           NOTE: WRITE_SECURE_SETTINGS does NOT make setWifiEnabled() work — the
+           legacy targetSdk-28 path / Shizuku / self-ADB handle the actual toggle;
+           WSS is ONLY for re-enabling wireless debugging on boot.
+         * RECEIVE_BOOT_COMPLETED — self-start on boot to re-warm the connection
+           (AdbWifiBootReceiver), so there is NO per-reboot manual step. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
     <!-- Only apps signed with the same key (Super Drop) may bind the
          radio service. The in-process self-test activity is unaffected. -->
@@ -43,11 +55,40 @@
             </intent-filter>
         </activity>
 
+        <!-- On-device self-ADB Wi-Fi SETUP + TEST screen. Launcher label
+             "Radio Helper: ADB-WiFi Setup". Do the one-time pairing here
+             (steps 1→2→3) — creates the pairing key in the helper's filesDir. -->
+        <activity
+            android:name=".AdbWifiTestActivity"
+            android:exported="true"
+            android:label="Radio Helper: ADB-WiFi Setup">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
         <!-- Bound by :app via Messenger to flip radios on an NFC tap. -->
         <service
             android:name=".RadioService"
             android:exported="true"
             android:permission="dev.superdrop.radiohelper.permission.BIND_RADIO" />
+
+        <!-- SELF-START on boot: re-warm the self-ADB Wi-Fi connection after a
+             reboot (re-enable wireless debugging + mDNS-discover the adbd port),
+             so there is NO per-reboot manual step. Receiver only kicks the
+             service; the service does the blocking work on a background thread. -->
+        <receiver
+            android:name=".AdbWifiBootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+        <service
+            android:name=".AdbWifiBootService"
+            android:exported="false" />
 
         <!-- Shizuku provider (required by the Shizuku API to talk to the
              Shizuku/Sui service). The RadioShellService user service is NOT
