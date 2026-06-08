@@ -31,6 +31,11 @@ internal object ShizukuRadio {
     @Volatile
     private var service: IRadioShell? = null
 
+    /** Human-readable result of the last [trySetWifi] attempt (diagnostics). */
+    @Volatile
+    var lastStatus: String = "not attempted"
+        private set
+
     val isAvailable: Boolean
         get() =
             runCatching {
@@ -57,13 +62,35 @@ internal object ShizukuRadio {
         context: Context,
         on: Boolean,
     ): Boolean {
-        if (!isAvailable) return false
-        val svc = boundService(context) ?: return false
-        return runCatching { svc.setWifiEnabled(on) }.getOrElse {
-            Log.w(TAG, "setWifiEnabled via Shizuku failed: ${it.message}")
-            service = null // drop a dead binder so the next call rebinds
-            false
+        val running = runCatching { Shizuku.pingBinder() }.getOrDefault(false)
+        if (!running) {
+            lastStatus = "Shizuku not running"
+            return false
         }
+        if (runCatching { Shizuku.isPreV11() }.getOrDefault(true)) {
+            lastStatus = "Shizuku too old (pre-v11)"
+            return false
+        }
+        val granted =
+            runCatching { Shizuku.checkSelfPermission() == PackageManager.PERMISSION_GRANTED }
+                .getOrDefault(false)
+        if (!granted) {
+            lastStatus = "Shizuku permission NOT granted"
+            return false
+        }
+        val svc = boundService(context)
+        if (svc == null) {
+            lastStatus = "user-service bind failed/timeout"
+            return false
+        }
+        return runCatching { svc.setWifiEnabled(on) }
+            .onSuccess { lastStatus = if (it) "svc wifi OK" else "svc wifi returned false" }
+            .getOrElse {
+                lastStatus = "svc call threw: ${it.message}"
+                Log.w(TAG, "setWifiEnabled via Shizuku failed: ${it.message}")
+                service = null // drop a dead binder so the next call rebinds
+                false
+            }
     }
 
     @Synchronized

@@ -60,15 +60,27 @@ internal class SelfTestActivity : Activity() {
             Button(this).apply {
                 text = "Toggle Wi-Fi"
                 setOnClickListener {
-                    val target = !RadioToggler.isWifiOn(this@SelfTestActivity)
-                    when (RadioToggler.setWifiSmart(this@SelfTestActivity, target)) {
-                        RadioToggler.WifiOutcome.SILENT_OK ->
-                            render("Wi-Fi set to $target silently (direct or Shizuku)")
-                        RadioToggler.WifiOutcome.NEEDS_USER -> {
-                            val opened = RadioToggler.openWifiPanel(this@SelfTestActivity)
-                            render("No silent path — opened Wi-Fi panel: $opened")
+                    val ctx = this@SelfTestActivity
+                    val target = !RadioToggler.isWifiOn(ctx)
+                    val wss =
+                        checkSelfPermission(Manifest.permission.WRITE_SECURE_SETTINGS) ==
+                            PackageManager.PERMISSION_GRANTED
+                    // Run the ladder STEP BY STEP so we can see which one fired.
+                    val direct = RadioToggler.setWifi(ctx, target)
+                    val shiz = if (direct) false else ShizukuRadio.trySetWifi(ctx, target)
+                    val outcome =
+                        when {
+                            direct -> "direct setWifiEnabled OK (silent)"
+                            shiz -> "Shizuku OK (silent)"
+                            else -> "no silent path -> panel opened=${RadioToggler.openWifiPanel(ctx)}"
                         }
-                    }
+                    render(
+                        "target=$target\n" +
+                            "WRITE_SECURE_SETTINGS granted=$wss\n" +
+                            "direct setWifiEnabled returned=$direct\n" +
+                            "Shizuku: ${ShizukuRadio.lastStatus}\n" +
+                            "=> $outcome",
+                    )
                 }
             },
         )
