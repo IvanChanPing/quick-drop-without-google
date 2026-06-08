@@ -5,6 +5,16 @@ entries here cover only fork-specific changes.
 
 ## [Unreleased]
 
+### 2026-06-08 (later 8) — self-ADB Wi-Fi: AdbWifiManager (libadb core)
+- Step 2: `app/.../adbwifi/AdbWifiManager.kt` — libadb `AbsAdbConnectionManager` subclass mirroring
+  the adb-auto-enable reference: persistent RSA key + self-signed cert in filesDir
+  (adb_key/adb_key.pub/adb_cert) so a pairing survives reboots; `setApi`, the 3 protected overrides;
+  Conscrypt+BouncyCastle providers. Facade: `isPaired`, `pair(host,port,code)`,
+  `runShell(host,port,cmd)`. All blocking → callers must run off-main. `:app:compileDebugKotlin` OK
+  (resolves against libadb API incl. openStream/openInputStream). NOT device-tested. Next: pairing UI
+  -> self-grant WRITE_SECURE_SETTINGS -> BootReceiver+service (enable adb_wifi_enabled + mDNS) ->
+  `svc wifi` toggle -> Wi-Fi ladder.
+
 ### 2026-06-08 (later 7) — self-ADB Wi-Fi (option 2): foundation
 - Decided Wi-Fi silent path = **Android-11 wireless-debugging self-ADB** (not Tasker's legacy tcpip,
   not Brevent which needs ADB every boot). Reference: adb-auto-enable (proves no-PC-after-install:
