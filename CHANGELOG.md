@@ -5,6 +5,35 @@ entries here cover only fork-specific changes.
 
 ## [Unreleased]
 
+### 2026-06-08 (later 12) — NOTIFICATION-reply pairing (the Brevent trick) — makes pairing POSSIBLE
+- **Problem:** on the user's ColorOS the Wireless-debugging "Pair device with pairing code" dialog
+  CLOSES the moment you switch apps, and Settings can't be put in split screen — so the
+  type-the-code-into-our-app flow is impossible. (Confirmed: device showed "paired but adbd
+  unreachable" = key never actually trusted.)
+- **Solution (verified from Brevent's own strings):** pair via a NOTIFICATION with an inline reply.
+  Replying to a notification does NOT switch the foreground app, so the pairing dialog stays alive.
+  Brevent string: "reply Brevent's notification with the six digit code." mDNS finds the pairing port,
+  so the user types ONLY the 6 digits.
+- New `PairingNotifier` (posts the inline-reply notification, channel "ADB Wi-Fi pairing") +
+  `PairingReplyReceiver` (RemoteInput → discover `_adb-tls-pairing._tcp` via mDNS →
+  `AdbWifiManager.pair(host,port,code)` → `AdbWifiRadio.ensureReady`; result shown back in the
+  notification). `AdbMdns` gained `discoverHostPort` (+ `SERVICE_PAIRING`) so pairing connects to the
+  device's real Wi-Fi IP, not just loopback.
+- `SelfTestActivity`: replaced the (dead) split-screen instructions + typed port/code fields with a
+  "1. Start pairing (notification)" button and notification-flow instructions. Manifest: registered
+  `PairingReplyReceiver` (not exported). POST_NOTIFICATIONS auto-granted at targetSdk 28.
+- **Also fixed earlier this session:** `isPaired` was a false positive (it checked for the cert file,
+  which is written even on a FAILED pair). Now a separate `adb_paired` marker is written ONLY on a
+  genuinely successful pair, so the status is truthful.
+- **Why this can beat Brevent on reboot:** Brevent says "won't work if the device reboots" because it
+  lacks WRITE_SECURE_SETTINGS to re-enable wireless debugging. We HAVE WSS, so the boot service
+  re-enables it and reconnects with the persisted paired key — no per-boot manual step.
+- **Build:** `:radio-helper:assembleDebug` BUILD SUCCESSFUL (one deprecation warning on
+  Notification.Action.Builder, harmless). radio-helper-debug.apk refreshed at root.
+- **Status:** compile-only / device-UNVERIFIED. Make-or-break tests for the user: (1) does the
+  notification-reply pairing complete on this ColorOS (status shows "Paired OK"); (2) does it still
+  toggle Wi-Fi after a REBOOT with no manual step.
+
 ### 2026-06-08 (later 11) — Wi-Fi ladder: FIX self-ADB never tried in test UI + add full per-rung logging
 - **Bug (user-reported):** with Shizuku disabled, tapping "Toggle Wi-Fi" on the "Super Drop Radio
   Helper" screen just opened the Wi-Fi settings — the self-ADB rung was NEVER attempted. Root cause:

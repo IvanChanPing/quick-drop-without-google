@@ -151,13 +151,24 @@ internal class AdbWifiManager private constructor(
             return AdbWifiManager(context.applicationContext)
         }
 
-        /** True once a pairing key+cert has been generated/stored. */
-        fun isPaired(context: Context): Boolean =
-            File(context.filesDir, "adb_cert").exists()
+        /**
+         * Marker file written ONLY after a genuinely successful [pair]. NOT the
+         * cert file: the cert/key is generated on the first manager creation (even
+         * a FAILED pair attempt), so its existence is a false-positive for
+         * "paired". This marker reflects a real, accepted 6-digit pairing.
+         */
+        private fun pairedMarker(context: Context) = File(context.filesDir, "adb_paired")
+
+        /** True only after a successful 6-digit pairing (key trusted by adbd). */
+        fun isPaired(context: Context): Boolean = pairedMarker(context).exists()
 
         /**
          * One-time pairing with the device's Wireless Debugging "pair with code".
-         * Blocking. @return true on success.
+         * MUST be done with this app and the Wireless-debugging "Pair device with
+         * pairing code" dialog side-by-side in SPLIT SCREEN — leaving either one
+         * closes the dialog and the code/port change (verified: this is the
+         * documented LADB workaround). Blocking. @return true on success; on
+         * success writes [pairedMarker] so [isPaired] is truthful.
          */
         fun pair(
             context: Context,
@@ -167,8 +178,9 @@ internal class AdbWifiManager private constructor(
         ): Boolean =
             runCatching {
                 manager(context).use { it.pair(host, port, code) }
-            }.onSuccess {
-                Log.i(TAG, "pair($host:$port) result=$it")
+            }.onSuccess { ok ->
+                Log.i(TAG, "pair($host:$port) result=$ok")
+                if (ok) runCatching { pairedMarker(context).writeText("1") }
             }.getOrElse {
                 Log.w(TAG, "pair failed: ${it.message}")
                 false

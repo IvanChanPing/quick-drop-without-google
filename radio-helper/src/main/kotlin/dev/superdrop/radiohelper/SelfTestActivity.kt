@@ -11,9 +11,7 @@ import android.content.Intent
 import android.net.wifi.WifiManager
 import android.os.Bundle
 import android.provider.Settings
-import android.text.InputType
 import android.widget.Button
-import android.widget.EditText
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
@@ -67,11 +65,6 @@ internal class SelfTestActivity : Activity() {
     // state plus the last action's result.
     private lateinit var status: TextView
     private lateinit var shizukuButton: Button
-
-    // pairPortField / pairCodeField — number inputs for the Wireless-debugging
-    // "Pair device with pairing code" port + 6-digit code.
-    private lateinit var portField: EditText
-    private lateinit var codeField: EditText
 
     private val shizukuPermissionListener =
         Shizuku.OnRequestPermissionResultListener { _, _ -> render("Shizuku permission result") }
@@ -144,6 +137,25 @@ internal class SelfTestActivity : Activity() {
                 textSize = 13f
             },
         )
+        // setupInstructions — help text for the NOTIFICATION-based pairing (the
+        // Brevent trick). The Wireless-debugging "Pair device with pairing code"
+        // dialog closes if you switch apps, and Settings can't go split-screen on
+        // this device — so instead you reply to a NOTIFICATION with the code, which
+        // does NOT switch apps, so the dialog stays open. mDNS finds the port; you
+        // type only the 6-digit code.
+        root.addView(
+            TextView(this).apply {
+                text =
+                    "Pairing is done via a NOTIFICATION so the pairing dialog stays open:\n" +
+                        "1. Tap 'Open Wireless debugging settings' and turn Wireless debugging ON.\n" +
+                        "2. Tap '1. Start pairing' — it posts a notification with a reply box.\n" +
+                        "3. In Settings tap 'Pair device with pairing code' (a 6-digit code appears).\n" +
+                        "4. Pull DOWN the notification shade, type the 6 digits into the notification " +
+                        "reply, and send. Do NOT close the dialog. The result shows in the notification."
+                setPadding(0, pad / 2, 0, pad / 2)
+                textSize = 12f
+            },
+        )
         root.addView(
             Button(this).apply {
                 text = "Open Wireless debugging settings"
@@ -163,36 +175,18 @@ internal class SelfTestActivity : Activity() {
                 }
             },
         )
-        portField =
-            EditText(this).apply {
-                hint = "pairing port (from Wireless debugging dialog)"
-                inputType = InputType.TYPE_CLASS_NUMBER
-            }
-        codeField =
-            EditText(this).apply {
-                hint = "6-digit pairing code"
-                inputType = InputType.TYPE_CLASS_NUMBER
-            }
-        root.addView(portField)
-        root.addView(codeField)
+        // startPairingButton — posts the inline-reply pairing notification
+        // (PairingNotifier). The actual pairing runs in PairingReplyReceiver when
+        // you send the code from the notification; results show in the notification.
         root.addView(
             Button(this).apply {
-                text = "1. Pair"
+                text = "1. Start pairing (notification)"
                 setOnClickListener {
-                    val ctx = this@SelfTestActivity
-                    val port = portField.text.toString().toIntOrNull()
-                    val code = codeField.text.toString().trim()
-                    if (port == null || code.isEmpty()) {
-                        render("Enter pairing port + 6-digit code first")
-                        return@setOnClickListener
-                    }
-                    render("Pairing 127.0.0.1:$port…")
-                    Thread {
-                        val ok = AdbWifiManager.pair(ctx, "127.0.0.1", port, code)
-                        runOnUiThread {
-                            render(if (ok) "Paired OK (key stored)" else "Pair FAILED (check port/code; dialog still open?)")
-                        }
-                    }.start()
+                    PairingNotifier.show(this@SelfTestActivity)
+                    render(
+                        "Pairing notification posted. Now: open the pairing dialog in Settings, " +
+                            "pull down the shade, and type the 6-digit code into the notification reply.",
+                    )
                 }
             },
         )

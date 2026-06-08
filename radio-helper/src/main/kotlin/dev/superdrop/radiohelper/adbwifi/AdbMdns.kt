@@ -37,20 +37,44 @@ internal object AdbMdns {
     const val SERVICE_CONNECT = "_adb-tls-connect._tcp"
 
     /**
-     * @return the resolved adbd port, or -1 if none found within [timeoutSeconds].
-     * Waits the full timeout to capture the latest advertised port (the port can
-     * be re-advertised), matching the reference.
+     * The Android-11 "Pair device with pairing code" service. Advertised only
+     * while the pairing dialog is open; discovering it gives us the transient
+     * PAIRING port so the user only has to type the 6-digit code (not the port),
+     * exactly like Brevent. Use with [discoverPort] (serviceType = this).
      */
-    @Suppress("DEPRECATION")
+    const val SERVICE_PAIRING = "_adb-tls-pairing._tcp"
+
+    /** A resolved mDNS service endpoint (the device's own IP + the service port). */
+    data class HostPort(val host: String, val port: Int)
+
+    /**
+     * @return the resolved adbd port, or -1 if none found within [timeoutSeconds].
+     * Loopback (127.0.0.1) self-connect works for the CONNECT service (verified:
+     * LADB self-connects over localhost), so this port + 127.0.0.1 is enough for
+     * the connect path. For PAIRING use [discoverHostPort] (the pairing server may
+     * bind only to the Wi-Fi IP, not loopback).
+     */
     fun discoverPort(
         context: Context,
         serviceType: String = SERVICE_CONNECT,
         timeoutSeconds: Long = 10,
-    ): Int {
+    ): Int = discoverHostPort(context, serviceType, timeoutSeconds)?.port ?: -1
+
+    /**
+     * Discover a service and return BOTH the resolved host IP and port (or null).
+     * Used for pairing, where connecting to the device's actual Wi-Fi IP is safer
+     * than assuming the pairing server is on loopback. Blocking — off main thread.
+     */
+    @Suppress("DEPRECATION")
+    fun discoverHostPort(
+        context: Context,
+        serviceType: String = SERVICE_CONNECT,
+        timeoutSeconds: Long = 10,
+    ): HostPort? {
         val nsd =
             context.applicationContext.getSystemService(Context.NSD_SERVICE) as? NsdManager
-                ?: return -1
-        val port = intArrayOf(-1)
+                ?: return null
+        val result = arrayOfNulls<HostPort>(1)
         val latch = CountDownLatch(1)
 
         val listener =
@@ -71,9 +95,10 @@ internal object AdbMdns {
 
                             override fun onServiceResolved(info: NsdServiceInfo?) {
                                 val p = info?.port ?: return
-                                Log.i(TAG, "resolved ${info.serviceName} -> port $p")
+                                val h = info.host?.hostAddress ?: return
+                                Log.i(TAG, "resolved ${info.serviceName} -> $h:$p")
                                 // Record the latest; let the timeout end discovery.
-                                port[0] = p
+                                result[0] = HostPort(h, p)
                             }
                         },
                     )
@@ -101,10 +126,10 @@ internal object AdbMdns {
             nsd.discoverServices(serviceType, NsdManager.PROTOCOL_DNS_SD, listener)
             latch.await(timeoutSeconds, TimeUnit.SECONDS)
             runCatching { nsd.stopServiceDiscovery(listener) }
-            port[0]
+            result[0]
         }.getOrElse {
-            Log.w(TAG, "discoverPort failed: ${it.message}")
-            -1
+            Log.w(TAG, "discoverHostPort failed: ${it.message}")
+            null
         }
     }
 }

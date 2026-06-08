@@ -82,6 +82,13 @@
             android:name=".AdbWifiBootService"
             android:exported="false" />
 
+        <!-- Receives the 6-digit code typed into the PairingNotifier inline-reply
+             notification (the Brevent trick that keeps the pairing dialog open).
+             Not exported — only our own PendingIntent fires it. -->
+        <receiver
+            android:name=".PairingReplyReceiver"
+            android:exported="false" />
+
         <!-- Shizuku provider (required by the Shizuku API to talk to the
              Shizuku/Sui service). The RadioShellService user service is NOT
              declared here — Shizuku spawns it via app_process. -->
