@@ -53,13 +53,23 @@ android {
         // so the deliberately-low targetSdk must not fail the build.
         disable += "ExpiredTargetSdkVersion"
     }
+
+    buildFeatures {
+        // AIDL for the Shizuku user-service interface; BuildConfig for DEBUG.
+        aidl = true
+        buildConfig = true
+    }
 }
 
 kotlin {
     jvmToolchain(17)
 }
 
-// No AndroidX/3rd-party deps on purpose: a low-targetSdk APK kept to pure
-// framework APIs avoids manifest-merger / library-minSdk friction.
 dependencies {
+    // Shizuku = the silent Wi-Fi fallback when the OEM clamps setWifiEnabled
+    // even with WRITE_SECURE_SETTINGS. We run a Shizuku USER SERVICE (shell
+    // UID) that calls `svc wifi enable/disable` — robust across versions,
+    // unlike binding the hidden IWifiManager AIDL (transaction codes shift).
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
 }

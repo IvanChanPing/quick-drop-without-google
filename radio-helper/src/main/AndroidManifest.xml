@@ -2,6 +2,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:tools="http://schemas.android.com/tools">
 
+    <uses-sdk tools:overrideLibrary="rikka.shizuku.provider, rikka.shizuku.api, rikka.shizuku.shared, rikka.shizuku.aidl" />
+
+    <!-- Shizuku = silent Wi-Fi fallback (shell-UID `svc wifi`) when the OEM
+         clamps setWifiEnabled even with WRITE_SECURE_SETTINGS. -->
+    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
+
     <!-- Legacy radio-toggle capability (works because targetSdk = 28). -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
@@ -48,5 +54,16 @@
             android:name=".RadioService"
             android:exported="true"
             android:permission="dev.superdrop.radiohelper.permission.BIND_RADIO" />
+
+        <!-- Shizuku provider (required by the Shizuku API to talk to the
+             Shizuku/Sui service). The RadioShellService user service is NOT
+             declared here — Shizuku spawns it via app_process. -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:enabled="true"
+            android:exported="true"
+            android:multiprocess="false"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
     </application>
 </manifest>

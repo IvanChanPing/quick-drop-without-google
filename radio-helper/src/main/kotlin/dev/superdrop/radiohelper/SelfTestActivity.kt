@@ -5,24 +5,32 @@
  */
 package dev.superdrop.radiohelper
 
+import android.Manifest
 import android.app.Activity
+import android.content.pm.PackageManager
 import android.os.Bundle
 import android.widget.Button
 import android.widget.LinearLayout
 import android.widget.TextView
+import rikka.shizuku.Shizuku
 
 /**
- * Standalone on-device test for the targetSdk-28 radio-toggle capability.
- * Install ONLY this APK, launch it, and tap the buttons — if Wi-Fi /
- * Bluetooth actually flip (and the call returns `true`), the OEM honours the
- * legacy capability and the companion-helper approach is viable on this
- * device. If a toggle does nothing / returns `false`, this OEM (e.g. some
- * ColorOS builds) has clamped it and we fall back to system prompts / Shizuku.
+ * On-device test for the radio-toggle ladder. Install ONLY this APK and tap:
+ *  - **Toggle Bluetooth** — direct `BluetoothAdapter.enable()` (zero setup).
+ *  - **Toggle Wi-Fi** — runs the ladder: direct `setWifiEnabled` (needs the
+ *    ADB WRITE_SECURE_SETTINGS grant) → Shizuku (silent) → Wi-Fi panel pop-up
+ *    (one tap). The status line shows which prerequisites are present.
+ *  - **Request Shizuku permission** — appears when Shizuku is running but not
+ *    yet granted to this app.
  *
- * Pure programmatic UI so the module needs no resources/AndroidX.
+ * Pure programmatic UI so the module needs no resources.
  */
 internal class SelfTestActivity : Activity() {
     private lateinit var status: TextView
+    private lateinit var shizukuButton: Button
+
+    private val shizukuPermissionListener =
+        Shizuku.OnRequestPermissionResultListener { _, _ -> render("Shizuku permission result") }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -34,20 +42,10 @@ internal class SelfTestActivity : Activity() {
             }
         status =
             TextView(this).apply {
-                textSize = 16f
+                textSize = 15f
                 setPadding(0, 0, 0, pad)
             }
         root.addView(status)
-        root.addView(
-            Button(this).apply {
-                text = "Toggle Wi-Fi"
-                setOnClickListener {
-                    val target = !RadioToggler.isWifiOn(this@SelfTestActivity)
-                    val result = RadioToggler.setWifi(this@SelfTestActivity, target)
-                    render("setWifiEnabled($target) returned $result")
-                }
-            },
-        )
         root.addView(
             Button(this).apply {
                 text = "Toggle Bluetooth"
@@ -58,8 +56,34 @@ internal class SelfTestActivity : Activity() {
                 }
             },
         )
+        root.addView(
+            Button(this).apply {
+                text = "Toggle Wi-Fi"
+                setOnClickListener {
+                    val target = !RadioToggler.isWifiOn(this@SelfTestActivity)
+                    when (RadioToggler.setWifiSmart(this@SelfTestActivity, target)) {
+                        RadioToggler.WifiOutcome.SILENT_OK ->
+                            render("Wi-Fi set to $target silently (direct or Shizuku)")
+                        RadioToggler.WifiOutcome.NEEDS_USER -> {
+                            val opened = RadioToggler.openWifiPanel(this@SelfTestActivity)
+                            render("No silent path — opened Wi-Fi panel: $opened")
+                        }
+                    }
+                }
+            },
+        )
+        shizukuButton =
+            Button(this).apply {
+                text = "Request Shizuku permission"
+                setOnClickListener {
+                    runCatching { Shizuku.requestPermission(SHIZUKU_REQUEST) }
+                        .onFailure { render("Shizuku request failed: ${it.message}") }
+                }
+            }
+        root.addView(shizukuButton)
         setContentView(root)
-        render("ready — targetSdk 28 helper")
+        runCatching { Shizuku.addRequestPermissionResultListener(shizukuPermissionListener) }
+        render("ready")
     }
 
     override fun onResume() {
@@ -67,9 +91,31 @@ internal class SelfTestActivity : Activity() {
         render("resumed")
     }
 
+    override fun onDestroy() {
+        runCatching { Shizuku.removeRequestPermissionResultListener(shizukuPermissionListener) }
+        super.onDestroy()
+    }
+
     private fun render(message: String) {
         val wifi = if (RadioToggler.isWifiOn(this)) "ON" else "OFF"
         val bt = if (RadioToggler.isBluetoothOn()) "ON" else "OFF"
-        status.text = "Wi-Fi: $wifi\nBluetooth: $bt\n\n$message"
+        val wss =
+            checkSelfPermission(Manifest.permission.WRITE_SECURE_SETTINGS) ==
+                PackageManager.PERMISSION_GRANTED
+        val shizuku =
+            when {
+                ShizukuRadio.isAvailable -> "available"
+                ShizukuRadio.needsPermission -> "running, permission NOT granted"
+                else -> "not available"
+            }
+        shizukuButton.visibility = if (ShizukuRadio.needsPermission) Button.VISIBLE else Button.GONE
+        status.text =
+            "Wi-Fi: $wifi    Bluetooth: $bt\n" +
+            "WRITE_SECURE_SETTINGS granted: $wss\n" +
+            "Shizuku: $shizuku\n\n$message"
+    }
+
+    private companion object {
+        const val SHIZUKU_REQUEST = 1001
     }
 }

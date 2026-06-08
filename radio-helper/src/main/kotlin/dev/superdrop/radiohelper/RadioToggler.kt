@@ -7,7 +7,10 @@ package dev.superdrop.radiohelper
 
 import android.bluetooth.BluetoothAdapter
 import android.content.Context
+import android.content.Intent
 import android.net.wifi.WifiManager
+import android.os.Build
+import android.provider.Settings
 
 /**
  * The actual radio toggling. Works only because this APK targets API 28:
@@ -38,6 +41,51 @@ internal object RadioToggler {
                 ?: return false
         return runCatching { wm.setWifiEnabled(on) }.getOrDefault(false)
     }
+
+    /** Outcome of the Wi-Fi fallback ladder. */
+    enum class WifiOutcome {
+        /** Toggled with no user interaction (direct setWifiEnabled or Shizuku). */
+        SILENT_OK,
+
+        /** Couldn't toggle silently — caller should open the Wi-Fi panel. */
+        NEEDS_USER,
+    }
+
+    /**
+     * Wi-Fi enable/disable ladder, in order of preference:
+     * 1. direct `setWifiEnabled` — silent; works after the one-time ADB
+     *    WRITE_SECURE_SETTINGS grant (Tasker's method) on devices that honour it.
+     * 2. Shizuku — silent; the shell-UID `svc wifi` path for OEMs (ColorOS)
+     *    that clamp #1.
+     * 3. NEEDS_USER — neither silent path is available; caller pops the Wi-Fi
+     *    settings panel ([openWifiPanel]) so the user flips it with one tap.
+     */
+    fun setWifiSmart(
+        context: Context,
+        on: Boolean,
+    ): WifiOutcome {
+        if (setWifi(context, on)) return WifiOutcome.SILENT_OK
+        if (ShizukuRadio.trySetWifi(context, on)) return WifiOutcome.SILENT_OK
+        return WifiOutcome.NEEDS_USER
+    }
+
+    /**
+     * Open the system Wi-Fi settings panel (API 29+ inline slide-up; older =
+     * full Wi-Fi settings) so the user can flip Wi-Fi with one tap. There is
+     * no one-tap "allow turn on Wi-Fi" dialog like Bluetooth's
+     * ACTION_REQUEST_ENABLE — the panel is the closest equivalent.
+     */
+    fun openWifiPanel(context: Context): Boolean =
+        runCatching {
+            val action =
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                    Settings.Panel.ACTION_WIFI
+                } else {
+                    Settings.ACTION_WIFI_SETTINGS
+                }
+            context.startActivity(Intent(action).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            true
+        }.getOrDefault(false)
 
     fun isBluetoothOn(): Boolean {
         val adapter = BluetoothAdapter.getDefaultAdapter() ?: return false

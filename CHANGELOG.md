@@ -5,6 +5,23 @@ entries here cover only fork-specific changes.
 
 ## [Unreleased]
 
+### 2026-06-08 (later 4) — radio-helper Wi-Fi ladder: Shizuku fallback + panel pop-up
+- Added the full Wi-Fi enable ladder to `:radio-helper` (`RadioToggler.setWifiSmart`):
+  1. direct `setWifiEnabled` (silent; works after the one-time ADB WRITE_SECURE_SETTINGS grant),
+  2. **Shizuku** (silent) — `ShizukuRadio` binds a Shizuku user service (`RadioShellService`, runs as
+     shell UID) that execs `svc wifi enable/disable` (fallback `cmd -w wifi set-wifi-enabled`). Chosen
+     over binding the hidden `IWifiManager` (version-fragile transaction codes); `svc wifi` is stable.
+  3. **Wi-Fi settings panel** (`Settings.Panel.ACTION_WIFI`, API 29+) one-tap pop-up when neither
+     silent path is available — there is no one-tap "turn on Wi-Fi" permission dialog (unlike BT's
+     ACTION_REQUEST_ENABLE), the panel is the closest equivalent.
+- Wiring: Shizuku deps (api+provider 13.1.5), `IRadioShell` AIDL, ShizukuProvider + API_V23 perm +
+  uses-sdk overrideLibrary, buildFeatures aidl+buildConfig. SelfTestActivity now runs the ladder and
+  shows WRITE_SECURE_SETTINGS-granted + Shizuku status + a Request-Shizuku-permission button.
+- `:radio-helper:assembleDebug` OK; APK (~1.6 MB) refreshed at project root. NOT device-tested:
+  whether ColorOS honors direct+WRITE_SECURE_SETTINGS or the Shizuku `svc wifi` path. BT stays
+  zero-setup. Main-app integration (route Wi-Fi through setWifiSmart; capture/restore radio state
+  around the cold-tap transfer) still TODO.
+
 ### 2026-06-08 (later 3) — radio-helper Wi-Fi: add WRITE_SECURE_SETTINGS (Tasker method)
 - **Device-test (user's OnePlus/ColorOS):** the targetSdk-28 helper toggled **Bluetooth OK** but
   **Wi-Fi did not** flip. Read Tasker Settings' actual source (github.com/joaomgcd/TaskerSettings):
