@@ -5,6 +5,15 @@ entries here cover only fork-specific changes.
 
 ## [Unreleased]
 
+### 2026-06-08 (later 9) — self-ADB Wi-Fi: on-device TEST screen (debug)
+- Step 5: `AdbMdns` (mDNS `_adb-tls-connect._tcp` port discovery) + debug-only
+  `AdbWifiTestActivity` (launcher "SuperDrop ADB-WiFi Test"). Drives the full loop on-device:
+  (1) Pair (enter Wireless-debugging pair port+code) → (2) Self-grant WRITE_SECURE_SETTINGS over ADB
+  → (3) Toggle Wi-Fi (enable adb_wifi_enabled → mDNS discover port → `svc wifi`). All ADB ops on a
+  background thread. `:app:assembleDebug` OK; super-drop-debug.apk refreshed (~24.8 MB, incl. libadb).
+- This is the anti-Potemkin proof artifact: confirm the self-ADB silent Wi-Fi works on the user's
+  ColorOS BEFORE building the BootReceiver/service + Wi-Fi-ladder wiring. NOT yet device-tested.
+
 ### 2026-06-08 (later 8) — self-ADB Wi-Fi: AdbWifiManager (libadb core)
 - Step 2: `app/.../adbwifi/AdbWifiManager.kt` — libadb `AbsAdbConnectionManager` subclass mirroring
   the adb-auto-enable reference: persistent RSA key + self-signed cert in filesDir
