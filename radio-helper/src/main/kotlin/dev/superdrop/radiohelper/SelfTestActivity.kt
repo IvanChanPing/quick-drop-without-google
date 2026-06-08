@@ -61,26 +61,33 @@ internal class SelfTestActivity : Activity() {
                 text = "Toggle Wi-Fi"
                 setOnClickListener {
                     val ctx = this@SelfTestActivity
-                    val target = !RadioToggler.isWifiOn(ctx)
-                    val wss =
-                        checkSelfPermission(Manifest.permission.WRITE_SECURE_SETTINGS) ==
-                            PackageManager.PERMISSION_GRANTED
-                    // Run the ladder STEP BY STEP so we can see which one fired.
-                    val direct = RadioToggler.setWifi(ctx, target)
-                    val shiz = if (direct) false else ShizukuRadio.trySetWifi(ctx, target)
-                    val outcome =
-                        when {
-                            direct -> "direct setWifiEnabled OK (silent)"
-                            shiz -> "Shizuku OK (silent)"
-                            else -> "no silent path -> panel opened=${RadioToggler.openWifiPanel(ctx)}"
+                    render("working…")
+                    // MUST run off the UI thread: the Shizuku bind waits up to
+                    // 8s, which would ANR/crash the app if done on the main
+                    // thread. Render + panel-launch hop back to the UI thread.
+                    Thread {
+                        val target = !RadioToggler.isWifiOn(ctx)
+                        val wss =
+                            checkSelfPermission(Manifest.permission.WRITE_SECURE_SETTINGS) ==
+                                PackageManager.PERMISSION_GRANTED
+                        val direct = RadioToggler.setWifi(ctx, target)
+                        val shiz = if (direct) false else ShizukuRadio.trySetWifi(ctx, target)
+                        runOnUiThread {
+                            val outcome =
+                                when {
+                                    direct -> "direct setWifiEnabled OK (silent)"
+                                    shiz -> "Shizuku OK (silent)"
+                                    else -> "no silent path -> panel opened=${RadioToggler.openWifiPanel(ctx)}"
+                                }
+                            render(
+                                "target=$target\n" +
+                                    "WRITE_SECURE_SETTINGS granted=$wss\n" +
+                                    "direct setWifiEnabled returned=$direct\n" +
+                                    "Shizuku: ${ShizukuRadio.lastStatus}\n" +
+                                    "=> $outcome",
+                            )
                         }
-                    render(
-                        "target=$target\n" +
-                            "WRITE_SECURE_SETTINGS granted=$wss\n" +
-                            "direct setWifiEnabled returned=$direct\n" +
-                            "Shizuku: ${ShizukuRadio.lastStatus}\n" +
-                            "=> $outcome",
-                    )
+                    }.start()
                 }
             },
         )
