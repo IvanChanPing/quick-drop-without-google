@@ -5,9 +5,7 @@
  */
 package dev.superdrop.radiohelper
 
-import android.Manifest
 import android.app.Activity
-import android.content.pm.PackageManager
 import android.os.Bundle
 import android.widget.Button
 import android.widget.LinearLayout
@@ -67,9 +65,6 @@ internal class SelfTestActivity : Activity() {
                     // thread. Render + panel-launch hop back to the UI thread.
                     Thread {
                         val target = !RadioToggler.isWifiOn(ctx)
-                        val wss =
-                            checkSelfPermission(Manifest.permission.WRITE_SECURE_SETTINGS) ==
-                                PackageManager.PERMISSION_GRANTED
                         val direct = RadioToggler.setWifi(ctx, target)
                         val shiz = if (direct) false else ShizukuRadio.trySetWifi(ctx, target)
                         runOnUiThread {
@@ -81,7 +76,6 @@ internal class SelfTestActivity : Activity() {
                                 }
                             render(
                                 "target=$target\n" +
-                                    "WRITE_SECURE_SETTINGS granted=$wss\n" +
                                     "direct setWifiEnabled returned=$direct\n" +
                                     "Shizuku: ${ShizukuRadio.lastStatus}\n" +
                                     "=> $outcome",
@@ -118,9 +112,6 @@ internal class SelfTestActivity : Activity() {
     private fun render(message: String) {
         val wifi = if (RadioToggler.isWifiOn(this)) "ON" else "OFF"
         val bt = if (RadioToggler.isBluetoothOn()) "ON" else "OFF"
-        val wss =
-            checkSelfPermission(Manifest.permission.WRITE_SECURE_SETTINGS) ==
-                PackageManager.PERMISSION_GRANTED
         val shizuku =
             when {
                 ShizukuRadio.isAvailable -> "available"
@@ -130,7 +121,6 @@ internal class SelfTestActivity : Activity() {
         shizukuButton.visibility = if (ShizukuRadio.needsPermission) Button.VISIBLE else Button.GONE
         status.text =
             "Wi-Fi: $wifi    Bluetooth: $bt\n" +
-            "WRITE_SECURE_SETTINGS granted: $wss\n" +
             "Shizuku: $shizuku\n\n$message"
     }
 

@@ -15,17 +15,10 @@
     <uses-permission android:name="android.permission.BLUETOOTH" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
 
-    <!-- Wi-Fi toggle on Android 12+ / OEMs (e.g. ColorOS): the legacy
-         targetSdk-28 setWifiEnabled() path alone is no longer honored (BT
-         legacy enable() still is). Tasker Settings declares this and has the
-         user grant it once via ADB:
-           adb shell pm grant dev.superdrop.radiohelper.debug \
-               android.permission.WRITE_SECURE_SETTINGS
-         (.debug suffix on debug builds; survives reboot, lost on reinstall.)
-         protectionLevel includes "development" so `pm grant` works. -->
-    <uses-permission
-        android:name="android.permission.WRITE_SECURE_SETTINGS"
-        tools:ignore="ProtectedPermissions" />
+    <!-- NOTE: WRITE_SECURE_SETTINGS is intentionally NOT declared. It does
+         NOT affect WifiManager.setWifiEnabled() — that API's only exemptions
+         are Device-Owner / Profile-Owner / system apps (per the AOSP doc).
+         Silent Wi-Fi on a clamping OEM (ColorOS) = Shizuku only; else panel. -->
 
     <!-- Only apps signed with the same key (Super Drop) may bind the
          radio service. The in-process self-test activity is unaffected. -->

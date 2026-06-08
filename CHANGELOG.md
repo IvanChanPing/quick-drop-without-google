@@ -5,6 +5,19 @@ entries here cover only fork-specific changes.
 
 ## [Unreleased]
 
+### 2026-06-08 (later 6) — radio-helper: remove WSS dead-end, fix ANR at the source, harden Shizuku
+- **Removed `WRITE_SECURE_SETTINGS`** from the helper: it does NOT affect `setWifiEnabled` (AOSP
+  exemptions are DO/PO/system only), so granting it never helped and was misleading. Silent Wi-Fi on
+  a clamping OEM (ColorOS) is **Shizuku-only**; otherwise the panel.
+- **Fixed the crash (ANR) at the source — UI-thread blocking:** the Shizuku bind waits up to 8s.
+  SelfTestActivity already moved to a background thread; `RadioService` now processes on a background
+  `HandlerThread` too, so when the main app binds it a slow Shizuku call can't ANR. (Rule going
+  forward: never call the helper/Shizuku on the main thread.)
+- Hardened `ShizukuRadio` (sticky binder-received + dead listeners; precise `lastStatus`). Self-test
+  drops the removed-WSS readout. `:radio-helper:assembleDebug` OK; root APK refreshed.
+- Bluetooth = automatic (works). Wi-Fi silent path now hinges solely on whether Shizuku `svc wifi`
+  works on the device; else the panel flow.
+
 ### 2026-06-08 (later 5) — radio-helper RadioService returns silent-only Wi-Fi result
 - Per the finalized auto-toggle spec (BT automatic; Wi-Fi silent if WRITE_SECURE_SETTINGS/Shizuku
   else panel): the bound `RadioService` (called by the main app) now routes `MSG_SET_WIFI` through

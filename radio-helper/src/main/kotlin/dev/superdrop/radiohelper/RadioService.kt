@@ -8,8 +8,8 @@ package dev.superdrop.radiohelper
 import android.app.Service
 import android.content.Intent
 import android.os.Handler
+import android.os.HandlerThread
 import android.os.IBinder
-import android.os.Looper
 import android.os.Message
 import android.os.Messenger
 
@@ -21,8 +21,12 @@ import android.os.Messenger
  * replies with the call's boolean result in `arg1`.
  */
 internal class RadioService : Service() {
+    // Handle requests OFF the main thread: the Wi-Fi silent path may bind a
+    // Shizuku service (waits seconds), which must never run on the main looper.
+    private val handlerThread = HandlerThread("radio-service").apply { start() }
+
     private val handler =
-        Handler(Looper.getMainLooper()) { msg ->
+        Handler(handlerThread.looper) { msg ->
             val on = msg.arg1 == 1
             val result =
                 when (msg.what) {
@@ -39,6 +43,11 @@ internal class RadioService : Service() {
     private val messenger = Messenger(handler)
 
     override fun onBind(intent: Intent?): IBinder = messenger.binder
+
+    override fun onDestroy() {
+        handlerThread.quitSafely()
+        super.onDestroy()
+    }
 
     private fun replyResult(
         request: Message,

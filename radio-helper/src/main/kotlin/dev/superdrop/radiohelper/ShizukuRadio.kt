@@ -31,6 +31,16 @@ internal object ShizukuRadio {
     @Volatile
     private var service: IRadioShell? = null
 
+    init {
+        // Make binder availability reliable regardless of startup timing, and
+        // drop a cached service if Shizuku dies. Best-effort: if the Shizuku
+        // provider isn't initialised these throw — swallowed.
+        runCatching {
+            Shizuku.addBinderReceivedListenerSticky { /* availability re-checked live */ }
+            Shizuku.addBinderDeadListener { service = null }
+        }
+    }
+
     /** Human-readable result of the last [trySetWifi] attempt (diagnostics). */
     @Volatile
     var lastStatus: String = "not attempted"
