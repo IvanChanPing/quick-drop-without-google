@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
 
     <!-- Legacy radio-toggle capability (works because targetSdk = 28). -->
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
@@ -7,6 +8,18 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.BLUETOOTH" />
     <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
+
+    <!-- Wi-Fi toggle on Android 12+ / OEMs (e.g. ColorOS): the legacy
+         targetSdk-28 setWifiEnabled() path alone is no longer honored (BT
+         legacy enable() still is). Tasker Settings declares this and has the
+         user grant it once via ADB:
+           adb shell pm grant dev.superdrop.radiohelper.debug \
+               android.permission.WRITE_SECURE_SETTINGS
+         (.debug suffix on debug builds; survives reboot, lost on reinstall.)
+         protectionLevel includes "development" so `pm grant` works. -->
+    <uses-permission
+        android:name="android.permission.WRITE_SECURE_SETTINGS"
+        tools:ignore="ProtectedPermissions" />
 
     <!-- Only apps signed with the same key (Super Drop) may bind the
          radio service. The in-process self-test activity is unaffected. -->

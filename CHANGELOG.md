@@ -5,6 +5,22 @@ entries here cover only fork-specific changes.
 
 ## [Unreleased]
 
+### 2026-06-08 (later 3) — radio-helper Wi-Fi: add WRITE_SECURE_SETTINGS (Tasker method)
+- **Device-test (user's OnePlus/ColorOS):** the targetSdk-28 helper toggled **Bluetooth OK** but
+  **Wi-Fi did not** flip. Read Tasker Settings' actual source (github.com/joaomgcd/TaskerSettings):
+  its `ActionToggleBluetooth` = `BluetoothAdapter.enable()/disable()` (identical to ours → matches
+  our working BT) and its `ActionToggleWifi` = `setWifiEnabled` (same as ours) — the only difference
+  is it declares **`WRITE_SECURE_SETTINGS`** and targets a very low SDK (21/23). Per Tasker's docs,
+  on Android 12+ Wi-Fi toggling needs that permission **granted via ADB**; the low-targetSdk trick
+  alone no longer suffices. So fully zero-setup Wi-Fi enable is not achievable even for Tasker — it
+  needs a one-time ADB grant; BT stays zero-setup.
+- **Change:** `radio-helper` manifest now declares `WRITE_SECURE_SETTINGS` (with `tools:ignore`).
+  Grant once on-device:
+  `adb shell pm grant dev.superdrop.radiohelper.debug android.permission.WRITE_SECURE_SETTINGS`
+  (survives reboot, lost on reinstall), then re-test Wi-Fi in SelfTestActivity. `:radio-helper:
+  assembleDebug` OK; APK refreshed at project root. If Wi-Fi still fails on ColorOS after the grant,
+  next steps are the Shizuku path (IWifiManager via ShizukuBinderWrapper) or lowering targetSdk to 23.
+
 ### 2026-06-08 (later 2) — radio-helper companion APK (targetSdk-28 Wi-Fi/BT toggle)
 - **NEW MODULE `:radio-helper`** — standalone companion APK (`dev.superdrop.radiohelper`,
   **targetSdk 28**) that can silently toggle Wi-Fi and Bluetooth, for the NFC-tap "force radios on"
