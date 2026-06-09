@@ -164,6 +164,18 @@ final verification needs the user's phones.
      F00000FE2C).
    Sources: https://developer.android.com/develop/connectivity/nfc/hce
 
+   REAL-WORLD CONFIRMATION (user, 2026-06-09, VPN off): when the A14 sender tapped the A15 phone, the
+   tap **opened NATIVE Quick Share's receive screen on the A15** — i.e. the OS routed the F00000FE2C
+   tap to Google, NOT to Super Drop's HCE. This is direct UI confirmation of the wallet-default-AID
+   routing on A15 (our HCE is bypassed). The native receiver then "didn't go any farther / didn't
+   initiate" because the sender wasn't a native Quick Share session. So: NFC-tap to an A15 phone with
+   stock Quick Share lands on GMS, full stop, unless we win the AID via foreground setPreferredService
+   (or use a private AID for our<->our).
+   ENV NOTE: a VPN on the phone BLOCKED the diagnostics auto-upload (and the tap got farther with VPN
+   off) — uploads need the phone's normal internet path. As of this note the phone upload still hadn't
+   reached the collector (likely still the OLD APK / app not opened) — but the user's eyes already
+   confirmed the cause, so the log is no longer the blocker.
+
 ## Notes
 - #4 and #5 are both tile/visibility and likely share the task-handling root cause.
 - Fix verification: code + redroid where possible (tile launch task, name fallback); the
