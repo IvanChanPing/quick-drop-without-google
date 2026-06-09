@@ -69,6 +69,27 @@
             android:exported="true"
             android:permission="dev.superdrop.radiohelper.permission.BIND_RADIO" />
 
+        <!-- Quick Share auto-detect (AccessibilityService). Watches foreground
+             windows; when Google Quick Share's UI (com.google.android.gms,
+             class …nearby.sharing.*) comes to the front it runs the helper's
+             prepare-share flow (enable Wi-Fi/BT) and restores after. Listed in
+             Settings > Accessibility as "Super Drop Quick Share auto-detect";
+             enabled ONCE, re-bound by the OS on every boot (no per-reboot step).
+             android:permission BIND_ACCESSIBILITY_SERVICE is REQUIRED by the
+             platform so only the system can bind it. -->
+        <service
+            android:name=".QuickShareWatcherService"
+            android:exported="true"
+            android:label="Super Drop Quick Share auto-detect"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/quick_share_accessibility_config" />
+        </service>
+
         <!-- SELF-START on boot: re-warm the self-ADB Wi-Fi connection after a
              reboot (re-enable wireless debugging + mDNS-discover the adbd port),
              so there is NO per-reboot manual step. Receiver only kicks the

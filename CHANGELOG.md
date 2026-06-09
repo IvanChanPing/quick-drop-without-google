@@ -1,3 +1,39 @@
+## [2026-06-09] radio-helper: auto-detect Google Quick Share opening → flip radios (AccessibilityService)
+New feature on the **radio-helper** APK: detect when **Google Quick Share** comes to the foreground and,
+on its own (no command from the Super Drop app), run the existing share-radio flow (turn Wi‑Fi/Bluetooth
+ON, restore after). Requested so the helper enables radios "just from detecting" the native share, rather
+than only when our app drives it.
+- **`QuickShareWatcherService`** (new) — an `AccessibilityService` listening for `typeWindowStateChanged`
+  (`canRetrieveWindowContent=false`, no package filter so it can also see when QS leaves). When a
+  `com.google.android.gms` window whose class contains `nearby.sharing` appears → `ShareRadioSession.prepare(BOTH)`
+  on a background HandlerThread; when QS stays out of the foreground for `GRACE_MS` (120s) → `ShareRadioSession.finish()`.
+  The 20‑min ShareRadioSession watchdog remains the backstop. Detection target verified from the GMS
+  26.18.x manifest (`…nearby.sharing.main.MainActivity`, `…nearby.sharing.ConsentsActivity`).
+- **`QuickShareWatchStatus`** (new) — process-local status board (last status line, last GMS window class
+  seen, inSession) surfaced on SelfTestActivity so a class-name mismatch is VISIBLE/fixable, not silent.
+- **`SelfTestActivity`** — new "— Quick Share auto-detect (one-time) —" section: status (ENABLED/DISABLED +
+  last GMS window + last action) and an **"Enable Quick Share auto-detect (Accessibility)"** button that
+  opens `Settings.ACTION_ACCESSIBILITY_SETTINGS`. `isQuickShareWatcherEnabled()` reads
+  `Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES` to reflect live state.
+- **Manifest** — declares the service with `BIND_ACCESSIBILITY_SERVICE` + the
+  `@xml/quick_share_accessibility_config` meta-data; added `res/xml/…` config and `res/values/strings.xml`
+  (the Settings description). Verified present in the packaged merged manifest.
+- One-time enable in Settings → Accessibility; the OS re-binds enabled services on boot, so NO per-reboot
+  step. KNOWN LIMITS (flagged, not discovered-after-shipping): (a) restore timing is approximated by
+  "QS out of foreground for 120s" since transfer state isn't observable from outside — large background
+  transfers could restore mid-transfer (mitigated by QS's own radio handling + the 20‑min watchdog);
+  (b) force-stop unbinds the service and NO no-root app can self-wake from force-stop — only a
+  battery-opt exemption / OnePlus Auto-launch whitelist (or root) mitigates that. There is no public
+  Quick Share broadcast to revive from cold (GMS manifest: only `GcmBroadcastReceiver`).
+- **STATUS: compile-only / device-UNVERIFIED.** Builds (`:radio-helper:assembleDebug` SUCCESSFUL) and the
+  service is in the packaged manifest, but the class-name match + radio flip are NOT yet exercised on the
+  OnePlus. Test: enable in Accessibility, open Quick Share, watch logcat `QuickShareWatcher` + the status
+  line (Wi‑Fi/BT should flip ON), leave QS >2 min, confirm restore.
+- **Files:** `radio-helper/src/main/kotlin/dev/superdrop/radiohelper/QuickShareWatcherService.kt`,
+  `QuickShareWatchStatus.kt`, `SelfTestActivity.kt`, `radio-helper/src/main/AndroidManifest.xml`,
+  `radio-helper/src/main/res/xml/quick_share_accessibility_config.xml`,
+  `radio-helper/src/main/res/values/strings.xml`, `radio-helper-debug.apk`.
+
 ## [2026-06-09] PR list: add screenshots for the two UI features (send sheet, receive tile)
 Docs-only. Added "Image for the PR" lines to the per-PR list (`SUPERDROP-CHANGES.txt`) for the two
 features that are best sold with a picture, matching the existing format already used by #5.

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Accessibility-service config for QuickShareWatcherService.
+
+  WHY: an AccessibilityService is the only no-root, real-time way for our helper
+  to know the instant Google Quick Share's UI comes to the foreground, so it can
+  flip Wi-Fi/Bluetooth on for the transfer. The user enables it ONCE in
+  Settings > Accessibility; Android re-binds enabled services on every boot, so
+  there is NO per-reboot manual step.
+
+  - accessibilityEventTypes = typeWindowStateChanged ONLY — we just need to know
+    which activity/window is in front; we do not read any screen content.
+  - packageNames is INTENTIONALLY NOT set — we must also receive events for
+    non-GMS windows so we can tell when Quick Share LEAVES the foreground.
+  - canRetrieveWindowContent = false — privacy: we never inspect node text, only
+    the package + class name carried by the window-state event.
+  - notificationTimeout 100ms — react fast when Quick Share opens.
+-->
+<accessibility-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:accessibilityEventTypes="typeWindowStateChanged"
+    android:accessibilityFeedbackType="feedbackGeneric"
+    android:notificationTimeout="100"
+    android:canRetrieveWindowContent="false"
+    android:description="@string/qs_accessibility_description" />

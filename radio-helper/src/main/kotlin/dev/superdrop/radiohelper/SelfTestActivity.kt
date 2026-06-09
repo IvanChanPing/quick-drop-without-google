@@ -8,6 +8,7 @@ package dev.superdrop.radiohelper
 import android.app.Activity
 import android.content.ClipData
 import android.content.ClipboardManager
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.graphics.Typeface
@@ -132,6 +133,54 @@ internal class SelfTestActivity : Activity() {
                 }
             }
         root.addView(shizukuButton)
+
+        // --- Quick Share auto-detect (AccessibilityService) ---
+        // quickShareSectionHeader — bold-ish divider introducing the one-time
+        // accessibility enable for the Quick Share foreground detector.
+        root.addView(
+            TextView(this).apply {
+                text = "— Quick Share auto-detect (one-time) —"
+                setPadding(0, pad, 0, 0)
+                textSize = 13f
+            },
+        )
+        // quickShareHelp — explains the feature + the one-time enable. Once on, it
+        // re-binds on every boot, so there is NO per-reboot step.
+        root.addView(
+            TextView(this).apply {
+                text =
+                    "Auto-turns Wi‑Fi/Bluetooth ON when Google Quick Share opens, and " +
+                        "restores them after. Tap below and enable \"Super Drop Quick Share " +
+                        "auto-detect\" under Accessibility (one-time; survives reboots)."
+                setPadding(0, pad / 2, 0, pad / 2)
+                textSize = 12f
+            },
+        )
+        // enableQuickShareDetectButton — opens system Accessibility settings so the
+        // user can flip the QuickShareWatcherService on. The live status (enabled?,
+        // last GMS window seen, last action) is shown in the top status block.
+        root.addView(
+            Button(this).apply {
+                text = "Enable Quick Share auto-detect (Accessibility)"
+                setOnClickListener {
+                    val opened =
+                        runCatching {
+                            startActivity(
+                                Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                            )
+                            true
+                        }.getOrDefault(false)
+                    render(
+                        if (opened) {
+                            "Accessibility settings opened — enable \"Super Drop Quick Share auto-detect\"."
+                        } else {
+                            "Couldn't open Accessibility settings — open Settings > Accessibility manually."
+                        },
+                    )
+                }
+            },
+        )
 
         // --- Silent Wi-Fi setup (one-time, self-ADB) ---
         // sectionHeader — plain bold-ish divider label introducing the pairing
@@ -324,12 +373,40 @@ internal class SelfTestActivity : Activity() {
         // wss — live ground-truth of WRITE_SECURE_SETTINGS so a self-grant that
         // "ran but didn't stick" is visible at a glance (not just in a button toast).
         val wss = if (AdbWifiManager.hasWriteSecureSettings(this)) "HELD" else "NOT held"
+        // qsDetect — live state of the Quick Share auto-detect accessibility
+        // service: whether it's enabled, the last GMS window it saw (to diagnose a
+        // class-name mismatch), and its last action line.
+        val qsEnabled = if (isQuickShareWatcherEnabled()) "ENABLED" else "DISABLED"
         shizukuButton.visibility = if (ShizukuRadio.needsPermission) Button.VISIBLE else Button.GONE
         status.text =
             "Wi-Fi: $wifi    Bluetooth: $bt\n" +
             "WRITE_SECURE_SETTINGS: $wss\n" +
             "self-ADB: $selfAdb\n" +
-            "Shizuku: $shizuku\n\n$message"
+            "Shizuku: $shizuku\n" +
+            "Quick Share auto-detect: $qsEnabled\n" +
+            "  last GMS window: ${QuickShareWatchStatus.lastWindow}\n" +
+            "  status: ${QuickShareWatchStatus.line}\n\n$message"
+    }
+
+    /**
+     * True if [QuickShareWatcherService] is currently enabled in
+     * Settings > Accessibility. Read from the canonical
+     * `Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES` (a ':'-separated list of
+     * "pkg/class" component names) — the same source the framework uses to decide
+     * which services to bind. Matches on our component so a differently-named
+     * service can't false-positive.
+     */
+    private fun isQuickShareWatcherEnabled(): Boolean {
+        val enabled =
+            Settings.Secure.getString(
+                contentResolver,
+                Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES,
+            ) ?: return false
+        val me = ComponentName(this, QuickShareWatcherService::class.java)
+        return enabled.split(':').any {
+            val c = ComponentName.unflattenFromString(it)
+            c != null && c.packageName == me.packageName && c.className == me.className
+        }
     }
 
     private companion object {
