@@ -38,6 +38,23 @@ entries here cover only fork-specific changes.
 
 ## [Unreleased]
 
+### 2026-06-09 — Radio Helper: self-grant now VERIFIES WSS (fix false "granted") + live WSS status
+- **Bug (user):** "2. Self-grant WRITE_SECURE_SETTINGS" reported success but the permission wasn't
+  actually held (user had to grant it from a PC). Root cause: `AdbWifiManager.selfGrantWriteSecureSettings`
+  returned `runShell(...) != null` — i.e. true whenever the `pm grant` command *ran*, even when it
+  printed an error and silently no-op'd (runShell reads stdout only). False positive.
+- **Fix:** `selfGrantWriteSecureSettings` now runs the grant THEN verifies via new
+  `hasWriteSecureSettings()` (`PackageManager.checkPermission`, ground truth) and returns the actual
+  held-state. The raw `pm grant` output is saved to new `lastGrantOutput` (empty = silent success,
+  error text = ran-but-failed, null = shell never connected).
+- **Observability:** `SelfTestActivity` status header now shows a live **"WRITE_SECURE_SETTINGS:
+  HELD / NOT held"** line (ground truth at a glance), and the "2. Self-grant" button reports the
+  verified result + the `pm grant` error text when it ran but didn't stick (instead of a false
+  "self-granted"). The manual ADB-command box stays as the PC fallback.
+- **Build:** `:radio-helper:assembleDebug` BUILD SUCCESSFUL; `radio-helper-debug.apk` refreshed. Logic
+  is compile-only / device-UNVERIFIED — running step 2 on the phone now SHOWS whether WSS is truly held.
+- **Files:** `radio-helper/.../adbwifi/AdbWifiManager.kt`, `radio-helper/.../SelfTestActivity.kt`.
+
 ### 2026-06-09 — Radio Helper main screen: show the manual ADB WSS-grant command
 - **Why (user):** the self-grant (step 2) ran but `WRITE_SECURE_SETTINGS` wasn't actually held; the
   user granted it manually over ADB and it worked. So surface the exact command on screen as the

@@ -205,11 +205,22 @@ internal class SelfTestActivity : Activity() {
                     Thread {
                         // autoConnect (inside selfGrant) does mDNS + TLS itself.
                         AdbWifiManager.enableWirelessDebugging(ctx)
+                        val granted = AdbWifiManager.selfGrantWriteSecureSettings(ctx)
                         val msg =
-                            if (AdbWifiManager.selfGrantWriteSecureSettings(ctx)) {
-                                "WSS self-granted via self-ADB"
+                            if (granted) {
+                                "WSS self-granted + verified HELD"
                             } else {
-                                "Grant FAILED — ${AdbWifiManager.lastError ?: "paired? wireless debugging on?"}"
+                                val out = AdbWifiManager.lastGrantOutput
+                                when {
+                                    out == null ->
+                                        "Grant FAILED — shell didn't connect: " +
+                                            (AdbWifiManager.lastError ?: "paired? wireless debugging on?")
+                                    out.isBlank() ->
+                                        "pm grant ran with NO error but WSS is still NOT held — " +
+                                            "run the ADB command below from a PC."
+                                    else ->
+                                        "Grant FAILED — pm grant said: ${out.trim()}"
+                                }
                             }
                         runOnUiThread { render(msg) }
                     }.start()
@@ -310,9 +321,13 @@ internal class SelfTestActivity : Activity() {
             } else {
                 "NOT PAIRED (use the setup buttons below)"
             }
+        // wss — live ground-truth of WRITE_SECURE_SETTINGS so a self-grant that
+        // "ran but didn't stick" is visible at a glance (not just in a button toast).
+        val wss = if (AdbWifiManager.hasWriteSecureSettings(this)) "HELD" else "NOT held"
         shizukuButton.visibility = if (ShizukuRadio.needsPermission) Button.VISIBLE else Button.GONE
         status.text =
             "Wi-Fi: $wifi    Bluetooth: $bt\n" +
+            "WRITE_SECURE_SETTINGS: $wss\n" +
             "self-ADB: $selfAdb\n" +
             "Shizuku: $shizuku\n\n$message"
     }

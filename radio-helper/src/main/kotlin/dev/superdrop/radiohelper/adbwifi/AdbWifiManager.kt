@@ -143,6 +143,17 @@ internal class AdbWifiManager private constructor(
         var lastError: String? = null
             private set
 
+        /**
+         * The raw stdout of the last `pm grant` self-grant attempt: empty string
+         * when `pm grant` succeeded silently, an error string when it failed but
+         * still "ran", or null when the shell connection never opened. Surfaced on
+         * [dev.superdrop.radiohelper.SelfTestActivity] so a grant that "ran but did
+         * not stick" is visible instead of a false "success". Diagnostics only.
+         */
+        @Volatile
+        var lastGrantOutput: String? = null
+            private set
+
         @Volatile
         private var providersReady = false
 
@@ -247,12 +258,49 @@ internal class AdbWifiManager private constructor(
                 false
             }
 
-        /** Self-grant WRITE_SECURE_SETTINGS over the ADB shell (one-time, after pairing). */
-        fun selfGrantWriteSecureSettings(context: Context): Boolean =
-            runShell(
-                context,
-                "pm grant ${context.packageName} android.permission.WRITE_SECURE_SETTINGS",
-            ) != null
+        /**
+         * Self-grant WRITE_SECURE_SETTINGS over the self-ADB shell (one-time, after
+         * pairing), then VERIFY the permission is actually held.
+         *
+         * @return `true` ONLY when the app actually holds WRITE_SECURE_SETTINGS
+         *   afterward — NOT merely when the `pm grant` command ran. The old version
+         *   returned `runShell(...) != null`, which is non-null even when `pm grant`
+         *   prints an error and the grant silently no-ops (runShell reads stdout
+         *   only); that produced the false "WSS self-granted" while the permission
+         *   was never held — the bug the user hit. The command's raw output is
+         *   recorded in [lastGrantOutput] (empty = silent success, error text =
+         *   ran-but-failed, null = shell never connected) for on-screen diagnostics.
+         */
+        fun selfGrantWriteSecureSettings(context: Context): Boolean {
+            val output =
+                runShell(
+                    context,
+                    "pm grant ${context.packageName} android.permission.WRITE_SECURE_SETTINGS",
+                )
+            lastGrantOutput = output
+            val held = hasWriteSecureSettings(context)
+            when {
+                output == null ->
+                    Log.w(TAG, "self-grant: shell never connected ($lastError)")
+                !held ->
+                    Log.w(TAG, "self-grant: pm grant ran but WSS still DENIED. output='${output.trim()}'")
+                else ->
+                    Log.i(TAG, "self-grant: WSS granted + verified held")
+            }
+            return held
+        }
+
+        /**
+         * Whether this app currently HOLDS `WRITE_SECURE_SETTINGS`. Ground-truth
+         * check via `PackageManager.checkPermission` (all-API; reflects a
+         * just-applied `pm grant`). Used to verify [selfGrantWriteSecureSettings]
+         * and to show live WSS state on the helper's main screen.
+         */
+        fun hasWriteSecureSettings(context: Context): Boolean =
+            context.packageManager.checkPermission(
+                "android.permission.WRITE_SECURE_SETTINGS",
+                context.packageName,
+            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
 
         /**
          * Flip Wi-Fi via `svc wifi` over the ADB shell (shell UID → works even
