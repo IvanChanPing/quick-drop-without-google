@@ -183,6 +183,25 @@ final verification needs the user's phones.
    reached the collector (likely still the OLD APK / app not opened) — but the user's eyes already
    confirmed the cause, so the log is no longer the blocker.
 
+   DEVICE UPLOAD CAPTURED (2026-06-09, OnePlus Nord N30 5G CPH2515 A14, OUR APP SENDING; file
+   /root/superdrop-logs/uploads/20260609-044530-660432_CPH2515_A14_nfc-send-tap.log). Findings:
+   - Our reader's tap to the native receiver returns EMPTY: `SuperDropTapReader: ADVERTISEMENT not OK /
+     empty (2B)` (repeated). So native (in receive) hands us NO NFC tag (consistent with native not
+     registering an NFC djvf advert during receive → empty + wake).
+   - BUT our normal mDNS/Wi-Fi discovery DOES see the native receiver at a STABLE address
+     192.168.1.139:53601 — including one as "Mike's phone" (hidden=false, Everyone-visible). The
+     transfer-capable LAN endpoint is present the whole time.
+   - REAL BLOCKER: the native receiver ROTATES its endpointId + mDNS instance name ~every 1s
+     (97TL→RYJZ→MMBW→XW22, all SAME IP:port), so each peer is serviceFound→serviceResolved→serviceLost
+     within ~1s, and our picker filter HIDES them: `picker filter: hiding peer ... reason=wifi-lan-missing,
+     ble-no-verified-bootstrap`. We never lock onto one long enough to connect.
+   - Diagnostics auto-upload working (HTTP 200, multiple; VPN off).
+   => send-to-native via tap is NOT a protocol gap. Two fixable issues: (a) no NFC tag to pin the exact
+      endpoint; (b) discovery churn + our picker hiding the fast-rotating native peers. Likely fix: treat
+      the rotating native receiver as ONE stable peer keyed by IP:port (de-churn), and/or on a tap connect
+      to the most-recently-resolved Wi-Fi-LAN peer. NEXT: read our discovery/picker code (OutboundConnection
+      / NsdBrowser / the #161 picker filter) before building.
+
 ## Notes
 - #4 and #5 are both tile/visibility and likely share the task-handling root cause.
 - Fix verification: code + redroid where possible (tile launch task, name fallback); the
