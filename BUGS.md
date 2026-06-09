@@ -118,6 +118,20 @@ final verification needs the user's phones.
      on a GMS phone, and Google's tap is server-flag/attestation gated. Receiving FROM native (with
      the chooser) is the realistic ceiling.
 
+   CORRECTION (user, same day — do not over-attribute to the collision):
+   - The AID collision / "choose which NFC app" chooser is a SEPARATE annoyance; it did NOT break
+     anything — Android 14 RECEIVE worked fine THROUGH the chooser. So the collision is not "the bug."
+   - The actual breakage is the SEND path, and specifically: it was NEVER able to send TO the
+     Android 15 phone. (Setup: an A14 phone + an A15 phone, both with our app + stock Quick Share.)
+   - So re-frame the open bug as: "sending via tap to an Android-15 receiver fails," cause UNKNOWN,
+     NOT yet attributed to the collision. Primary diagnostic is the RECEIVING (tapped) A15 phone's
+     HCE log — was `SuperDropTapHceService` even invoked on the tap, and did it prime a real tag or
+     return empty? — paired with the A14 sender's `SuperDropTapReader` log.
+   - A15 candidates to CHECK (unconfirmed): A15 NFC/HCE or observe-mode change; cold-primer needs a
+     Wi-Fi IP on the A15 phone at tap time; FGS-from-HCE cold-wake blocked on A15; tap never routed to
+     our HCE on the A15 side. Capture `adb logcat -s SuperDropTapHceService BadaNfcColdPrime BadaNfcWake`
+     ON THE A15 PHONE while it is tapped, plus `SuperDropTapReader` on the A14 sender.
+
 ## Notes
 - #4 and #5 are both tile/visibility and likely share the task-handling root cause.
 - Fix verification: code + redroid where possible (tile launch task, name fallback); the
