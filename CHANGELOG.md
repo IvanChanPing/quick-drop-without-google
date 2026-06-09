@@ -5,6 +5,18 @@ entries here cover only fork-specific changes.
 
 ## [Unreleased]
 
+### 2026-06-09 — Radio Helper main screen: show the manual ADB WSS-grant command
+- **Why (user):** the self-grant (step 2) ran but `WRITE_SECURE_SETTINGS` wasn't actually held; the
+  user granted it manually over ADB and it worked. So surface the exact command on screen as the
+  fallback.
+- `SelfTestActivity` (the "Super Drop Radio Helper" launcher, `:radio-helper`) now shows, under the
+  "2. Self-grant WRITE_SECURE_SETTINGS" button: a hint line + a **selectable monospace box**
+  (`adbGrantCommand`) with `adb shell pm grant <pkg> android.permission.WRITE_SECURE_SETTINGS` — `<pkg>`
+  is the runtime `packageName`, so it auto-resolves `.debug` vs release — plus a **"Copy ADB grant
+  command"** button (clipboard). One-time grant, persists across reboots (no per-boot step).
+- **Build:** `:radio-helper:assembleDebug` BUILD SUCCESSFUL; `radio-helper-debug.apk` refreshed at repo
+  root. UI compile-only — not click-tested on a device.
+
 ### 2026-06-09 — NFC cold tap == warm (single tap, no 2nd tap/button) + radios-on via helper
 - **Goal (user):** a COLD NFC tap-to-receive (our app = HCE/broadcaster; a Quick Share SENDER in
   reader-mode taps us) must behave like a WARM one — ONE tap, no second tap, no extra button — and

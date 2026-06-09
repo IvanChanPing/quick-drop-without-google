@@ -6,8 +6,11 @@
 package dev.superdrop.radiohelper
 
 import android.app.Activity
+import android.content.ClipData
+import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
+import android.graphics.Typeface
 import android.net.wifi.WifiManager
 import android.os.Bundle
 import android.provider.Settings
@@ -43,6 +46,10 @@ import rikka.shizuku.Shizuku
  *  - "1. Pair" — one-time pairing with the device's own Wireless debugging.
  *  - "2. Self-grant WRITE_SECURE_SETTINGS" — over ADB, lets the helper re-enable
  *    wireless debugging on boot.
+ *  - adbGrantHint + adbGrantCommand (selectable monospace) + "Copy ADB grant
+ *    command" — the MANUAL fallback when self-grant (step 2) doesn't stick: the
+ *    exact `adb shell pm grant <pkg> WRITE_SECURE_SETTINGS` for this install
+ *    (pkg auto-resolves .debug/release). One-time, survives reboots.
  *  - "3. Test self-ADB Wi-Fi" — flips Wi-Fi through AdbWifiRadio only (the same
  *    engine the NFC tap / RadioService uses).
  *
@@ -209,6 +216,46 @@ internal class SelfTestActivity : Activity() {
                 }
             },
         )
+        // adbGrantHint — small help line under step 2 explaining the MANUAL
+        // fallback when self-grant fails (the user's case: self-grant ran but the
+        // permission wasn't actually held). It's a ONE-TIME PC command that
+        // persists across reboots, so it never becomes a per-boot manual step.
+        root.addView(
+            TextView(this).apply {
+                text =
+                    "If step 2 doesn't stick: run this ONCE from a PC with the phone " +
+                        "connected over ADB. WRITE_SECURE_SETTINGS persists across reboots " +
+                        "— no per-boot step:"
+                setPadding(0, pad, 0, pad / 4)
+                textSize = 12f
+            },
+        )
+        // adbGrantCommand — selectable monospace box with the EXACT pm grant
+        // command for THIS install (packageName auto-resolves .debug vs release).
+        // Long-press to select/copy, or tap the Copy button below.
+        val grantCommand = "adb shell pm grant $packageName android.permission.WRITE_SECURE_SETTINGS"
+        root.addView(
+            TextView(this).apply {
+                text = grantCommand
+                typeface = Typeface.MONOSPACE
+                textSize = 13f
+                setTextIsSelectable(true)
+                setPadding(pad / 2, pad / 2, pad / 2, pad / 2)
+            },
+        )
+        // copyGrantButton — copies the pm grant command to the clipboard so the
+        // user can paste it into a PC terminal without retyping the package id.
+        root.addView(
+            Button(this).apply {
+                text = "Copy ADB grant command"
+                setOnClickListener {
+                    val clip = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    clip.setPrimaryClip(ClipData.newPlainText("adb grant command", grantCommand))
+                    render("ADB grant command copied to clipboard")
+                }
+            },
+        )
+
         root.addView(
             Button(this).apply {
                 text = "3. Test self-ADB Wi-Fi"
