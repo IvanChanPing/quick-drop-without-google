@@ -9,10 +9,12 @@ the only way to beat the wallet-default for a shared AID is a FOREGROUND `setPre
   `onPause`. While the receive sheet is foreground, OUR HCE wins the tap; when it's closed the claim is
   released and taps fall back to native Quick Share — exactly the requested behaviour.
 - Scope/limits: only wins while our receive surface is foreground (documented; no background win over
-  the wallet default). Our-app-SENDER -> native-Quick-Share-RECEIVER via tap is still not a supported
-  path (our sender speaks our protocol, not a full native QS session). For background tap-receive the
-  only lever is disabling native Quick Share in Settings (Google > Devices & sharing > Quick Share),
-  which is a user UI toggle, not an app change.
+  the wallet default). For background tap-receive the only lever is disabling native Quick Share in
+  Settings (Google > Devices & sharing > Quick Share), a user UI toggle, not an app change.
+- NOTE: Super Drop IS a Quick Share implementation — normal (non-tap) send to native Quick Share
+  already works. The NFC tap is only a discovery/handoff shortcut into that working transfer; the
+  send-to-native-via-tap failure is in the NFC HANDOFF exchange (reader reading native's HCE tag), to
+  be localized via the diagnostics upload — NOT a protocol gap.
 - **Build:** `:app:assembleDebug` BUILD SUCCESSFUL; `super-drop-debug.apk` refreshed. Compile-only;
   the "tap reaches us while the sheet is open on A15" behaviour is the on-device make-or-break to
   verify (the new diagnostics auto-upload will show `BadaNfcPreferred setPreferredService -> true` and

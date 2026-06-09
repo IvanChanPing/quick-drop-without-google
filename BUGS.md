@@ -167,10 +167,17 @@ final verification needs the user's phones.
    REAL-WORLD CONFIRMATION (user, 2026-06-09, VPN off): when the A14 sender tapped the A15 phone, the
    tap **opened NATIVE Quick Share's receive screen on the A15** — i.e. the OS routed the F00000FE2C
    tap to Google, NOT to Super Drop's HCE. This is direct UI confirmation of the wallet-default-AID
-   routing on A15 (our HCE is bypassed). The native receiver then "didn't go any farther / didn't
-   initiate" because the sender wasn't a native Quick Share session. So: NFC-tap to an A15 phone with
-   stock Quick Share lands on GMS, full stop, unless we win the AID via foreground setPreferredService
-   (or use a private AID for our<->our).
+   routing on A15 (our HCE is bypassed). So: NFC-tap to an A15 phone with stock Quick Share lands on
+   GMS, full stop, unless we win the AID via foreground setPreferredService (or a private AID).
+   CORRECTION (user): Super Drop IS a Quick Share implementation — NORMAL (non-tap) send to native
+   Quick Share already WORKS. So the NFC tap is only a discovery/handoff shortcut that should feed the
+   already-working Quick Share Wi-Fi transfer; the failure is in the NFC HANDOFF exchange, not the
+   transfer protocol. Do NOT frame native-tap as "unsupported protocol." The two tap directions:
+   (a) native SENDS to us (we = HCE): A14 worked via chooser; A15 needs our foreground
+       setPreferredService to win the AID (now built).
+   (b) we SEND to native via tap (we = reader): our reader must read native's HCE Wi-Fi-LAN tag then
+       connect over the normal (working) Quick Share path. Localize where the reader's exchange fails
+       via the auto-upload (SuperDropTapReader: SELECT/ADVERTISEMENT/no-NfcTag/resolved).
    ENV NOTE: a VPN on the phone BLOCKED the diagnostics auto-upload (and the tap got farther with VPN
    off) — uploads need the phone's normal internet path. As of this note the phone upload still hadn't
    reached the collector (likely still the OLD APK / app not opened) — but the user's eyes already
