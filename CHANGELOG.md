@@ -5,6 +5,32 @@ entries here cover only fork-specific changes.
 
 ## [Unreleased]
 
+### 2026-06-09 — Universal helper: drop-in client + HELPER-OWNED share session (capture/restore) + direct API
+- **Goal (user):** any of our file-sharing apps routes Wi-Fi/BT toggling THROUGH the one installed
+  radio-helper; the HELPER (not the app) decides what was off, turns it on, and restores it — the app
+  only says "prepare" and "finished". Also keep a DIRECT toggle path (no session). And the helper must
+  wake on call.
+- **New `RadioHelperClient.kt`** (`radio-helper/client/`, canonical copy-paste drop-in for each app):
+  binds the helper RadioService via Messenger (async, no ANR). TWO modes:
+  - SESSION: `prepareForShare(radios=RADIO_BOTH)` at transfer/NFC-tap start + `transferFinished()` at
+    terminal. The app tracks NOTHING.
+  - DIRECT: `setWifi(on,cb)` / `setBluetooth(on,cb)` / `queryState(cb)` — flip a radio immediately.
+  - `connect`/`disconnect`; helper-missing or wrong-signing-key → callbacks return false/0 so the app
+    can fall back.
+- **New helper-side `ShareRadioSession`**: owns capture-original → enable-only-OFF → restore-only-ours,
+  with the "what we turned on" flags **persisted in SharedPreferences** so a process kill between
+  prepare and finish still restores correctly. `RadioService` gained MSG_PREPARE_SHARE=4 (arg1=radio
+  bitmask, reply arg1=now-on bitmask) + MSG_TRANSFER_FINISHED=5 (existing MSG_SET_WIFI/BLUETOOTH/QUERY
+  kept for the direct path); added `replyInt`.
+- **Wake-on-call:** clients bind with `BIND_AUTO_CREATE`, so Android starts the helper process + creates
+  RadioService on demand — a call wakes it (independent of the boot warm-up). Caveat: won't wake if the
+  helper is force-stopped / never-opened-since-install (one-time setup opens it); bind from foreground.
+- Integration contract (manifest `<uses-permission BIND_RADIO>` + `<queries>` + SAME signing key) is in
+  the `/radio-helper-integration` skill + memory `universal-radio-helper-all-sharing-apps`.
+- **Build:** `:radio-helper:assembleDebug` BUILD SUCCESSFUL. radio-helper-debug.apk refreshed.
+- **Status:** helper compiles + (mechanism/persistence) emulator-validated; `RadioHelperClient` is
+  compile-only until wired into a real app's share flow (next step, Super Drop first) — then e2e.
+
 ### 2026-06-08 (later 15) — libadb 1.0.1 → 3.1.1 + autoConnect (the real fix for "adbd unreachable")
 - **Device evidence:** notification pairing SUCCEEDED, but the self-ADB CONNECT failed with the real
   error **`IOException: null`** (surfaced by "later 14"'s diagnostics) — TCP connected but the ADB/TLS

@@ -28,15 +28,22 @@ internal class RadioService : Service() {
     private val handler =
         Handler(handlerThread.looper) { msg ->
             val on = msg.arg1 == 1
-            val result =
-                when (msg.what) {
-                    MSG_SET_WIFI -> RadioToggler.setWifiSilent(this, on)
-                    MSG_SET_BLUETOOTH -> RadioToggler.setBluetooth(on)
-                    MSG_QUERY ->
-                        return@Handler replyState(msg)
-                    else -> return@Handler false
+            when (msg.what) {
+                MSG_SET_WIFI -> replyResult(msg, RadioToggler.setWifiSilent(this, on))
+                MSG_SET_BLUETOOTH -> replyResult(msg, RadioToggler.setBluetooth(on))
+                MSG_QUERY -> replyState(msg)
+                // Helper-OWNED share orchestration (apps stay dumb): prepare =
+                // capture the user's original Wi-Fi/BT state + enable only the
+                // needed radios that are OFF (msg.arg1 = radio bitmask, 0 = both);
+                // reply arg1 = bitmask now ON. finished = restore ONLY what we
+                // turned on. State is persisted in ShareRadioSession (survives a
+                // process kill between the two calls).
+                MSG_PREPARE_SHARE -> replyInt(msg, ShareRadioSession.prepare(this, msg.arg1))
+                MSG_TRANSFER_FINISHED -> {
+                    ShareRadioSession.finish(this)
+                    replyResult(msg, true)
                 }
-            replyResult(msg, result)
+            }
             true
         }
 
@@ -52,9 +59,15 @@ internal class RadioService : Service() {
     private fun replyResult(
         request: Message,
         result: Boolean,
+    ): Boolean = replyInt(request, if (result) 1 else 0)
+
+    /** Reply to [request] with an Int payload in arg1 (used by prepare's bitmask). */
+    private fun replyInt(
+        request: Message,
+        value: Int,
     ): Boolean {
         val reply = request.replyTo ?: return true
-        val out = Message.obtain(null, request.what).apply { arg1 = if (result) 1 else 0 }
+        val out = Message.obtain(null, request.what).apply { arg1 = value }
         return runCatching { reply.send(out) }.isSuccess
     }
 
@@ -74,5 +87,19 @@ internal class RadioService : Service() {
 
         /** Reply carries Wi-Fi state in arg1, Bluetooth state in arg2. */
         const val MSG_QUERY = 3
+
+        /**
+         * Share START — the helper captures the original Wi-Fi/BT state and enables
+         * the needed radios that are off. arg1 = radio bitmask (1=Wi-Fi, 2=BT,
+         * 0=both). Reply arg1 = bitmask of radios now ON. The app calls this once;
+         * it does NOT track or restore anything itself.
+         */
+        const val MSG_PREPARE_SHARE = 4
+
+        /**
+         * Transfer TERMINAL — the helper restores ONLY the radios it turned on in
+         * MSG_PREPARE_SHARE, back to the user's original state. Reply arg1 = 1 (ack).
+         */
+        const val MSG_TRANSFER_FINISHED = 5
     }
 }

@@ -1,0 +1,252 @@
+/*
+ * Copyright 2026 Bada contributors. Apache-2.0.
+ *
+ * ════════════════════════════════════════════════════════════════════════════
+ *  RadioHelperClient — DROP-IN CLIENT for the universal Super Drop Radio Helper
+ * ════════════════════════════════════════════════════════════════════════════
+ *
+ * WHAT THIS IS
+ *   The single file ANY of our file-sharing apps (Super Drop, the Bridge,
+ *   O+ Connect / OShare, and any future one) copies in to route Wi-Fi/Bluetooth
+ *   toggling through the ONE installed `radio-helper` APK — instead of each app
+ *   re-implementing the targetSdk-28 legacy toggle / self-ADB / Shizuku ladder.
+ *
+ * WHY
+ *   The radio-enable capability is targetSdkVersion-gated (setWifiEnabled needs
+ *   targetSdk<=28, BluetoothAdapter.enable() needs <=32) and the silent Wi-Fi
+ *   fallbacks need shell-UID. A modern-targetSdk sharing app CANNOT do this
+ *   itself. The helper (targetSdk 28, self-starts on boot, one-time WSS grant +
+ *   optional self-ADB pairing) holds the capability; apps just CALL it.
+ *
+ * HOW TO INTEGRATE (per client app) — see the /radio-helper-integration skill:
+ *   1. Copy this file into the app (repackage to the app's own package).
+ *   2. In the app's AndroidManifest.xml, inside <manifest>:
+ *        <uses-permission android:name="dev.superdrop.radiohelper.permission.BIND_RADIO"/>
+ *        <queries><package android:name="dev.superdrop.radiohelper"/></queries>
+ *   3. SIGN the app with the SAME signing key as the helper — BIND_RADIO is a
+ *      signature permission; a different key = bind is denied.
+ *   4. Call [prepareForShare] when a transfer/NFC-tap starts and
+ *      [transferFinished] when it finishes (complete/declined/timeout). That is
+ *      ALL the app does — the helper captures the original radio state, enables
+ *      what's off, and restores it. The app never queries or restores anything.
+ *
+ * PRECONDITION (per phone, ONE TIME — done in the helper app itself, NOT here):
+ *   install the helper APK + grant it WRITE_SECURE_SETTINGS (and, on OEMs that
+ *   clamp the legacy toggle, do the one-time self-ADB pairing). After that the
+ *   helper works across reboots with no per-boot step; clients just bind.
+ *
+ * THREADING / STATUS
+ *   bindService + Messenger.send are async (non-blocking) → safe on the main
+ *   thread, NO ANR. Callbacks are delivered on the main looper. Mechanism +
+ *   reboot-persistence validated on an Android-16 emulator (UI-driven, no root);
+ *   the silent toggle was also seen "won by: direct" on the user's ColorOS phone.
+ *   Per-OEM radio behaviour past that is the helper's concern, not the client's.
+ */
+package dev.superdrop.radiohelper.client
+
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
+import android.content.ServiceConnection
+import android.os.Handler
+import android.os.IBinder
+import android.os.Looper
+import android.os.Message
+import android.os.Messenger
+import android.os.RemoteException
+import android.util.Log
+import java.util.ArrayDeque
+
+class RadioHelperClient(context: Context) {
+    private val appContext = context.applicationContext
+
+    // Outgoing messenger to the helper's RadioService (set on bind).
+    @Volatile
+    private var outgoing: Messenger? = null
+
+    // Per-message-type FIFO of pending callbacks. Requests are normally issued
+    // sequentially (prepare→restore), so FIFO correlation by `what` is correct.
+    private val wifiCbs = ArrayDeque<(Boolean) -> Unit>()
+    private val btCbs = ArrayDeque<(Boolean) -> Unit>()
+    private val queryCbs = ArrayDeque<(Boolean, Boolean) -> Unit>()
+    private val prepareCbs = ArrayDeque<(Int) -> Unit>()
+    private val finishedCbs = ArrayDeque<() -> Unit>()
+
+    private val incoming =
+        Messenger(
+            Handler(Looper.getMainLooper()) { msg ->
+                when (msg.what) {
+                    MSG_SET_WIFI -> wifiCbs.poll()?.invoke(msg.arg1 == 1)
+                    MSG_SET_BLUETOOTH -> btCbs.poll()?.invoke(msg.arg1 == 1)
+                    MSG_QUERY -> queryCbs.poll()?.invoke(msg.arg1 == 1, msg.arg2 == 1)
+                    MSG_PREPARE_SHARE -> prepareCbs.poll()?.invoke(msg.arg1)
+                    MSG_TRANSFER_FINISHED -> finishedCbs.poll()?.invoke()
+                }
+                true
+            },
+        )
+
+    private val connection =
+        object : ServiceConnection {
+            override fun onServiceConnected(
+                name: ComponentName?,
+                service: IBinder?,
+            ) {
+                outgoing = service?.let { Messenger(it) }
+                pendingOnConnected?.invoke(outgoing != null)
+                pendingOnConnected = null
+            }
+
+            override fun onServiceDisconnected(name: ComponentName?) {
+                outgoing = null
+            }
+        }
+
+    private var pendingOnConnected: ((Boolean) -> Unit)? = null
+
+    /**
+     * Bind the helper's RadioService. [onConnected] is called with `true` when
+     * bound, or `false` if the helper isn't installed / bind denied (wrong
+     * signing key) — in which case the caller should use its own fallback
+     * (system Wi-Fi panel / BT ACTION_REQUEST_ENABLE).
+     */
+    fun connect(onConnected: (Boolean) -> Unit) {
+        if (outgoing != null) {
+            onConnected(true)
+            return
+        }
+        pendingOnConnected = onConnected
+        val bound =
+            HELPER_PACKAGES.any { pkg ->
+                runCatching {
+                    appContext.bindService(
+                        Intent().setComponent(ComponentName(pkg, HELPER_SERVICE)),
+                        connection,
+                        Context.BIND_AUTO_CREATE,
+                    )
+                }.getOrDefault(false)
+            }
+        if (!bound) {
+            pendingOnConnected = null
+            Log.w(TAG, "helper not installed / bind denied (same signing key?)")
+            onConnected(false)
+        }
+    }
+
+    /** Toggle Wi-Fi. [cb] gets true if a SILENT path succeeded; on false the
+     *  caller should open the system Wi-Fi panel itself (foreground). */
+    fun setWifi(
+        on: Boolean,
+        cb: (Boolean) -> Unit,
+    ) = send(MSG_SET_WIFI, on, wifiCbs, cb)
+
+    /** Toggle Bluetooth. [cb] gets the helper's enable()/disable() result. */
+    fun setBluetooth(
+        on: Boolean,
+        cb: (Boolean) -> Unit,
+    ) = send(MSG_SET_BLUETOOTH, on, btCbs, cb)
+
+    /** Query current state: cb(wifiOn, btOn). */
+    fun queryState(cb: (Boolean, Boolean) -> Unit) {
+        val m = outgoing
+        if (m == null) {
+            cb(false, false)
+            return
+        }
+        queryCbs.add(cb)
+        runCatching {
+            m.send(Message.obtain(null, MSG_QUERY).also { it.replyTo = incoming })
+        }.onFailure {
+            queryCbs.remove(cb)
+            cb(false, false)
+        }
+    }
+
+    private fun send(
+        what: Int,
+        on: Boolean,
+        cbs: ArrayDeque<(Boolean) -> Unit>,
+        cb: (Boolean) -> Unit,
+    ) {
+        val m = outgoing
+        if (m == null) {
+            cb(false)
+            return
+        }
+        cbs.add(cb)
+        runCatching {
+            m.send(Message.obtain(null, what).also { it.arg1 = if (on) 1 else 0; it.replyTo = incoming })
+        }.onFailure {
+            cbs.remove(cb)
+            cb(false)
+        }
+    }
+
+    /**
+     * Transfer START — ONE call. The HELPER captures the user's original Wi-Fi/BT
+     * state, enables whichever requested radios are OFF, and remembers what it
+     * turned on (persisted helper-side). The app does NOT query, track, or restore
+     * anything itself — that's all in the helper ([ShareRadioSession]).
+     * @param radios which radios the transfer needs ([RADIO_BOTH] default).
+     * @param done optional: bitmask of radios now ON (for diagnostics; the app may
+     *   ignore it). Call [connect] (and act on its false result) before this.
+     */
+    fun prepareForShare(
+        radios: Int = RADIO_BOTH,
+        done: (radiosNowOn: Int) -> Unit = {},
+    ) {
+        val m = outgoing
+        if (m == null) {
+            done(0)
+            return
+        }
+        prepareCbs.add(done)
+        runCatching {
+            m.send(Message.obtain(null, MSG_PREPARE_SHARE).also { it.arg1 = radios; it.replyTo = incoming })
+        }.onFailure { prepareCbs.remove(done); done(0) }
+    }
+
+    /**
+     * Transfer FINISHED — ONE call (complete / declined / timeout). The HELPER
+     * restores ONLY the radios it turned on, back to the user's original state.
+     */
+    fun transferFinished(done: () -> Unit = {}) {
+        val m = outgoing
+        if (m == null) {
+            done()
+            return
+        }
+        finishedCbs.add(done)
+        runCatching {
+            m.send(Message.obtain(null, MSG_TRANSFER_FINISHED).also { it.replyTo = incoming })
+        }.onFailure { finishedCbs.remove(done); done() }
+    }
+
+    /** Unbind. Call when the app no longer needs the helper. */
+    fun disconnect() {
+        if (outgoing != null) {
+            runCatching { appContext.unbindService(connection) }
+            outgoing = null
+        }
+    }
+
+    companion object {
+        private const val TAG = "RadioHelperClient"
+
+        // The helper APK. Release first, then the debug build (handy in testing).
+        private val HELPER_PACKAGES = listOf("dev.superdrop.radiohelper", "dev.superdrop.radiohelper.debug")
+        private const val HELPER_SERVICE = "dev.superdrop.radiohelper.RadioService"
+
+        // MUST match RadioService in the helper.
+        private const val MSG_SET_WIFI = 1
+        private const val MSG_SET_BLUETOOTH = 2
+        private const val MSG_QUERY = 3
+        private const val MSG_PREPARE_SHARE = 4
+        private const val MSG_TRANSFER_FINISHED = 5
+
+        /** Radio bitmask for [prepareForShare] (matches ShareRadioSession). */
+        const val RADIO_WIFI = 1
+        const val RADIO_BT = 2
+        const val RADIO_BOTH = RADIO_WIFI or RADIO_BT
+    }
+}
