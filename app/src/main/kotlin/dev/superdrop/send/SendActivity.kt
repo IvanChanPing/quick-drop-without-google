@@ -65,6 +65,7 @@ import dev.superdrop.protocol.qr.QrKeyDerivation
 import dev.superdrop.protocol.qr.QrTlvMatcher
 import dev.superdrop.protocol.qr.QrUrl
 import dev.superdrop.service.receiver.AdvertisedDeviceNames
+import dev.superdrop.service.radio.RadioHelperClient
 import dev.superdrop.service.receiver.OutboundSessionActiveHolder
 import dev.superdrop.ui.BackdropBlurView
 import dev.superdrop.ui.sheet.DraggableSheetLayout
@@ -125,6 +126,19 @@ public class SendActivity : AppCompatActivity() {
     private var bleL2capBootstrapClient: BleL2capInitialControlClient? = null
     private var bleGattBootstrapClient: BleGattInitialControlClient? = null
     private var senderGattServer: BleGattInitialControlServer? = null
+
+    /**
+     * radioClient — binds the universal `:radio-helper` so the SENDER's Wi-Fi +
+     * Bluetooth are forced ON for the whole send flow (discovery + transfer) and
+     * restored to the user's original state when the Send screen finishes. Mirrors
+     * the receiver's [dev.superdrop.service.receiver.ReceiverForegroundService]
+     * radio wiring (SESSION mode). Held for the activity lifetime; bound in
+     * [requestRadiosForSend] (onCreate), released in [restoreRadiosAfterSend]
+     * (onDestroy when finishing). The helper owns capture/enable/restore; this app
+     * tracks nothing. NOT device-verified end-to-end.
+     */
+    private var radioClient: RadioHelperClient? = null
+    private var radioSharePrepared = false
 
     /**
      * Quick Share NFC tap-to-share reader (Phase 4, direction: us-as-sender).
@@ -199,6 +213,10 @@ public class SendActivity : AppCompatActivity() {
         // peer writes server_init). Pausing the gate for the lifetime
         // of `SendActivity` clears that race window.
         OutboundSessionActiveHolder.setOutboundSessionActive(true)
+        // Force Wi-Fi + Bluetooth ON for the send (discovery needs BT, transfer
+        // needs Wi-Fi) via the universal radio-helper. Symmetric to the receiver
+        // wake. Restored in onDestroy (when finishing). Async — safe on main.
+        requestRadiosForSend()
         binding = ActivitySendBinding.inflate(layoutInflater)
         setContentView(binding.root)
         bugReportFlowSupport = BugReportFlowSupport.install(this)
@@ -327,6 +345,43 @@ public class SendActivity : AppCompatActivity() {
         // back up if any of the gate's existing publish signals
         // (BLE pulse, always-visible override, QR session) call for it.
         OutboundSessionActiveHolder.setOutboundSessionActive(false)
+        // Restore the radios the helper turned on — only when the Send screen is
+        // truly finishing (any terminal: sent / declined / cancelled / dismissed),
+        // NOT on a config-change recreate (would restore mid-transfer; the new
+        // instance re-prepares and the helper's prepare is re-entrant-safe).
+        restoreRadiosAfterSend()
+    }
+
+    /**
+     * Bind the universal `:radio-helper` and force Wi-Fi + Bluetooth ON for the
+     * send (discovery + transfer), via [RadioHelperClient] SESSION mode. The helper
+     * captures the user's original state and restores it on [restoreRadiosAfterSend].
+     * Main-thread + async (no ANR). Best-effort: if the helper isn't installed /
+     * wrong signing key / force-stopped, radios are left as-is (user's own fallback).
+     */
+    private fun requestRadiosForSend() {
+        val client = radioClient ?: RadioHelperClient(this).also { radioClient = it }
+        client.connect { connected ->
+            if (!connected) return@connect
+            client.prepareForShare(RadioHelperClient.RADIO_BOTH) { radioSharePrepared = true }
+        }
+    }
+
+    /**
+     * On a true terminal (`isFinishing`), tell the helper the send is over so it
+     * restores ONLY the radios it turned on; then always unbind. On a config-change
+     * recreate (`isFinishing` false) we skip the restore (the new instance re-binds
+     * and re-prepares; the helper session is persisted + re-entrant) but still
+     * unbind this dead instance's client to avoid a duplicate binding.
+     */
+    private fun restoreRadiosAfterSend() {
+        val client = radioClient ?: return
+        if (isFinishing && radioSharePrepared) {
+            client.transferFinished()
+            radioSharePrepared = false
+        }
+        client.disconnect()
+        radioClient = null
     }
 
     override fun onResume() {

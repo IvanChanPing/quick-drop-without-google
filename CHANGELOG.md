@@ -1,3 +1,20 @@
+## [2026-06-09] Sender also forces Wi-Fi/BT on via the radio-helper (+ re-entrant prepare)
+User: sending should turn the radios on/off too, like receiving. (NFC out of scope — it's never
+disabled.) Wired the SENDER side symmetric to the receiver:
+- `SendActivity` (`:app`): holds a `RadioHelperClient`; `requestRadiosForSend()` in `onCreate`
+  (`connect → prepareForShare(RADIO_BOTH)`) forces Wi-Fi+BT on for the whole send (discovery + transfer);
+  `restoreRadiosAfterSend()` in `onDestroy` calls `transferFinished()` ONLY when `isFinishing()` (any
+  terminal: sent/declined/cancelled/dismissed), and always unbinds (config-change recreate skips the
+  restore + re-prepares — no premature off, no double-bind). Async on main thread (no ANR). Best-effort:
+  helper missing/denied → radios left as-is. `:app` already declares `BIND_RADIO` + the helper `<queries>`.
+- **Bug fixed (found while mapping):** `ShareRadioSession.prepare` now SEEDS the enabled-flags from the
+  persisted session instead of starting `false`, so a SECOND prepare (rotation recreate / repeated wakes)
+  ADDS to what we enabled and never resets true→false — previously a re-prepare could strand a radio ON at
+  finish. Applies to both sender and receiver.
+- Send logic itself is UNCHANGED (purely additive lifecycle hooks) — if it sent before, it sends now.
+- **Build:** `:radio-helper:assembleDebug` + `:app:assembleDebug` BUILD SUCCESSFUL; `radio-helper-debug.apk`
+  + `super-drop-debug.apk` refreshed at repo root. Compile-only / device-UNVERIFIED e2e.
+
 ## Consent heads-up: slightly larger
 
 Made the consent heads-up a little bigger while keeping the Decline/Accept

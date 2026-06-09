@@ -79,8 +79,14 @@ internal object ShareRadioSession {
         val want = if (radios == 0) RADIO_BOTH else radios
         val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-        var enabledWifi = false
-        var enabledBt = false
+        // RE-ENTRANT: seed from any prior un-finished prepare so a SECOND prepare
+        // (activity recreated on rotation, or repeated wakes) ADDS to what we
+        // enabled and never resets a true→false. Without this, a 2nd prepare would
+        // see the radio we already turned on as "already on", record enabled=false,
+        // and finish() would then leave it stranded ON. finish() clears the prefs,
+        // so a genuinely new share still starts from a clean (false) capture.
+        var enabledWifi = prefs.getBoolean(KEY_ENABLED_WIFI, false)
+        var enabledBt = prefs.getBoolean(KEY_ENABLED_BT, false)
         var nowOn = 0
 
         if (want and RADIO_WIFI != 0) {
