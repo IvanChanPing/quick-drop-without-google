@@ -73,6 +73,34 @@ final verification needs the user's phones.
    where it stops (SELECT / ADVERTISEMENT / no NfcTag / resolved); the HCE prints whether it was
    asked and whether the link holder was live. Do NOT change code before these logs localize it.
 
+   UPDATE (user clarifications, same day):
+   - The OTHER Super Drop phone WAS in its default receive state (not in send). So "two senders
+     can't tap" is NOT the cause for the Super Drop→Super Drop case.
+   - Native Quick Share was OPEN in receive mode and STILL nothing — so "native not armed as a
+     receiver" is also NOT the cause.
+
+   Refined analysis (code-grounded; still needs logcat to confirm):
+   - Default NFC tap-share mode is SHEET_OPEN (verified in `NfcTapSharePreferences.mode()`), so an
+     idle Super Drop does NOT publish a live `NfcTapLinkHolder`. BUT `SuperDropTapHceService.
+     handleAdvertisement` has a COLD-PRIMER fallback: if the phone has a Wi-Fi-LAN IP at tap time it
+     synthesises a real connectable tag on the FIRST tap (`NfcColdReceiverPrimer.prime`). So an idle
+     Super Drop on Wi-Fi SHOULD still answer — unless it had no Wi-Fi IP, or the tap never reached
+     our HCE at all (next point).
+   - LEADING HYPOTHESIS now: the AID F00000FE2C collision bites the **tapped/HCE side of every
+     tap**, not just our own receive. When our reader taps a phone that has stock Quick Share
+     (native QS phone, OR a Super Drop phone that also has GMS), that phone's NFC may route the
+     SELECT to GMS's HCE (or show a chooser its screen-off/locked state can't answer) instead of our
+     `SuperDropTapHceService` → our reader never gets a Super Drop tag → send fails. This single
+     cause fits ALL the data: A14 receive worked (WE were the HCE and the user could pick our app);
+     A14 send to native failed (native routes to its own GMS HCE); A14 send to Super Drop failed if
+     that phone also has GMS; A15 stricter routing/observe-mode could even kill the receive chooser.
+   - MUST confirm with: (a) sender logcat — does SELECT get 9000 and does ADVERTISEMENT come back
+     empty/error?  (b) does the tapped phone have stock Google Quick Share installed?  (c) try the
+     receiver's NFC tap-to-share = "Always (background)" + receiver on Wi-Fi, to isolate the primer.
+   - If the AID-collision-on-the-tapped-side hypothesis holds, sending via this AID to a
+     GMS-equipped phone may be fundamentally unwinnable (you can't out-route GMS for a shared
+     category-other AID) — a design constraint to surface, not a quick fix.
+
 ## Notes
 - #4 and #5 are both tile/visibility and likely share the task-handling root cause.
 - Fix verification: code + redroid where possible (tile launch task, name fallback); the
