@@ -37,6 +37,7 @@ import androidx.core.view.AccessibilityDelegateCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import androidx.lifecycle.lifecycleScope
+import dev.superdrop.nfc.NfcPreferredService
 import dev.superdrop.R
 import dev.superdrop.bugreport.BugReportFlowSupport
 import dev.superdrop.protocol.connection.InboundConnection
@@ -241,11 +242,17 @@ class ConsentTrampolineActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         ConsentDiagnostic.log(this, "trampoline.onResume id=$connectionId")
+        // While the receive sheet is foreground, claim the Quick Share NFC AID so
+        // a tap reaches US instead of stock Google Quick Share (the only way to win
+        // a shared AID on Android 15). Released in onPause -> taps fall back to
+        // native Quick Share when the sheet is closed.
+        NfcPreferredService.prefer(this)
     }
 
     override fun onPause() {
         super.onPause()
         ConsentDiagnostic.log(this, "trampoline.onPause id=$connectionId finishing=$isFinishing")
+        NfcPreferredService.release(this)
     }
 
     override fun onStop() {

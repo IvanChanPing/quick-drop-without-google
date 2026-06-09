@@ -1,3 +1,24 @@
+## [2026-06-09] NFC: win the tap while the receive sheet is open (setPreferredService)
+Confirmed on-device that on Android 15 a tap routes the shared F00000FE2C AID straight to Google
+Quick Share (the tap opened native QS's receive screen; our HCE was never invoked). Per the HCE docs,
+the only way to beat the wallet-default for a shared AID is a FOREGROUND `setPreferredService`. So:
+- New `app/.../nfc/NfcPreferredService.kt`: `prefer(activity)` / `release(activity)` wrap
+  `CardEmulation.setPreferredService` / `unsetPreferredService` for our `SuperDropTapHceService`
+  component (null-NFC guarded, logged via DiagnosticLog).
+- `ConsentTrampolineActivity` (the receive sheet) calls `prefer` in `onResume` and `release` in
+  `onPause`. While the receive sheet is foreground, OUR HCE wins the tap; when it's closed the claim is
+  released and taps fall back to native Quick Share — exactly the requested behaviour.
+- Scope/limits: only wins while our receive surface is foreground (documented; no background win over
+  the wallet default). Our-app-SENDER -> native-Quick-Share-RECEIVER via tap is still not a supported
+  path (our sender speaks our protocol, not a full native QS session). For background tap-receive the
+  only lever is disabling native Quick Share in Settings (Google > Devices & sharing > Quick Share),
+  which is a user UI toggle, not an app change.
+- **Build:** `:app:assembleDebug` BUILD SUCCESSFUL; `super-drop-debug.apk` refreshed. Compile-only;
+  the "tap reaches us while the sheet is open on A15" behaviour is the on-device make-or-break to
+  verify (the new diagnostics auto-upload will show `BadaNfcPreferred setPreferredService -> true` and
+  `SuperDropTapHce` lines if it worked).
+- **Files:** `app/.../nfc/NfcPreferredService.kt` (new), `app/.../consent/ConsentTrampolineActivity.kt`.
+
 ## [2026-06-09] Diagnostics auto-upload (no adb) — NFC tap logs -> DiagnosticLog -> collector
 The user can't run adb, so NFC-tap diagnosis was stuck. Added an on-device auto-upload so recent
 diagnostics reach a developer collector with zero file-handling:
