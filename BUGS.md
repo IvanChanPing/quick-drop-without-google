@@ -132,6 +132,31 @@ final verification needs the user's phones.
      our HCE on the A15 side. Capture `adb logcat -s SuperDropTapHceService BadaNfcColdPrime BadaNfcWake`
      ON THE A15 PHONE while it is tapped, plus `SuperDropTapReader` on the A14 sender.
 
+   CLEAN ISOLATION (user, same day): native Quick Share (sender) -> OUR APP (HCE receiver) via tap:
+   WORKED when our app was on Android 14, FAILED when our app was on Android 15. Same sender, same
+   role for us (HCE), only the receiver OS differs -> the break is **our HCE receiver on Android 15**.
+
+   ROOT CAUSE (doc-grounded, developer.android.com/develop/connectivity/nfc/hce — needs on-device
+   logcat to fully confirm): Android resolves a duplicate AID by (1) if the DEFAULT WALLET app
+   registered the AID, invoke it directly; (2) else the single registrant; (3) else show a chooser.
+   - A14: fell to (3) chooser -> user picks Super Drop -> receive worked.
+   - A15: Google (default Wallet role holder) also registers F00000FE2C, so step (1) routes the tap
+     straight to GMS, NO chooser, and our `SuperDropTapHceService` is never invoked -> receive from
+     native fails on A15. (A14's chooser proves GMS registers the AID.)
+   - The ONLY documented way to beat the wallet default for a shared AID is
+     `CardEmulation.setPreferredService(activity, ourTapHceComponent)` from a FOREGROUND ACTIVITY
+     (it overrides both conflict resolution AND observe mode). It only applies while one of our
+     Activities is foreground — which fits the SHEET_OPEN model (the receive sheet is foreground).
+
+   PROPOSED FIXES (not built; confirm on the A15 device first):
+   - (native -> us, A15) Call `setPreferredService` while our receive sheet Activity is foreground
+     (+ `unsetPreferredService` onPause). Doc says this overrides the wallet default for the AID.
+     Limitation: only works while our Activity is up (no background win against the wallet default).
+   - (us <-> us) Add a SECOND PRIVATE AID only Super Drop registers (no conflict -> step (2) invokes
+     us directly on every Android version, no chooser). Does NOT help native interop (native SELECTs
+     F00000FE2C).
+   Sources: https://developer.android.com/develop/connectivity/nfc/hce
+
 ## Notes
 - #4 and #5 are both tile/visibility and likely share the task-handling root cause.
 - Fix verification: code + redroid where possible (tile launch task, name fallback); the
