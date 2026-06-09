@@ -135,8 +135,10 @@ internal class SelfTestActivity : Activity() {
         root.addView(shizukuButton)
 
         // --- Quick Share auto-detect (AccessibilityService) ---
-        // quickShareSectionHeader — bold-ish divider introducing the one-time
-        // accessibility enable for the Quick Share foreground detector.
+        // quickShareSectionHeader — small ~13sp text divider reading
+        // "— Quick Share auto-detect (one-time) —", padded above so it separates
+        // visually. Sits in the vertical list BELOW the Shizuku button and ABOVE the
+        // "Silent Wi-Fi setup" header, introducing this feature's group.
         root.addView(
             TextView(this).apply {
                 text = "— Quick Share auto-detect (one-time) —"
@@ -144,8 +146,9 @@ internal class SelfTestActivity : Activity() {
                 textSize = 13f
             },
         )
-        // quickShareHelp — explains the feature + the one-time enable. Once on, it
-        // re-binds on every boot, so there is NO per-reboot step.
+        // quickShareHelp — small ~12sp grey paragraph directly under the header,
+        // explaining the feature + that the enable is one-time (re-binds on boot, no
+        // per-reboot step).
         root.addView(
             TextView(this).apply {
                 text =
@@ -156,9 +159,11 @@ internal class SelfTestActivity : Activity() {
                 textSize = 12f
             },
         )
-        // enableQuickShareDetectButton — opens system Accessibility settings so the
-        // user can flip the QuickShareWatcherService on. The live status (enabled?,
-        // last GMS window seen, last action) is shown in the top status block.
+        // enableQuickShareDetectButton — full-width default-style button labelled
+        // "Enable Quick Share auto-detect (Accessibility)", directly under
+        // quickShareHelp. On tap opens the system Accessibility settings list so the
+        // user can flip QuickShareWatcherService on. Live state (enabled?, restore
+        // pending, last GMS window, last action) shows in the top status block.
         root.addView(
             Button(this).apply {
                 text = "Enable Quick Share auto-detect (Accessibility)"

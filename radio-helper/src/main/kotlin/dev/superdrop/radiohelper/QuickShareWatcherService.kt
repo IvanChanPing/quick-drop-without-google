@@ -38,15 +38,17 @@ import android.view.accessibility.AccessibilityEvent
  * [QuickShareWatchStatus.lastWindow] so, if a device reports a different class, it
  * is visible on-screen and the matcher can be corrected (no guessing/decompile).
  *
- * RESTORE TIMING (KNOWN LIMITATION)
- * ---------------------------------
- * We cannot see Quick Share's transfer state from outside, so "transfer finished"
- * is approximated as "Quick Share has been out of the foreground for [GRACE_MS]".
- * A large transfer that continues in the background AFTER the UI is dismissed for
- * longer than the grace window could be restored mid-transfer. Mitigations: Quick
- * Share manages its own radios too, and [ShareRadioSession]'s 20‑minute watchdog is
- * the backstop if this service is killed. A future NotificationListener reading
- * Quick Share's progress notification could gate restore precisely.
+ * RESTORE TIMING
+ * --------------
+ * We deliberately do NOT try to detect "transfer finished" — that is app-specific
+ * and would strand the radios ON forever on a cancel / failure. Instead the trigger
+ * is "Quick Share LEFT the foreground" (works for any app and any outcome):
+ *   - QS leaves the foreground  → restore [LEFT_GRACE_MS] (20 s) later.
+ *   - Hard cap [MAX_HOLD_MS] (2 min) from first detection, for the case where we
+ *     NEVER observe a leave (our process killed while QS is still in front). It is
+ *     re-armed on every QS-foreground event, so an actively-used QS is not cut.
+ * KNOWN EDGE: a transfer the user leaves running in the background is restored ~20 s
+ * after they leave the QS screen (Quick Share also manages its own radios).
  *
  * THREADING / DURABILITY
  * ----------------------
@@ -93,31 +95,36 @@ internal class QuickShareWatcherService : AccessibilityService() {
         if (pkg == GMS_PKG) QuickShareWatchStatus.window("$pkg / $cls")
 
         val isQuickShare = pkg == GMS_PKG && cls.contains(QS_CLASS_MARKER)
-        when {
-            isQuickShare && !quickShareInFront -> {
-                // ENTER: Quick Share just came to the front.
-                quickShareInFront = true
-                Log.i(TAG, "Quick Share foreground ($cls) → prepare share radios")
-                QuickShareWatchStatus.update("Quick Share detected → enabling Wi‑Fi/Bluetooth")
-                // prepare() is re-entrant/idempotent and (re)arms the 20-min watchdog,
-                // which also REPLACES any pending short grace alarm if we re-entered
-                // Quick Share before the grace fired.
-                bg.post { ShareRadioSession.prepare(applicationContext, ShareRadioSession.RADIO_BOTH) }
+        if (isQuickShare) {
+            // Quick Share is in the foreground. First time → prepare the radios.
+            // Every time → (re)arm the MAX_HOLD hard-cap alarm so an actively-used
+            // QS keeps pushing the cap out and is not cut mid-transfer.
+            val firstEnter = !quickShareInFront
+            quickShareInFront = true
+            bg.post {
+                if (firstEnter) {
+                    Log.i(TAG, "Quick Share foreground ($cls) → prepare share radios")
+                    QuickShareWatchStatus.update("Quick Share detected → enabling Wi‑Fi/Bluetooth")
+                    // prepare() is re-entrant/idempotent (seeds from the persisted session).
+                    ShareRadioSession.prepare(applicationContext, ShareRadioSession.RADIO_BOTH)
+                }
+                if (ShareRadioSession.isSessionActive(applicationContext)) {
+                    ShareRadioSession.scheduleRestoreIn(applicationContext, MAX_HOLD_MS)
+                }
             }
-            !isQuickShare && quickShareInFront -> {
-                // LEAVE: foreground moved off Quick Share. Schedule the restore on a
-                // DURABLE AlarmManager alarm (survives our process being frozen/killed
-                // by ColorOS after Quick Share closes), NOT an in-process timer. Skip
-                // if we turned nothing on (nothing to restore).
-                quickShareInFront = false
-                bg.post {
-                    if (ShareRadioSession.isSessionActive(applicationContext)) {
-                        Log.i(TAG, "Quick Share left → restore alarm in ${GRACE_MS / 1000}s")
-                        ShareRadioSession.scheduleRestoreIn(applicationContext, GRACE_MS)
-                        QuickShareWatchStatus.update("Quick Share left → restoring radios in ${GRACE_MS / 1000}s")
-                    } else {
-                        QuickShareWatchStatus.update("Quick Share left (nothing to restore)")
-                    }
+        } else if (quickShareInFront) {
+            // LEAVE: foreground moved off Quick Share (user left — done / cancel /
+            // fail; we don't care which). Restore LEFT_GRACE_MS later via the DURABLE
+            // AlarmManager alarm (survives our process being frozen/killed by ColorOS),
+            // NOT an in-process timer. Skip if we turned nothing on.
+            quickShareInFront = false
+            bg.post {
+                if (ShareRadioSession.isSessionActive(applicationContext)) {
+                    Log.i(TAG, "Quick Share left → restore alarm in ${LEFT_GRACE_MS / 1000}s")
+                    ShareRadioSession.scheduleRestoreIn(applicationContext, LEFT_GRACE_MS)
+                    QuickShareWatchStatus.update("Quick Share left → restoring radios in ${LEFT_GRACE_MS / 1000}s")
+                } else {
+                    QuickShareWatchStatus.update("Quick Share left (nothing to restore)")
                 }
             }
         }
@@ -147,10 +154,18 @@ internal class QuickShareWatcherService : AccessibilityService() {
         const val QS_CLASS_MARKER = "nearby.sharing"
 
         /**
-         * How long Quick Share must stay OUT of the foreground before we restore
-         * the radios. 2 min balances "don't cut a short transfer" against "don't
-         * leave radios on too long"; the 20‑min ShareRadioSession watchdog backstops.
+         * Restore the radios this long AFTER Quick Share LEAVES the foreground (the
+         * user navigated away — done, cancelled, or failed; we don't try to tell
+         * which). A small cushion in case they bounce straight back into it.
          */
-        const val GRACE_MS = 120_000L
+        const val LEFT_GRACE_MS = 20_000L
+
+        /**
+         * Hard cap: restore at most this long after Quick Share was first detected,
+         * even if we NEVER see it leave (e.g. our process is killed while QS is still
+         * in front). Re-armed on every QS-foreground event, so an actively-used QS is
+         * not cut — this only bites if QS is killed or sits with no window events.
+         */
+        const val MAX_HOLD_MS = 120_000L
     }
 }

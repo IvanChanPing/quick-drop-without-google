@@ -1,3 +1,23 @@
+## [2026-06-09] radio-helper: Quick Share restore = 20s after leaving foreground, 2-min hard cap; tighter UI labels
+Per user: do NOT detect "transfer finished" (app-specific; would strand radios ON forever on a cancel /
+failure). Trigger restore off "Quick Share LEFT the foreground" instead (works for any app + any outcome).
+- **`QuickShareWatcherService`**: on QS-foreground LEAVE → `scheduleRestoreIn(LEFT_GRACE_MS = 20s)`. On QS
+  foreground (every event) → re-arm a `MAX_HOLD_MS = 120s` hard-cap alarm so an actively-used QS is not
+  cut, and so the radios still restore within 2 min if we NEVER see a leave (our process killed while QS is
+  in front). Replaced the single `GRACE_MS = 120s` foreground-gone timer. Enter logic switched from a
+  `when` to an `if/else` with a `firstEnter` flag so prepare() runs once but the cap re-arms on every event.
+- **`SelfTestActivity`**: tightened the Quick Share UI element comments to describe visual
+  appearance/position (per the doc hook) — `quickShareSectionHeader` (small ~13sp divider below the Shizuku
+  button), `quickShareHelp` (~12sp paragraph), `enableQuickShareDetectButton` (full-width button under the
+  help text). No behavior change to those views.
+- KNOWN EDGE (flagged): a transfer the user leaves running in the BACKGROUND is restored ~20s after they
+  leave the QS screen (Quick Share also manages its own radios); and a foreground session that somehow
+  emits no window events for 2 min hits the cap. Both are accepted trade-offs of the no-transfer-detection
+  design the user chose.
+- STATUS: compile-only / device-UNVERIFIED. Builds OK. Same test as the prior entry, but the restore should
+  now fire ~20s after you leave Quick Share (not 2 min).
+- **Files:** `QuickShareWatcherService.kt`, `SelfTestActivity.kt`, `radio-helper-debug.apk`.
+
 ## [2026-06-09] radio-helper: Quick Share restore is now alarm-driven (was lost when ColorOS killed the process)
 On-device the radios turned ON when Quick Share opened but **never turned back off** after the user was
 done. Root cause (found by reading the code, not guessing): the post-share restore used
