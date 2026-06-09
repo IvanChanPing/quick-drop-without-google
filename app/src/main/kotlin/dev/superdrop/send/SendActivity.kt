@@ -69,6 +69,7 @@ import dev.superdrop.service.radio.RadioHelperClient
 import dev.superdrop.service.receiver.OutboundSessionActiveHolder
 import dev.superdrop.ui.BackdropBlurView
 import dev.superdrop.ui.sheet.DraggableSheetLayout
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -694,6 +695,15 @@ public class SendActivity : AppCompatActivity() {
                     )
                     return@launch
                 }
+                // NFC-tapped peers are Wi-Fi-LAN-ONLY with no BLE/BT fallback,
+                // and the tap can fire before the radio-helper-forced Wi-Fi has
+                // associated — so they get a Wi-Fi-readiness grace window
+                // instead of the one-shot-then-fallback loop. See
+                // [runTapConnectWithGrace].
+                if (isNfcTapPeer(peer)) {
+                    runTapConnectWithGrace(peer, plan, routes)
+                    return@launch
+                }
                 for ((index, route) in routes.withIndex()) {
                     val primaryRoute = (plan.action as? SendBootstrapPlan.Action.Direct)?.route
                     val attemptPlan =
@@ -743,6 +753,116 @@ public class SendActivity : AppCompatActivity() {
                     return@launch
                 }
             }
+    }
+
+    /**
+     * `isNfcTapPeer` — true when [peer] was injected by an NFC tap (the
+     * `"nfc:"` `stableId` prefix set in [onNfcPeerTapped]) rather than
+     * surfaced by mDNS/BLE discovery or a QR match. Used to route tap peers
+     * through [runTapConnectWithGrace] (Wi-Fi-readiness grace) instead of the
+     * normal one-shot-then-transport-fallback loop, because a tapped peer is
+     * Wi-Fi-LAN-only and has no fallback route to cushion an early dial.
+     */
+    private fun isNfcTapPeer(peer: NearbyPeer): Boolean = peer.stableId.startsWith("nfc:")
+
+    /**
+     * WHAT THIS IS
+     * ------------
+     * `runTapConnectWithGrace` — the connect driver for an **NFC-tapped peer**,
+     * with a Wi-Fi-readiness grace window. Reached only from the
+     * [proceedWithPeer] connect coroutine when [isNfcTapPeer] is true.
+     *
+     * WHY IT EXISTS
+     * -------------
+     * A tapped peer is **Wi-Fi-LAN-only**: the receiver's HCE tag carries an
+     * IP:port and an all-zero BT-MAC sentinel (see
+     * [dev.superdrop.nfc.SuperDropTapHceService]), so [onNfcPeerTapped] builds
+     * a [NearbyPeer] with a single `lanEndpoint` and no BLE/BT route. The tap
+     * can also land within ~100 ms of the Send screen opening — BEFORE the
+     * radio-helper-forced Wi-Fi has finished associating and obtaining a DHCP
+     * lease ([requestRadiosForSend] runs async in onCreate). A one-shot LAN
+     * dial then fails with `"Initial connect failed: …"`, and because a tap
+     * peer has **no fallback route**, the normal loop would drop straight to a
+     * hard "Transfer failed" terminal.
+     *
+     * WHAT IT DOES
+     * ------------
+     * Retries the LAN dial across [NFC_TAP_LAN_GRACE_MS] while the failure is a
+     * *retryable* pre-secure connect error ([SendBootstrapRetryPolicy]) — i.e.
+     * the "Wi-Fi still settling" case — pausing [NFC_TAP_LAN_RETRY_DELAY_MS]
+     * between attempts. [pendingFallback] is held `true` for the duration so the
+     * StateFlow collector ([renderConnectionState]) does NOT paint the terminal
+     * between attempts; this function renders the failure terminal itself when
+     * the window expires or the failure is non-retryable (peer rejection,
+     * UKEY2, payload I/O — those must surface, not be retried). Completed /
+     * Rejected / Cancelled are rendered by the collector as usual. The
+     * on-screen status shows [R.string.send_status_tap_waiting_wifi]
+     * ("Waiting for Wi-Fi…") on the retry passes.
+     *
+     * THREADING / LIFECYCLE
+     * ---------------------
+     * Runs inside [proceedWithPeer]'s `connectionJob` (lifecycle coroutine on
+     * the main dispatcher); `attemptOutbound` suspends and [delay] is
+     * non-blocking, so no ANR. Cancel during the grace works: `onCancelClicked`
+     * cancels the still-active `connectionJob` (between attempts `activeConnection`
+     * is null), which cancels the [delay] and renders the cancelled terminal.
+     *
+     * STATUS: compile-only / device-UNVERIFIED — no NFC hardware in the build
+     * env. The retry/terminal logic is exercised by build + the existing
+     * connection-state collector; the live tap-with-Wi-Fi-off is the on-device
+     * gap.
+     */
+    private suspend fun runTapConnectWithGrace(
+        peer: NearbyPeer,
+        plan: SendBootstrapPlan,
+        routes: List<NearbyPeerRoute>,
+    ) {
+        val route = routes.first()
+        val deadline = SystemClock.elapsedRealtime() + NFC_TAP_LAN_GRACE_MS
+        var attempt = 0
+        while (true) {
+            val attemptPlan =
+                if (attempt == 0 && (plan.action as? SendBootstrapPlan.Action.Direct)?.route == route) {
+                    plan
+                } else {
+                    SendBootstrapPlan.forRoute(peer, route)
+                }
+            if (attempt > 0) {
+                // Re-paint so the user sees "Waiting for Wi-Fi…" rather than a
+                // frozen "Connecting…" across the silent retry passes.
+                binding.sendStatusPhase.setText(R.string.send_phase_connecting)
+                binding.sendStatusMessage.text = getString(R.string.send_status_tap_waiting_wifi)
+            }
+            // Suppress the collector's terminal render between attempts; this
+            // function owns the terminal decision after the grace window.
+            pendingFallback = true
+            val outcome = attemptOutbound(peer, attemptPlan)
+            pendingFallback = false
+            if (outcome !is OutboundResult.Failed) {
+                // Completed / Rejected / Cancelled already rendered by the collector.
+                return
+            }
+            val retryable = SendBootstrapRetryPolicy.isRetryableBootstrapFailure(outcome.reason)
+            val msLeft = deadline - SystemClock.elapsedRealtime()
+            if (retryable && msLeft > NFC_TAP_LAN_RETRY_DELAY_MS) {
+                logOutboundDiagnostic(
+                    "nfc tap: LAN dial failed (${outcome.reason}); Wi-Fi may be settling, " +
+                        "retry #${attempt + 1} in ${NFC_TAP_LAN_RETRY_DELAY_MS}ms (${msLeft}ms grace left)",
+                )
+                delay(NFC_TAP_LAN_RETRY_DELAY_MS)
+                attempt++
+                continue
+            }
+            logOutboundDiagnostic(
+                "nfc tap: LAN dial failed (${outcome.reason}); " +
+                    if (retryable) "grace window exhausted" else "non-retryable",
+            )
+            renderTerminal(
+                getString(R.string.send_phase_failed),
+                getString(R.string.send_status_failure_reason, outcome.reason),
+            )
+            return
+        }
     }
 
     /**
@@ -1779,6 +1899,19 @@ public class SendActivity : AppCompatActivity() {
          * the same endpoint to Wi-Fi LAN a beat later.
          */
         private const val QR_LAN_WAIT_GRACE_MS: Long = 5000L
+
+        /**
+         * Total Wi-Fi-readiness grace window for an NFC-tapped peer's LAN dial
+         * ([runTapConnectWithGrace]). A tap can fire before the radio-helper-
+         * forced Wi-Fi has associated + got a DHCP lease; we keep retrying the
+         * (fallback-less) LAN connect for this long before failing. 12 s covers
+         * a Wi-Fi-from-off bring-up with margin without leaving the user staring
+         * at "Waiting for Wi-Fi…" indefinitely.
+         */
+        private const val NFC_TAP_LAN_GRACE_MS: Long = 12_000L
+
+        /** Pause between LAN dial retries inside the [NFC_TAP_LAN_GRACE_MS] window. */
+        private const val NFC_TAP_LAN_RETRY_DELAY_MS: Long = 700L
 
         // In-card QR panel animation tunables. Entry uses an
         // overshoot easing so the panel briefly scales past 1.0 before

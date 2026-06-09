@@ -1,3 +1,32 @@
+## [2026-06-09] NFC tap-to-send: Wi-Fi-readiness grace retry + help-sheet tap guidance
+User: "fix number one and two" from the send-flow common-sense check — (1) the Wi-Fi-timing gap on the
+NFC tap dial, and (2) two-senders-can't-tap (which is a hardware limit, fixed as guidance).
+
+- **#1 — Wi-Fi-readiness grace retry (`SendActivity`):** an NFC-tapped peer is Wi-Fi-LAN-ONLY (receiver
+  HCE tag carries IP:port + all-zero BT-MAC, so `onNfcPeerTapped` builds a `NearbyPeer` with only a
+  `lanEndpoint` and NO fallback route). The tap can fire ~100 ms after the Send screen opens — before the
+  radio-helper-forced Wi-Fi has associated — so a one-shot LAN dial would fail `"Initial connect failed:"`
+  and, with no fallback route, drop to a hard "Transfer failed". New `runTapConnectWithGrace()` (reached
+  from `proceedWithPeer` via `isNfcTapPeer()` = `stableId` `"nfc:"` prefix) retries the LAN dial across
+  `NFC_TAP_LAN_GRACE_MS=12s` (`NFC_TAP_LAN_RETRY_DELAY_MS=700ms` between tries) while the failure is a
+  retryable pre-secure connect error (`SendBootstrapRetryPolicy`), holding `pendingFallback=true` so the
+  collector doesn't paint the terminal between tries; renders the failure terminal itself when the window
+  expires or the failure is non-retryable (rejection/UKEY2/payload errors still surface). New string
+  `send_status_tap_waiting_wifi` ("Waiting for Wi‑Fi…") shown on retry passes. Non-tap peers are
+  UNCHANGED (the normal one-shot-then-transport-fallback loop). Connect timeout stays 5s.
+- **#2 — two senders can't tap (HARDWARE LIMIT, not a code bug):** NFC tap is reader (sender) vs HCE
+  (receiver) on one controller; reader-mode suppresses the local HCE, and two readers physically can't
+  exchange — and the sender can't even detect it (the other reader never triggers our tag). The only
+  realistic fix is guidance: added a "Sharing with a tap" section to the "Can't find the device?" help
+  sheet (`bottom_sheet_send_help.xml` + `send_help_sheet_tap_title`/`_body`) explaining hold-back-to-back,
+  the other phone just needs its screen on (cold tap wakes it — no app open needed), and only one phone
+  taps to send.
+- **Files:** `app/.../send/SendActivity.kt`, `app/src/main/res/values/strings.xml`,
+  `app/src/main/res/layout/bottom_sheet_send_help.xml`.
+- **Build:** `:radio-helper:assembleDebug` + `:app:assembleDebug` BUILD SUCCESSFUL (10s); APKs refreshed
+  at repo root. **device-UNVERIFIED** (no NFC hardware in the build env; the live tap-with-Wi-Fi-off is the
+  on-device gap).
+
 ## [2026-06-09] Sender also forces Wi-Fi/BT on via the radio-helper (+ re-entrant prepare)
 User: sending should turn the radios on/off too, like receiving. (NFC out of scope — it's never
 disabled.) Wired the SENDER side symmetric to the receiver:

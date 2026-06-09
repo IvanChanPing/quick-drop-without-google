@@ -74,7 +74,28 @@
             android:text="@string/send_help_sheet_qr_body"
             android:textAppearance="@style/TextAppearance.AppCompat.Body1" />
 
-        <!-- Section 3: experimental-compatibility note. Some peers may be
+        <!-- Section 3: tap-to-share guidance. NFC tap is reader (sender) vs
+             HCE (receiver) on one controller — two senders both in reader
+             mode physically cannot exchange (hardware limit, not fixable in
+             code), and the receiver never needs to open the app (cold tap
+             wakes it). This text surfaces both facts so a failed tap is
+             understood as user-positioning, not a bug. -->
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:text="@string/send_help_sheet_tap_title"
+            android:textAppearance="@style/TextAppearance.AppCompat.Subhead"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="6dp"
+            android:text="@string/send_help_sheet_tap_body"
+            android:textAppearance="@style/TextAppearance.AppCompat.Body1" />
+
+        <!-- Section 4: experimental-compatibility note. Some peers may be
              discoverable but not yet transferable (or not discoverable at
              all); device support widens over future updates. -->
         <TextView

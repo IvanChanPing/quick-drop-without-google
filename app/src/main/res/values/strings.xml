@@ -308,6 +308,8 @@
     <string name="send_help_sheet_visibility_body">On the receiving device, make sure the toggle reads "Ready to receive". In that mode, anyone nearby can share files with it. If it\'s already in that mode but still doesn\'t appear here, try fully closing Bada on both devices and reopening it.</string>
     <string name="send_help_sheet_qr_title">Or share via QR code</string>
     <string name="send_help_sheet_qr_body">If the receiver still does not appear, tap the QR code button at the top right of this card. Have the receiver scan the code or open the link to start the transfer.</string>
+    <string name="send_help_sheet_tap_title">Sharing with a tap</string>
+    <string name="send_help_sheet_tap_body">To share with a tap, hold the two phones back-to-back. The other phone only needs its screen on — it does not have to open the app. Only one phone taps to send: if the other phone is also on its own send screen, neither can receive the tap, so let it sit on its home screen instead.</string>
     <string name="send_help_sheet_compat_title">Check device compatibility</string>
     <string name="send_help_sheet_compat_body">Bada is currently an experimental project. On some devices a peer may be discoverable but unable to receive files, and some devices may not be discoverable at all. We plan to widen device support in future updates.</string>
     <string name="send_help_sheet_close">Got it</string>
@@ -353,6 +355,12 @@
          the same peer over the next-priority route. %1$s is a short
          label for the route now being tried (e.g. "BLE GATT AA:BB:…"). -->
     <string name="send_status_retrying_route">Retrying via %1$s…</string>
+
+    <!-- Shown on the send status panel while a tap-to-send connection is
+         retried during its Wi-Fi-readiness grace window: an NFC tap can land
+         before the just-forced Wi-Fi has finished connecting, so we keep
+         retrying the (Wi-Fi-only) tap connection rather than failing. -->
+    <string name="send_status_tap_waiting_wifi">Waiting for Wi‑Fi…</string>
 
     <!--
       Rate + ETA suffixes appended to the progress line during a
