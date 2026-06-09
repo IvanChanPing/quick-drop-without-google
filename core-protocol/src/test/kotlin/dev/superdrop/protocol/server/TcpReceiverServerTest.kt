@@ -25,6 +25,7 @@ import org.junit.jupiter.api.Disabled
 import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Timeout
 import java.net.InetAddress
+import java.net.ServerSocket
 import java.net.Socket
 import java.security.SecureRandom
 import java.util.concurrent.TimeUnit
@@ -93,6 +94,39 @@ class TcpReceiverServerTest {
             // Connect-and-disconnect is enough to prove the listener is
             // actually accepting; we do not need to drive an InboundConnection.
             Socket(InetAddress.getLoopbackAddress(), port).use { sock ->
+                assertThat(sock.isConnected).isTrue()
+            }
+
+            server.stop()
+        }
+
+    @Test
+    fun `start adopts a pre-bound ServerSocket and accepts on its port`() =
+        runBlocking {
+            // Simulate the NFC cold-tap primer: bind the listener BEFORE the
+            // session exists (as the HCE callback would), then hand it to the
+            // server to adopt. The bound port must be the primer's port, and a
+            // client connecting to it must be accepted (the kernel queues the
+            // connect on the bound-but-not-yet-accepting socket; the accept loop
+            // then drains it).
+            val preBound = ServerSocket(0, 8, InetAddress.getLoopbackAddress())
+            val primerPort = preBound.localPort
+            val scope = makeScope()
+            val server =
+                TcpReceiverServer(
+                    parentScope = scope,
+                    factoryProvider = { TempFileDestinationFactory() },
+                    secureRandomProvider = { SecureRandom() },
+                    bindAddress = InetAddress.getLoopbackAddress(),
+                    preBoundServerSocket = preBound,
+                )
+            servers += server
+
+            val port = server.start()
+            assertThat(port).isEqualTo(primerPort)
+            assertThat(server.boundPort).isEqualTo(primerPort)
+
+            Socket(InetAddress.getLoopbackAddress(), primerPort).use { sock ->
                 assertThat(sock.isConnected).isTrue()
             }
 

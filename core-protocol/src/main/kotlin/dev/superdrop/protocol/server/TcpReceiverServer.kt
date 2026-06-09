@@ -128,6 +128,19 @@ public class TcpReceiverServer(
     private val mediumRegistry: MediumRegistry = MediumRegistry.DefaultWifiLan,
     private val bindAddress: InetAddress? = null,
     private val logger: (String) -> Unit = {},
+    /**
+     * Optional already-bound listener to ADOPT instead of binding a fresh
+     * ephemeral socket in [start]. Used by the NFC cold-tap warm-parity
+     * path (`NfcColdReceiverPrimer` in `:service-android`): the HCE
+     * `processCommandApdu` callback binds a [ServerSocket] synchronously so
+     * the very FIRST tap can answer with a real, connectable Wi-Fi-LAN
+     * `IP:port`, then hands that same socket here so the session's accept
+     * loop drains the kernel backlog on the identical port the tag
+     * advertised. Ownership transfers to this server on [start] (closed by
+     * [stop] / supervisor completion). `null` (the default for every
+     * non-cold-tap caller) = bind a fresh ephemeral socket as before.
+     */
+    private val preBoundServerSocket: ServerSocket? = null,
 ) {
     /**
      * Per-connection [Mutex] table. A single Quick Share connection is
@@ -307,18 +320,20 @@ public class TcpReceiverServer(
             check(!stopped) { "TcpReceiverServer has already been stopped" }
             started = true
 
-            // Open the listener on the IO dispatcher; bind() can block
-            // briefly on slow systems, and constructing ServerSocket
-            // itself performs the bind eagerly.
+            // Adopt the cold-tap primer's already-bound listener when one was
+            // supplied (warm-parity first tap); otherwise open a fresh listener
+            // on the IO dispatcher. bind() can block briefly on slow systems,
+            // and constructing ServerSocket itself performs the bind eagerly.
             val socket =
-                withContext(Dispatchers.IO) {
-                    // Args: port = 0 (kernel-assigned ephemeral), backlog = ACCEPT_BACKLOG.
-                    if (bindAddress != null) {
-                        ServerSocket(0, ACCEPT_BACKLOG, bindAddress)
-                    } else {
-                        ServerSocket(0, ACCEPT_BACKLOG)
+                preBoundServerSocket
+                    ?: withContext(Dispatchers.IO) {
+                        // Args: port = 0 (kernel-assigned ephemeral), backlog = ACCEPT_BACKLOG.
+                        if (bindAddress != null) {
+                            ServerSocket(0, ACCEPT_BACKLOG, bindAddress)
+                        } else {
+                            ServerSocket(0, ACCEPT_BACKLOG)
+                        }
                     }
-                }
             serverSocket = socket
 
             acceptJob =

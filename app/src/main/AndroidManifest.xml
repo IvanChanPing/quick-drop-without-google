@@ -116,6 +116,11 @@
          phones without NFC hardware (the service is simply never bound
          there). -->
     <uses-permission android:name="android.permission.NFC" />
+    <!-- Bind the universal radio-helper's RadioService (signature-protected
+         BIND_RADIO) to silently force Wi-Fi/Bluetooth ON for an NFC
+         tap-to-receive wake (RadioHelperClient SESSION mode). Granted only when
+         Super Drop is signed with the same key as the helper. -->
+    <uses-permission android:name="dev.superdrop.radiohelper.permission.BIND_RADIO" />
     <uses-feature
         android:name="android.hardware.nfc.hce"
         android:required="false" />
@@ -231,6 +236,10 @@
         <package android:name="dev.bluehouse.libredrop.debug" />
         <package android:name="io.github.kyujincho.wvmg" />
         <package android:name="io.github.kyujincho.wvmg.debug" />
+        <!-- The universal radio-helper APK, bound by RadioHelperClient to flip
+             Wi-Fi/Bluetooth on an NFC tap-to-receive wake (release + debug ids). -->
+        <package android:name="dev.superdrop.radiohelper" />
+        <package android:name="dev.superdrop.radiohelper.debug" />
     </queries>
 
     <application

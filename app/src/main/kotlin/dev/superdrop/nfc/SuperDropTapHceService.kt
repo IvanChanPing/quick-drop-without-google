@@ -11,6 +11,7 @@ import android.os.Bundle
 import android.util.Log
 import dev.superdrop.protocol.nfc.NfcTapLinkHolder
 import dev.superdrop.protocol.nfc.QuickShareNfcCodec
+import dev.superdrop.service.receiver.NfcColdReceiverPrimer
 import dev.superdrop.service.receiver.ReceiverForegroundService
 import java.security.SecureRandom
 
@@ -114,20 +115,29 @@ public class SuperDropTapHceService : HostApduService() {
      * live receiver.
      */
     private fun handleAdvertisement(apdu: ByteArray): ByteArray {
-        val link = NfcTapLinkHolder.current
-        if (link == null) {
-            Log.d(TAG, "ADVERTISEMENT while idle -> firing receive wake + empty hhwv")
-            // Cold tap-to-receive: we have no live tag (idle/background =
-            // not advertising), so wake the receiver into a discoverable
-            // window — mirroring stock Quick Share, whose idle HCE fires a
-            // PendingIntent (djvf.f) instead of serving a tag. The tapping
-            // sender then connects and the normal inbound path shows the
-            // Accept consent notification. This round still answers empty.
-            fireReceiveWake()
-            return QuickShareNfcCodec.encodeHhwvResponse(
-                QuickShareNfcCodec.HhwvResponse(nfcTag = ByteArray(0)),
-            ) + QuickShareNfcCodec.SW_OK
-        }
+        // Warm: a live receiver already published its tag → answer it directly.
+        // Cold: PRIME a real, connectable tag synchronously NOW — bind a TCP
+        // listener + read the Wi-Fi-LAN IP in this callback so the FIRST tap
+        // answers exactly like a warm receiver (deym PCP=3 + Wi-Fi-LAN rxAdv),
+        // then fire the FGS wake so the session comes up and ADOPTS that same
+        // socket (its accept loop drains the kernel backlog on the identical
+        // port). This is what makes a single cold tap == warm, no second tap.
+        // If we cannot prime (no Wi-Fi-LAN IP yet — Wi-Fi off/connecting), fall
+        // back to the empty-tag + wake behaviour (the wake forces Wi-Fi/BT on
+        // via the radio-helper and BLE carries discovery while Wi-Fi settles).
+        val link =
+            NfcTapLinkHolder.current ?: run {
+                val primed = NfcColdReceiverPrimer.prime(this)
+                fireReceiveWake()
+                if (primed == null) {
+                    Log.d(TAG, "ADVERTISEMENT cold, no Wi-Fi IP -> wake + empty hhwv")
+                    return QuickShareNfcCodec.encodeHhwvResponse(
+                        QuickShareNfcCodec.HhwvResponse(nfcTag = ByteArray(0)),
+                    ) + QuickShareNfcCodec.SW_OK
+                }
+                Log.d(TAG, "ADVERTISEMENT cold -> primed live tag + wake (cold == warm, single tap)")
+                primed
+            }
 
         // Parsing the request is informational; we always answer with our
         // own single advertised service regardless of the requested id.

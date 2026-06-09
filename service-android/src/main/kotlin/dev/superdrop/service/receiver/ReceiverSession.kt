@@ -485,6 +485,11 @@ public interface TcpServerFactory {
                         secureRandomProvider = secureRandomProvider,
                         mediumRegistry = mediumRegistry,
                         logger = logger,
+                        // Cold NFC tap: adopt the listener the HCE primer bound at
+                        // tap time so the session accepts on the SAME port the
+                        // first tag advertised. null (the normal case) = bind a
+                        // fresh ephemeral socket.
+                        preBoundServerSocket = NfcColdReceiverPrimer.takePreBoundSocket(),
                     )
             }
     }

@@ -34,6 +34,7 @@ import dev.superdrop.protocol.endpoint.BleServiceData
 import dev.superdrop.protocol.endpoint.EndpointInfo
 import dev.superdrop.protocol.endpoint.NearbyServiceId
 import dev.superdrop.protocol.nfc.NfcTapLinkHolder
+import dev.superdrop.service.radio.RadioHelperClient
 import dev.superdrop.service.downloads.DownloadsWriterFactory
 import dev.superdrop.service.receiver.consent.ConsentBroadcastReceiver
 import dev.superdrop.service.receiver.consent.ConsentCoordinator
@@ -186,6 +187,18 @@ public class ReceiverForegroundService : Service() {
     /** Visibility-override state captured when a fresh wake window opened. */
     private var nfcWakePriorOverride: Boolean = false
 
+    /**
+     * Universal radio-helper client used to force Wi-Fi + Bluetooth ON for an
+     * NFC tap-to-receive wake (the helper captures the user's original state and
+     * restores it on [restoreRadiosAfterShare]). Held for the service lifetime,
+     * created lazily on the first wake. All calls are on the main thread per the
+     * client's threading contract. See [ensureRadiosForWake].
+     */
+    private var radioClient: RadioHelperClient? = null
+
+    /** True once a wake asked the helper to prepare radios, so teardown restores. */
+    private var radioSharePrepared: Boolean = false
+
     @Volatile
     private var discoveryDiagnosticsJob: Job? = null
 
@@ -277,6 +290,7 @@ public class ReceiverForegroundService : Service() {
         // advertise and the tapping sender can connect; the normal inbound
         // path then posts the Accept consent notification (no app takeover).
         if (intent?.action == ACTION_NFC_WAKE) {
+            ensureRadiosForWake()
             armNfcWakeWindow()
         }
 
@@ -310,6 +324,56 @@ public class ReceiverForegroundService : Service() {
                     DiagnosticLog.w(NFC_WAKE_TAG, "nfc-wake: window expired -> visibility restored")
                 }
             }
+    }
+
+    /**
+     * Force Wi-Fi + Bluetooth ON for an NFC tap-to-receive, routed through the
+     * universal `:radio-helper` via [RadioHelperClient] SESSION mode. The helper
+     * captures the user's original radio state, enables only what's OFF, and
+     * restores it on [restoreRadiosAfterShare] (teardown) — this app tracks
+     * nothing. The transfer can't happen without Wi-Fi (Wi-Fi-LAN connect) and
+     * benefits from BLE (discovery + GATT initial-control), and the headless
+     * wake can't pop a dialog — hence the silent helper.
+     *
+     * Best-effort + fully logged: helper not installed / bind denied (wrong key)
+     * / OEM force-stop / 5 s timeout → log and continue (BLE + mDNS advertise
+     * still come up). Called on the main thread from [onStartCommand] per the
+     * client's threading contract. NOT device-verified — whether the helper
+     * actually flips the radios on the target OEM is the make-or-break.
+     */
+    private fun ensureRadiosForWake() {
+        val client = radioClient ?: RadioHelperClient(this).also { radioClient = it }
+        DiagnosticLog.w(NFC_WAKE_TAG, "nfc-wake: requesting Wi-Fi+BT via radio-helper")
+        client.connect { connected ->
+            if (!connected) {
+                DiagnosticLog.w(
+                    NFC_WAKE_TAG,
+                    "nfc-wake: radio-helper unavailable (not installed / wrong signing key / force-stopped) -> radios left as-is",
+                )
+                return@connect
+            }
+            client.prepareForShare(RadioHelperClient.RADIO_BOTH) { nowOn ->
+                radioSharePrepared = true
+                DiagnosticLog.w(NFC_WAKE_TAG, "nfc-wake: radio-helper prepared radios, now-on bitmask=$nowOn")
+            }
+        }
+    }
+
+    /**
+     * Tell the radio-helper the share is over so it restores ONLY the radios it
+     * turned on, then unbind. Called from [stopReceiverAndExit]. Fires the
+     * restore message before unbinding so the helper (a separate process) still
+     * runs its restore even as this service goes away. Main-thread (teardown).
+     */
+    private fun restoreRadiosAfterShare() {
+        val client = radioClient ?: return
+        if (radioSharePrepared) {
+            DiagnosticLog.w(NFC_WAKE_TAG, "nfc-wake: transfer finished -> radio-helper restores radios it enabled")
+            client.transferFinished()
+            radioSharePrepared = false
+        }
+        client.disconnect()
+        radioClient = null
     }
 
     /**
@@ -1071,6 +1135,11 @@ public class ReceiverForegroundService : Service() {
         // advertising-flow collector also clears this, but the scope is
         // cancelled below so we clear eagerly here.
         NfcTapLinkHolder.clear()
+        // Cold-tap cleanup: tell the radio-helper the share is over (restore the
+        // radios it enabled) and release any primer listener that was bound for a
+        // cold tap but never adopted (e.g. a refused FGS wake).
+        restoreRadiosAfterShare()
+        NfcColdReceiverPrimer.discardUnadopted()
         stopActiveReceiverSession()
         unregisterConsentReceiverIfNeeded()
 

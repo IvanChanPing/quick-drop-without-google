@@ -5,6 +5,46 @@ entries here cover only fork-specific changes.
 
 ## [Unreleased]
 
+### 2026-06-09 — NFC cold tap == warm (single tap, no 2nd tap/button) + radios-on via helper
+- **Goal (user):** a COLD NFC tap-to-receive (our app = HCE/broadcaster; a Quick Share SENDER in
+  reader-mode taps us) must behave like a WARM one — ONE tap, no second tap, no extra button — and
+  must force Wi-Fi + Bluetooth ON if off, through the universal radio-helper.
+- **Warm-parity first tag (kernel-backlog trick).** `NfcColdReceiverPrimer.prime()` (new,
+  `:service-android`) runs synchronously inside `SuperDropTapHceService.processCommandApdu` when the
+  receiver isn't live: reads the Wi-Fi-LAN IPv4 + binds a `ServerSocket(0)` on the HCE thread, so the
+  FIRST `ADVERTISEMENT` answers a REAL `deym(PCP=3) + Wi-Fi-LAN rxAdv(IP:port)` (like warm) instead of
+  an empty tag. A bound-but-not-yet-accepting socket completes the TCP handshake into the kernel
+  backlog, so the sender's connect is queued, not refused.
+- **Socket adoption.** `TcpReceiverServer` gained an optional `preBoundServerSocket` param
+  (`:core-protocol`); `TcpServerFactory.default()` adopts the primer's socket via
+  `NfcColdReceiverPrimer.takePreBoundSocket()`, so the woken `ReceiverSession`'s accept loop drains the
+  backlog on the IDENTICAL port the tag advertised. Unit test `TcpReceiverServerTest > start adopts a
+  pre-bound ServerSocket…` PASSES.
+- **Radios on via the universal helper.** `ReceiverForegroundService.ensureRadiosForWake()` (on
+  `ACTION_NFC_WAKE`) binds `:radio-helper` `RadioService` via the drop-in `RadioHelperClient` (SESSION
+  mode, copied into `:service-android`/`dev.superdrop.service.radio`) and calls
+  `prepareForShare(RADIO_BOTH)`; `restoreRadiosAfterShare()` calls `transferFinished()` at teardown so
+  the helper restores only what it turned on. Manifest: `BIND_RADIO` uses-permission +
+  `dev.superdrop.radiohelper(.debug)` in `<queries>`. Requires same signing key as the helper (debug
+  builds share the debug key).
+- **Observability:** every step logs (`BadaNfcColdPrime`, `BadaNfcWake`): tap → prime (live tag
+  IP:port / no-Wi-Fi) → FGS wake → radio-helper connect/prepare/restore → adopt.
+- **Fallbacks (no silent failure):** no Wi-Fi IP → empty tag + wake (radios forced on, BLE carries
+  discovery while Wi-Fi settles); helper not installed / wrong key / force-stop / 5 s timeout → logged,
+  advertise still comes up; FGS wake refused (ColorOS) → `discardUnadopted()` frees the primer socket
+  on teardown (prime() also self-closes a stale socket → leak bounded to one).
+- **Build:** `:app:assembleDebug` BUILD SUCCESSFUL; core-protocol adopt-test passes. NOT device-tested
+  (no NFC hardware here). Make-or-break on-device unknowns: (1) cold `startForegroundService` from the
+  HCE surviving ColorOS; (2) the radio-helper actually flipping radios on the target OEM; (3) a stock QS
+  sender completing the LAN connect to our tag.
+- **Files:** `core-protocol/.../server/TcpReceiverServer.kt` (+test),
+  `service-android/.../receiver/{NfcColdReceiverPrimer.kt,ReceiverSession.kt,ReceiverForegroundService.kt}`,
+  `service-android/.../radio/RadioHelperClient.kt`, `app/.../nfc/SuperDropTapHceService.kt`,
+  `app/src/main/AndroidManifest.xml`.
+- **NOTE (pre-existing, NOT this change):** `:core-protocol:test` `HmacComparisonAuditTest` fails — its
+  `mainSourceRoot()` still scans the pre-fork `dev/bluehouse/bada/protocol` path (now
+  `dev/superdrop/protocol`); unrelated stale test.
+
 ### 2026-06-09 (c) — Share session SAFETY net: watchdog auto-restore + boot-restore (radios never stranded)
 - **Logic-check outcome (user):** "finished" = the transfer is over ANY way (success/fail/cancel/closed);
   if the app dies without calling it, the user's Wi-Fi/BT must not be left stranded ON. A timer-before-off
