@@ -1,0 +1,80 @@
+SUPER DROP — WHAT WE ADDED (one pull request per thing)
+
+Only the finished features we built on top of the base app, plus a groundwork
+section for the pieces we started but didn't finish. Names are written to sell
+the feature; descriptions are plain English.
+
+
+====================================================================
+FINISHED FEATURES
+====================================================================
+
+1) Bottom sheet for sending
+   Sending from the share menu opens a bottom sheet instead of dragging you into
+   the app. Shows icons for the devices you can tap to choose who to send to. No
+   more being forced all the way into the app just to send or receive something —
+   just like the old Quick Share. A much better improvement.
+
+2) Quick tile that opens a bottom sheet to receive
+   A Quick Settings tile that opens the receive sheet and makes you visible to
+   any nearby phone, so they can send to you straight away — no opening the app
+   and digging for a button. Tapping the tile also turns on Wi-Fi and Bluetooth
+   for you (and restores them when you close the sheet) and closes the
+   notification shade so you can see your screen.
+
+3) Tap to share
+   You can now tap two phones together to start a transfer. The tap passes your
+   identity and your Wi-Fi address and starts the transfer. It even works when the
+   other phone is just sitting idle with the app closed — the tap wakes it into
+   receive mode — and a single tap is all it takes.
+
+4) Tap an iPhone to share a link
+   Tap your phone with an iPhone (or any phone) and it opens your pairing link in
+   that phone's browser — a simple way to hand off to a device that doesn't run
+   the app.
+
+5) Made the heads-up notification prettier
+   Redesigned the incoming-transfer pop-up so the Accept and Decline buttons are
+   bigger, clearer, and easier to hit — color-coded and on opposite sides, with a
+   thumbnail of what's coming in, so you can act on it at a glance.
+
+6) "Files received" notification with an Open button
+   When a transfer finishes you get a heads-up that opens the file you just
+   received in one tap (or your Downloads if it can't open it directly).
+
+7) Automatically turn Wi-Fi and Bluetooth on for a transfer, then off again
+   When a transfer starts, the app switches Wi-Fi and Bluetooth on for you and
+   then puts them back exactly how they were once it's done, so you never have to
+   fiddle with your radios. Set up once and it keeps working after every restart.
+   (Requires a one-time wireless-debugging / ADB setup.)
+   Ships with a small companion helper app that does the actual switching —
+   needed because the main app can't toggle the radios on modern Android by
+   itself; the helper handles it and the main app just asks it to.
+
+8) Battery-optimization button that actually works on OnePlus
+   The built-in "stop the app being put to sleep" button didn't work on OnePlus,
+   so we replaced it with a one-tap Allow that sticks (and falls back to the
+   settings list on phones that ignore the pop-up).
+
+
+====================================================================
+GROUNDWORK (started, not finished/turned on yet)
+====================================================================
+
+9) Groundwork for a full bottom-sheet receive screen
+   Laid the receive sheet in place so receiving could feel like the send sheet.
+   In practice it currently comes through as a heads-up notification rather than a
+   full sheet — this is the base for finishing that.
+
+10) Groundwork for a much better, iOS-style animated receive notification
+    Plumbing for the receive prompt to appear over other apps and transform into a
+    pill, for a smoother iOS-like feel. (Colors can be redesigned.)
+
+11) Groundwork for an NFC tap-to-share switch (off / always on / on for a while)
+    The base for letting you choose when your phone is tappable: never, always,
+    or only for a limited window.
+
+12) Groundwork for Live Updates (status-bar progress chip)
+    Prepped the live status-bar progress chip so a transfer can show up at the top
+    of the screen / in the OEM "island." It's wired but not switched on yet
+    (waiting on a build-tool version).
