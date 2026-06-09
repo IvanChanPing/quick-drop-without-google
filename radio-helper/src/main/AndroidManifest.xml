@@ -92,6 +92,13 @@
             android:name=".PairingReplyReceiver"
             android:exported="false" />
 
+        <!-- SAFETY watchdog: AlarmManager fires this if a share's transferFinished
+             never arrives (app crash/kill mid-transfer) → restores the user's
+             original Wi-Fi/BT so radios aren't stranded on. Not exported. -->
+        <receiver
+            android:name=".ShareWatchdogReceiver"
+            android:exported="false" />
+
         <!-- Shizuku provider (required by the Shizuku API to talk to the
              Shizuku/Sui service). The RadioShellService user service is NOT
              declared here — Shizuku spawns it via app_process. -->

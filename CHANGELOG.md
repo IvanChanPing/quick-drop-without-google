@@ -5,6 +5,26 @@ entries here cover only fork-specific changes.
 
 ## [Unreleased]
 
+### 2026-06-09 (c) — Share session SAFETY net: watchdog auto-restore + boot-restore (radios never stranded)
+- **Logic-check outcome (user):** "finished" = the transfer is over ANY way (success/fail/cancel/closed);
+  if the app dies without calling it, the user's Wi-Fi/BT must not be left stranded ON. A timer-before-off
+  is acceptable.
+- `ShareRadioSession`: when `prepare` turns a radio on, it now arms an **AlarmManager watchdog**
+  (`setAndAllowWhileIdle`, inexact/Doze-friendly, no exact-alarm permission) for ~20 min. `transferFinished`
+  (`finish`) cancels it. If the app never calls finish (crash/force-kill mid-transfer), the watchdog fires
+  → new `ShareWatchdogReceiver` → `finish()` restores the original state. Watchdog only armed when something
+  was actually turned on.
+- **Reboot case:** alarms don't survive reboot, and Android remembers Wi-Fi as the ON state we set, so the
+  boot service now calls `ShareRadioSession.restoreStaleOnBoot()` FIRST (before the warm-up) to restore a
+  session stranded by a reboot mid-transfer.
+- 20-min watchdog is a generous backstop (won't cut a legit transfer where the app is alive — that path
+  restores via `transferFinished`); it only catches abnormal termination.
+- Manifest: registered `ShareWatchdogReceiver` (not exported). No new permission (inexact alarm;
+  RECEIVE_BOOT_COMPLETED already declared). Watchdog `finish` runs off the main thread (goAsync) to avoid ANR.
+- Skill updated: "finished = any terminal outcome (transport done, not UI dismissed)" + the safety net.
+- **Build:** `:radio-helper:assembleDebug` BUILD SUCCESSFUL. radio-helper-debug.apk refreshed.
+- **Status:** compile-only / device-UNVERIFIED end-to-end (still pending real-app wiring + live share).
+
 ### 2026-06-09 (b) — RadioHelperClient: wake a force-stopped helper + connect timeout + compile-verified
 - **Wake after force-stop (user ask):** the client bind now adds `FLAG_INCLUDE_STOPPED_PACKAGES` to the
   explicit `bindService` intent, so it starts the helper even if it was force-stopped / never opened

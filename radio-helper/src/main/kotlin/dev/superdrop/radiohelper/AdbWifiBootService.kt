@@ -65,6 +65,11 @@ internal class AdbWifiBootService : Service() {
         runCatching { startForeground(NOTIF_ID, warmupNotification()) }
             .onFailure { Log.w(TAG, "startForeground failed: ${it.message}") }
         Thread {
+            // FIRST: if a share session was stranded by a reboot mid-transfer,
+            // restore the user's original Wi-Fi/BT now (alarms don't survive reboot,
+            // and Android remembers Wi-Fi as the ON state we set). Done before the
+            // warm-up delay so radios aren't left wrong any longer than necessary.
+            runCatching { ShareRadioSession.restoreStaleOnBoot(this) }
             runCatching { Thread.sleep(INITIAL_DELAY_MS) }
             var ready = false
             var attempt = 0

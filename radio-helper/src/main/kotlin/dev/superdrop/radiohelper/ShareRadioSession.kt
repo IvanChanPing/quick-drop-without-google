@@ -5,7 +5,11 @@
  */
 package dev.superdrop.radiohelper
 
+import android.app.AlarmManager
+import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
+import android.os.Build
 import android.util.Log
 
 /**
@@ -45,6 +49,15 @@ internal object ShareRadioSession {
     private const val PREFS = "share_radio_session"
     private const val KEY_ENABLED_WIFI = "enabledWifi"
     private const val KEY_ENABLED_BT = "enabledBt"
+
+    // SAFETY watchdog: if the app never calls finish (crash / force-kill mid-
+    // transfer), restore the radios anyway after this long so the user's Wi-Fi/BT
+    // are never stranded ON. The PRIMARY restore is still the app's
+    // transferFinished (fired on ANY terminal: success/fail/cancel/closed); this
+    // is only the backstop. Generous so it can't cut a legitimately long transfer
+    // where the app is alive (that path restores via transferFinished on its own).
+    private const val WATCHDOG_MS = 20L * 60 * 1000
+    const val ACTION_WATCHDOG = "dev.superdrop.radiohelper.action.SHARE_WATCHDOG"
 
     /** Radio bitmask used in the prepare request/result (matches the client). */
     const val RADIO_WIFI = 1
@@ -94,6 +107,9 @@ internal object ShareRadioSession {
             .putBoolean(KEY_ENABLED_WIFI, enabledWifi)
             .putBoolean(KEY_ENABLED_BT, enabledBt)
             .apply()
+        // Arm the safety watchdog only if there's something to restore; if nothing
+        // was turned on (both were already on), there's no session to back out.
+        if (enabledWifi || enabledBt) scheduleWatchdog(context) else cancelWatchdog(context)
         Log.i(TAG, "prepare(want=$want): enabledWifi=$enabledWifi enabledBt=$enabledBt nowOn=$nowOn")
         return nowOn
     }
@@ -110,6 +126,48 @@ internal object ShareRadioSession {
         if (enabledWifi) RadioToggler.setWifiSilent(context, false)
         if (enabledBt) RadioToggler.setBluetooth(false)
         prefs.edit().clear().apply()
+        cancelWatchdog(context)
         Log.i(TAG, "finish: restored wifi=$enabledWifi bt=$enabledBt")
+    }
+
+    /**
+     * BOOT recovery. AlarmManager watchdogs are cleared on reboot, so if the device
+     * rebooted mid-transfer a session can be left persisted (and Android remembers
+     * Wi-Fi as the ON state WE set). Called by the boot service to restore the
+     * user's original state. No-op if no session is pending. Blocking — off main.
+     */
+    fun restoreStaleOnBoot(context: Context) {
+        val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (prefs.getBoolean(KEY_ENABLED_WIFI, false) || prefs.getBoolean(KEY_ENABLED_BT, false)) {
+            Log.i(TAG, "restoreStaleOnBoot: found pending session — restoring")
+            finish(context)
+        }
+    }
+
+    private fun watchdogPendingIntent(context: Context): PendingIntent {
+        val intent =
+            Intent(context.applicationContext, ShareWatchdogReceiver::class.java).setAction(ACTION_WATCHDOG)
+        val flags =
+            PendingIntent.FLAG_UPDATE_CURRENT or
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0
+        return PendingIntent.getBroadcast(context.applicationContext, 0, intent, flags)
+    }
+
+    /** Arm the inexact (Doze-friendly, no exact-alarm permission) safety alarm. */
+    private fun scheduleWatchdog(context: Context) {
+        val am = context.applicationContext.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+        val at = System.currentTimeMillis() + WATCHDOG_MS
+        runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, watchdogPendingIntent(context))
+            } else {
+                am.set(AlarmManager.RTC_WAKEUP, at, watchdogPendingIntent(context))
+            }
+        }.onFailure { Log.w(TAG, "scheduleWatchdog failed: ${it.message}") }
+    }
+
+    private fun cancelWatchdog(context: Context) {
+        val am = context.applicationContext.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+        runCatching { am.cancel(watchdogPendingIntent(context)) }
     }
 }
