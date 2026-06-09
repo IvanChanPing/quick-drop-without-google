@@ -68,10 +68,16 @@ final verification needs the user's phones.
      CHECK (not yet confirmed): A15 HCE/observe-mode or AID-routing changes; cold-wake
      foreground-service-from-HCE restrictions; reader-mode behavior; tap-share setting default.
 
-   HOW TO LOCALIZE (on-device, the instrument already exists): `adb logcat -s SuperDropTapReader
-   SuperDropTapHceService BadaNfcWake BadaNfcColdPrime` while tapping. The reader prints exactly
-   where it stops (SELECT / ADVERTISEMENT / no NfcTag / resolved); the HCE prints whether it was
-   asked and whether the link holder was live. Do NOT change code before these logs localize it.
+   HOW TO LOCALIZE (on-device, the instrument already exists). IMPORTANT — the logcat TAGs are
+   `SuperDropTapHce` (NOT the class name `SuperDropTapHceService`), `SuperDropTapReader`, `BadaNfcWake`,
+   `BadaNfcColdPrime`. Filter-proof command (run on the RECEIVING phone; confirm `adb devices` first):
+       adb logcat -c ; adb logcat | grep -iE "SuperDropTap|BadaNfc"
+   then tap. The reader prints exactly where it stops (SELECT / ADVERTISEMENT / no NfcTag / resolved);
+   the HCE prints whether it was asked + whether the link holder was live. If the broad grep shows
+   OTHER lines but nothing from these tags during a tap → our HCE/reader was never invoked. If even an
+   unfiltered `adb logcat` is empty → adb/connection problem, not the app. Do NOT change code before
+   these logs localize it. (Earlier note used the wrong tag `SuperDropTapHceService` — that would match
+   nothing regardless; corrected here.)
 
    UPDATE (user clarifications, same day):
    - The OTHER Super Drop phone WAS in its default receive state (not in send). So "two senders
@@ -129,8 +135,9 @@ final verification needs the user's phones.
      return empty? — paired with the A14 sender's `SuperDropTapReader` log.
    - A15 candidates to CHECK (unconfirmed): A15 NFC/HCE or observe-mode change; cold-primer needs a
      Wi-Fi IP on the A15 phone at tap time; FGS-from-HCE cold-wake blocked on A15; tap never routed to
-     our HCE on the A15 side. Capture `adb logcat -s SuperDropTapHceService BadaNfcColdPrime BadaNfcWake`
-     ON THE A15 PHONE while it is tapped, plus `SuperDropTapReader` on the A14 sender.
+     our HCE on the A15 side. Capture `adb logcat -c ; adb logcat | grep -iE "SuperDropTap|BadaNfc"`
+     ON THE A15 PHONE while it is tapped (tag is `SuperDropTapHce`, not the class name), plus the same
+     on the A14 sender for `SuperDropTapReader`.
 
    CLEAN ISOLATION (user, same day): native Quick Share (sender) -> OUR APP (HCE receiver) via tap:
    WORKED when our app was on Android 14, FAILED when our app was on Android 15. Same sender, same
