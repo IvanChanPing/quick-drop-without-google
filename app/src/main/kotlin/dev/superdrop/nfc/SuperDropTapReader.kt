@@ -9,6 +9,7 @@ import android.app.Activity
 import android.nfc.NfcAdapter
 import android.nfc.Tag
 import android.nfc.tech.IsoDep
+import android.os.SystemClock
 import dev.superdrop.diag.DiagnosticUploader
 import dev.superdrop.discovery.diagnostics.DiagnosticLog
 import dev.superdrop.protocol.endpoint.EndpointInfo
@@ -118,21 +119,66 @@ public class SuperDropTapReader(
             return null
         }
 
-        // 2. ADVERTISEMENT.
+        // 2. ADVERTISEMENT — RE-POLLED over a short window. A COLD receiver
+        // (idle / not yet advertising) answers the first ADVERTISEMENT with an
+        // empty tag AND wakes itself into receive (verified in GMS:
+        // NfcAdvertisingChimeraService not-advertising branch -> djvf.f ->
+        // PendingIntent.send launches the receive flow). Once it is advertising,
+        // its HCE returns a real tag — so we re-send the ADVERTISEMENT on the
+        // same (sustained-tap) IsoDep connection until we get a usable tag or the
+        // window expires. This is what lets us send to a cold native/Super Drop
+        // receiver by tap (mirrors native↔native). onTag runs on a binder thread
+        // (off the main thread), so the loop + sleep cannot ANR; if the tag
+        // leaves the field, transceive throws IOException which ends the loop via
+        // the caller's catch.
         val hhww =
             QuickShareNfcCodec.encodeHhwwRequest(
                 QuickShareNfcCodec.HhwwRequest(serviceId = NearbyServiceId.VALUE),
             )
-        val advResp = isoDep.transceive(buildAdvertisementApdu(hhww))
+        val advApdu = buildAdvertisementApdu(hhww)
+        val deadline = SystemClock.elapsedRealtime() + TAP_RETRY_WINDOW_MS
+        var attempt = 0
+        while (true) {
+            attempt++
+            readAdvertisement(isoDep, advApdu, attempt)?.let { return it }
+            if (SystemClock.elapsedRealtime() >= deadline) {
+                DiagnosticLog.w(
+                    TAG,
+                    "ADVERTISEMENT yielded no usable tag after $attempt attempt(s) over ${TAP_RETRY_WINDOW_MS}ms",
+                )
+                return null
+            }
+            try {
+                Thread.sleep(TAP_RETRY_INTERVAL_MS)
+            } catch (e: InterruptedException) {
+                Thread.currentThread().interrupt()
+                DiagnosticLog.w(TAG, "tap re-poll interrupted after $attempt attempt(s)")
+                return null
+            }
+        }
+    }
+
+    /**
+     * One ADVERTISEMENT round-trip + parse. Returns the resolved peer, or `null`
+     * when the receiver answered empty / not-yet-advertising (the caller retries
+     * within the re-poll window). Throws on an IsoDep I/O error (tag left field).
+     */
+    @Suppress("ReturnCount")
+    private fun readAdvertisement(
+        isoDep: IsoDep,
+        advApdu: ByteArray,
+        attempt: Int,
+    ): TappedPeer? {
+        val advResp = isoDep.transceive(advApdu)
         if (!endsWithOk(advResp) || advResp.size <= STATUS_LEN) {
-            DiagnosticLog.w(TAG, "ADVERTISEMENT not OK / empty (${advResp.size}B)")
+            DiagnosticLog.w(TAG, "ADVERTISEMENT empty/not-OK (attempt $attempt, ${advResp.size}B)")
             return null
         }
         val body = advResp.copyOfRange(0, advResp.size - STATUS_LEN)
 
         val response = QuickShareNfcCodec.parseHhwvResponse(body) ?: return null
         if (response.nfcTag.isEmpty()) {
-            DiagnosticLog.w(TAG, "hhwv carried no NfcTag (peer not a live receiver)")
+            DiagnosticLog.w(TAG, "hhwv carried no NfcTag yet (attempt $attempt)")
             return null
         }
         val nfcTag = QuickShareNfcCodec.parseNfcTag(response.nfcTag) ?: return null
@@ -147,7 +193,7 @@ public class SuperDropTapReader(
         DiagnosticLog.w(
             TAG,
             "tap resolved endpointId=$endpointId ${lan.address.hostAddress}:${lan.port} " +
-                "name=${endpointInfo.deviceName}",
+                "name=${endpointInfo.deviceName} (attempt $attempt)",
         )
         return TappedPeer(
             endpointId = endpointId,
@@ -193,5 +239,14 @@ public class SuperDropTapReader(
     private companion object {
         private const val TAG = "SuperDropTapReader"
         private const val STATUS_LEN = 2
+
+        /**
+         * How long to keep re-sending the ADVERTISEMENT on one sustained tap
+         * while a cold receiver wakes + starts advertising (see [exchange]).
+         */
+        private const val TAP_RETRY_WINDOW_MS = 2500L
+
+        /** Pause between ADVERTISEMENT re-polls within [TAP_RETRY_WINDOW_MS]. */
+        private const val TAP_RETRY_INTERVAL_MS = 250L
     }
 }

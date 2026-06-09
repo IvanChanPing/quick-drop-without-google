@@ -1,3 +1,22 @@
+## [2026-06-09] NFC send-tap: re-poll the ADVERTISEMENT to catch a cold receiver waking
+Device upload proved our send-tap read native's HCE as EMPTY (native, in receive, wakes itself on the
+first ADVERTISEMENT via djvf.f PendingIntent but answers empty that round). Native↔native still works
+because the receiver wakes + then advertises. So our reader now RE-POLLS the ADVERTISEMENT on the same
+sustained-tap IsoDep connection until it gets a usable tag or ~2.5s elapses (250 ms between polls),
+catching the moment the woken receiver's HCE starts serving its tag.
+- `SuperDropTapReader.exchange`: SELECT once, then loop `readAdvertisement()` (new) until a Wi-Fi-LAN
+  tag resolves or `TAP_RETRY_WINDOW_MS` (2500) expires; `TAP_RETRY_INTERVAL_MS` (250) between polls.
+  Runs on the binder thread (off main → no ANR); `IsoDep.transceive` IOException (tag left field) ends
+  the loop via the existing onTag catch; `Thread.sleep` InterruptedException is caught (re-set interrupt
+  + return). Every poll logs to DiagnosticLog so the upload shows attempts + outcome.
+- Self-contained to the NFC reader; the normal send/discovery path is untouched (on success the same
+  `onPeerSelected` is fed as before). Warm/already-advertising receivers resolve on attempt 1 — no added
+  latency.
+- **Build:** `:app:assembleDebug` BUILD SUCCESSFUL; `super-drop-debug.apk` refreshed. Compile-only.
+  HYPOTHESIS (grounded: native wakes the receiver on tap, then its HCE serves a tag): the re-poll
+  catches that window. DEVICE-UNVERIFIED — the upload will show whether a later attempt resolves a tag.
+- **Files:** `app/.../nfc/SuperDropTapReader.kt`.
+
 ## [2026-06-09] NFC: win the tap while the receive sheet is open (setPreferredService)
 Confirmed on-device that on Android 15 a tap routes the shared F00000FE2C AID straight to Google
 Quick Share (the tap opened native QS's receive screen; our HCE was never invoked). Per the HCE docs,
