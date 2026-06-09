@@ -101,6 +101,23 @@ final verification needs the user's phones.
      GMS-equipped phone may be fundamentally unwinnable (you can't out-route GMS for a shared
      category-other AID) — a design constraint to surface, not a quick fix.
 
+   CONFIRMED (user, same day): BOTH phones had stock Quick Share, and even the case that WORKED
+   (A14 receive) popped the Android "choose which NFC app" chooser — the user had to pick Super Drop.
+   That chooser is Android's HCE AID-disambiguation, which only appears when two apps register the
+   SAME AID → the F00000FE2C collision is CONFIRMED as the mechanism (no longer just a hypothesis).
+   Receive works because the chooser is on OUR (tapped) phone so the user can pick us; send fails
+   because the chooser/route is on the OTHER (tapped) phone and lands on GMS / isn't pickable there.
+
+   Candidate fix (NOT built — design decision needed):
+   - Super Drop ↔ Super Drop: register a SECOND, PRIVATE AID that only Super Drop uses (add an
+     aid-filter to `superdrop_tap_apduservice.xml`; the reader SELECTs the private AID first). A
+     uniquely-registered AID routes straight to our HCE with NO chooser and NO GMS fight. Keep
+     F00000FE2C only as the native-QS-interop fallback. This is the clean win for our own two-device
+     tap. (Android HCE routing fact — confirm on-device.)
+   - Send → native Quick Share via tap: likely NOT winnable. We can't out-route GMS for its own AID
+     on a GMS phone, and Google's tap is server-flag/attestation gated. Receiving FROM native (with
+     the chooser) is the realistic ceiling.
+
 ## Notes
 - #4 and #5 are both tile/visibility and likely share the task-handling root cause.
 - Fix verification: code + redroid where possible (tile launch task, name fallback); the
