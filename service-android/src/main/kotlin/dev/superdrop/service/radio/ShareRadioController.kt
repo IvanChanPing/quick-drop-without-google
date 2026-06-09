@@ -6,6 +6,8 @@
 package dev.superdrop.service.radio
 
 import android.content.Context
+import android.os.Handler
+import android.os.Looper
 import dev.superdrop.discovery.diagnostics.DiagnosticLog
 
 /**
@@ -55,6 +57,23 @@ public class ShareRadioController(
     public var isPrepared: Boolean = false
         private set
 
+    // mainHandler / heartbeatTick — a 5 s keep-alive loop that runs for the life of
+    // the share (started once the helper acknowledges prepare, stopped in
+    // restoreRadios). Each tick sends RadioHelperClient.heartbeat() so that if THIS
+    // host (activity / foreground service) is killed mid-transfer without calling
+    // restoreRadios, the helper restores the radios ~20 s after the last beat instead
+    // of holding them until its 20-min watchdog. A live transfer keeps beating, so a
+    // long transfer is never cut. Runs on the main looper (heartbeat() is non-blocking).
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private val heartbeatTick =
+        object : Runnable {
+            override fun run() {
+                val c = client ?: return
+                c.heartbeat()
+                mainHandler.postDelayed(this, HEARTBEAT_INTERVAL_MS)
+            }
+        }
+
     /**
      * Bind the `:radio-helper` and force [radios] ON for the share. Idempotent
      * against repeat calls on the same instance (reuses the existing client).
@@ -70,6 +89,13 @@ public class ShareRadioController(
             c.prepareForShare(radios) { nowOn ->
                 isPrepared = true
                 log("radio-helper prepared radios, now-on bitmask=$nowOn")
+                // Begin the keep-alive heartbeat NOW that the radios are on. The first
+                // beat fires IMMEDIATELY, so the helper's restore is armed to 20 s right
+                // at enable; then every HEARTBEAT_INTERVAL_MS beat RESETS that 20 s. So
+                // a crash mid-transfer (beats stop) restores ~20 s after the LAST beat —
+                // even if it crashes before the first interval elapsed.
+                mainHandler.removeCallbacks(heartbeatTick)
+                mainHandler.post(heartbeatTick)
             }
         }
     }
@@ -82,6 +108,9 @@ public class ShareRadioController(
      */
     public fun restoreRadios(finishSession: Boolean = true) {
         val c = client ?: return
+        // Stop the keep-alive heartbeat first — this instance is releasing its lease,
+        // whether it's a real terminal or a config-change unbind.
+        mainHandler.removeCallbacks(heartbeatTick)
         if (finishSession && isPrepared) {
             log("share finished -> radio-helper restores the radios it enabled")
             c.transferFinished()
@@ -93,5 +122,11 @@ public class ShareRadioController(
 
     private fun log(message: String) {
         if (logTag != null) DiagnosticLog.w(logTag, message)
+    }
+
+    private companion object {
+        /** Keep-alive heartbeat interval. Must be well below the helper's 20 s
+         *  post-heartbeat restore so a beat always lands before it would fire. */
+        const val HEARTBEAT_INTERVAL_MS = 5_000L
     }
 }

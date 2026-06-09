@@ -251,6 +251,20 @@ class RadioHelperClient(context: Context) {
         }.onFailure { finishedCbs.remove(done); done() }
     }
 
+    /**
+     * Transfer HEARTBEAT — "my transfer is still running." Fire-and-forget keep-alive
+     * (no reply tracked): each call resets the helper's restore timer to ~20 s, so if
+     * this app crashes / is killed mid-transfer (never calls [transferFinished]) the
+     * radios restore ~20 s after the LAST beat instead of waiting for the helper's
+     * 20-min watchdog. Send it every few seconds for the life of the transfer (the
+     * first beat should fire right at prepare so the 20 s is armed at enable). No-op
+     * if not connected.
+     */
+    fun heartbeat() {
+        val m = outgoing ?: return
+        runCatching { m.send(Message.obtain(null, MSG_TRANSFER_HEARTBEAT)) }
+    }
+
     /** Unbind. Call when the app no longer needs the helper. */
     fun disconnect() {
         mainHandler.removeCallbacks(connectTimeout)
@@ -274,6 +288,7 @@ class RadioHelperClient(context: Context) {
         private const val MSG_QUERY = 3
         private const val MSG_PREPARE_SHARE = 4
         private const val MSG_TRANSFER_FINISHED = 5
+        private const val MSG_TRANSFER_HEARTBEAT = 6
 
         /** Radio bitmask for [prepareForShare] (matches ShareRadioSession). */
         const val RADIO_WIFI = 1

@@ -21,7 +21,7 @@ import android.view.accessibility.AccessibilityEvent
  *     state, turn on whatever is off) + start a 5 s heartbeat.
  *   - while Quick Share stays in front → the heartbeat keeps pushing the restore out.
  *   - Quick Share leaves the foreground → [ShareRadioSession.finish] (restore exactly
- *     what we turned on) [LEFT_GRACE_MS] after the LAST heartbeat.
+ *     what we turned on) [LEAVE_TIMEOUT_MS] (2 min) later.
  *
  * USER-FACING NAME / HOW IT'S INVOKED
  * -----------------------------------
@@ -39,19 +39,19 @@ import android.view.accessibility.AccessibilityEvent
  * [QuickShareWatchStatus.lastWindow] so, if a device reports a different class, it
  * is visible on-screen and the matcher can be corrected (no guessing/decompile).
  *
- * RESTORE TIMING (heartbeat model)
- * --------------------------------
+ * RESTORE TIMING (self-heartbeat + 2-min timeout)
+ * -----------------------------------------------
  * We deliberately do NOT try to detect "transfer finished" — that is app-specific
- * and would strand the radios ON forever on a cancel / failure. Instead, while Quick
- * Share is in the foreground a [HEARTBEAT_MS] (5 s) heartbeat keeps re-arming the
- * restore alarm to fire [LEFT_GRACE_MS] (20 s) out. So the radios restore ~20 s after
- * the LAST heartbeat — i.e. ~20 s after Quick Share leaves the foreground (or after
- * our process loses track of it). A long transfer is never cut while its UI is up,
- * because each 5 s tick pushes the 20 s restore further out.
- * NOTE: our app CANNOT heartbeat for Quick Share (it is Google's app), so the
- * heartbeat is SELF-generated from the accessibility foreground signal.
- * KNOWN EDGE: a transfer the user sends to the BACKGROUND (QS no longer foreground)
- * is restored ~20 s later (Quick Share also manages its own radios).
+ * and would strand the radios ON forever on a cancel / failure. Two pieces:
+ *   - While Quick Share is in the foreground, a [HEARTBEAT_MS] (5 s) heartbeat keeps
+ *     re-arming the restore alarm [LEAVE_TIMEOUT_MS] out, so a long transfer whose UI
+ *     is still up is NEVER cut.
+ *   - When Quick Share LEAVES the foreground, the radios restore [LEAVE_TIMEOUT_MS]
+ *     (2 min) later — a generous timeout, because we can't tell whether a transfer is
+ *     still finishing in the background (QS is Google's app; we get no signal from it).
+ * NOTE: our app CANNOT heartbeat for Quick Share, so this heartbeat is SELF-generated
+ * from the accessibility foreground signal. (Our OWN apps use a real app heartbeat
+ * over RadioService — a different, shorter path.)
  *
  * THREADING / DURABILITY
  * ----------------------
@@ -68,7 +68,7 @@ import android.view.accessibility.AccessibilityEvent
  * device-UNVERIFIED until run on the OnePlus with the service enabled. Test:
  * enable in Accessibility, open Quick Share, watch logcat tag "QuickShareWatcher"
  * and the status line on SelfTestActivity (Wi‑Fi/BT should flip ON), then leave
- * Quick Share and confirm the radios restore ~20 s later (and that a long transfer
+ * Quick Share and confirm the radios restore ~2 min later (and that a long transfer
  * with the QS screen still up is NOT cut).
  */
 internal class QuickShareWatcherService : AccessibilityService() {
@@ -87,15 +87,15 @@ internal class QuickShareWatcherService : AccessibilityService() {
 
     // heartbeat — while Quick Share is in the foreground this re-posts itself on the
     // worker thread every HEARTBEAT_MS, each tick pushing the restore alarm back out
-    // to LEFT_GRACE_MS. Net effect: the radios restore ~LEFT_GRACE_MS after the LAST
-    // tick, so a long transfer (QS still in front) is never cut, but a leave/loss of
-    // tracking restores promptly. Stopped (removeCallbacks) on leave and onDestroy.
+    // to LEAVE_TIMEOUT_MS. Net effect: the radios restore ~LEAVE_TIMEOUT_MS after the
+    // LAST tick, so a long transfer (QS still in front) is never cut, but a leave/loss
+    // of tracking restores after the timeout. Stopped (removeCallbacks) on leave/destroy.
     private val heartbeat =
         object : Runnable {
             override fun run() {
                 if (!quickShareInFront) return // stopped between posts — do nothing
                 if (ShareRadioSession.isSessionActive(applicationContext)) {
-                    ShareRadioSession.scheduleRestoreIn(applicationContext, LEFT_GRACE_MS)
+                    ShareRadioSession.scheduleRestoreIn(applicationContext, LEAVE_TIMEOUT_MS)
                 }
                 bg.postDelayed(this, HEARTBEAT_MS)
             }
@@ -117,7 +117,7 @@ internal class QuickShareWatcherService : AccessibilityService() {
         val isQuickShare = pkg == GMS_PKG && cls.contains(QS_CLASS_MARKER)
         if (isQuickShare) {
             // ENTER (first time only): prepare the radios and start the 5 s heartbeat,
-            // which keeps the restore pushed out to LEFT_GRACE_MS while QS is in front.
+            // which keeps the restore pushed out to LEAVE_TIMEOUT_MS while QS is in front.
             if (!quickShareInFront) {
                 quickShareInFront = true
                 Log.i(TAG, "Quick Share foreground ($cls) → prepare + start heartbeat")
@@ -132,15 +132,15 @@ internal class QuickShareWatcherService : AccessibilityService() {
         } else if (quickShareInFront) {
             // LEAVE: foreground moved off Quick Share (user left — done / cancel /
             // fail; we don't care which). Stop the heartbeat and arm the DURABLE
-            // restore alarm LEFT_GRACE_MS out (survives our process being frozen/killed
+            // restore alarm LEAVE_TIMEOUT_MS out (survives our process being frozen/killed
             // by ColorOS), NOT an in-process timer. Skip if we turned nothing on.
             quickShareInFront = false
             bg.removeCallbacks(heartbeat)
             bg.post {
                 if (ShareRadioSession.isSessionActive(applicationContext)) {
-                    Log.i(TAG, "Quick Share left → restore alarm in ${LEFT_GRACE_MS / 1000}s")
-                    ShareRadioSession.scheduleRestoreIn(applicationContext, LEFT_GRACE_MS)
-                    QuickShareWatchStatus.update("Quick Share left → restoring radios in ${LEFT_GRACE_MS / 1000}s")
+                    Log.i(TAG, "Quick Share left → restore alarm in ${LEAVE_TIMEOUT_MS / 1000}s")
+                    ShareRadioSession.scheduleRestoreIn(applicationContext, LEAVE_TIMEOUT_MS)
+                    QuickShareWatchStatus.update("Quick Share left → restoring radios in ${LEAVE_TIMEOUT_MS / 1000}s")
                 } else {
                     QuickShareWatchStatus.update("Quick Share left (nothing to restore)")
                 }
@@ -173,15 +173,16 @@ internal class QuickShareWatcherService : AccessibilityService() {
         const val QS_CLASS_MARKER = "nearby.sharing"
 
         /**
-         * Restore the radios this long after the LAST heartbeat — i.e. ~20 s after
-         * Quick Share leaves the foreground (or after our process stops ticking). Each
-         * heartbeat re-arms the restore alarm this far out, so while QS stays in front
-         * the restore is continually pushed back and a long transfer is never cut.
+         * Restore the radios this long after Quick Share leaves the foreground (or
+         * after our process stops heart-beating). 2 min is a generous timeout because
+         * we can't tell whether a transfer is still finishing in the background. While
+         * QS stays in front, each heartbeat re-arms the restore alarm this far out, so
+         * a long foreground transfer is never cut.
          */
-        const val LEFT_GRACE_MS = 20_000L
+        const val LEAVE_TIMEOUT_MS = 120_000L
 
         /** Heartbeat interval while Quick Share is in the foreground. Must be well
-         * below [LEFT_GRACE_MS] so a tick always lands before the restore would fire. */
+         * below [LEAVE_TIMEOUT_MS] so a tick always lands before the restore fires. */
         const val HEARTBEAT_MS = 5_000L
     }
 }

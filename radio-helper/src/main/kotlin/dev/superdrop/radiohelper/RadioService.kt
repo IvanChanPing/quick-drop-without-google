@@ -43,6 +43,15 @@ internal class RadioService : Service() {
                     ShareRadioSession.finish(this)
                     replyResult(msg, true)
                 }
+                // Heartbeat from a client whose transfer is STILL running: push the
+                // restore out so that if the client crashes / is killed mid-transfer
+                // (never sends MSG_TRANSFER_FINISHED), the radios restore
+                // ~HEARTBEAT_RESTORE_MS after the LAST beat — instead of staying on
+                // until the 20-min safety watchdog. A live client keeps beating.
+                MSG_TRANSFER_HEARTBEAT -> {
+                    ShareRadioSession.scheduleRestoreIn(this, HEARTBEAT_RESTORE_MS)
+                    replyResult(msg, true)
+                }
             }
             true
         }
@@ -101,5 +110,18 @@ internal class RadioService : Service() {
          * MSG_PREPARE_SHARE, back to the user's original state. Reply arg1 = 1 (ack).
          */
         const val MSG_TRANSFER_FINISHED = 5
+
+        /**
+         * Transfer HEARTBEAT — "my transfer is still running." Each beat re-arms the
+         * restore alarm [HEARTBEAT_RESTORE_MS] out, so a crashed/killed client (one
+         * that stops beating without a MSG_TRANSFER_FINISHED) is restored ~20 s after
+         * its last beat instead of waiting for the 20-min watchdog. Reply arg1 = 1.
+         * The client (e.g. ShareRadioController) sends this every few seconds for the
+         * life of the transfer; it is OPTIONAL (the prepare→finished path still works).
+         */
+        const val MSG_TRANSFER_HEARTBEAT = 6
+
+        /** How long after the LAST heartbeat the helper restores the radios. */
+        private const val HEARTBEAT_RESTORE_MS = 20_000L
     }
 }

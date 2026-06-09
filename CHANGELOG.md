@@ -1,3 +1,26 @@
+## [2026-06-09] Two restore modes: Quick Share = 2-min timeout; our own apps = 5s heartbeat resetting a 20s timer
+Per user, the helper now does TWO things by source:
+1. **Click Share (Quick Share, accessibility-detected):** `LEFT_GRACE_MS` renamed `LEAVE_TIMEOUT_MS` and set to
+   **2 min**. While QS is in front the 5s self-heartbeat keeps pushing it out (long foreground transfer not
+   cut); when QS leaves the foreground the radios restore 2 min later (generous, since we can't tell if a
+   background transfer is still finishing — QS is Google's app, no signal).
+2. **Our own apps (Super Drop), via the RadioService command channel:** a real app heartbeat. "After enabling
+   it should have the 20-second timer, and every heartbeat resets it" —
+   - Helper `RadioService`: new `MSG_TRANSFER_HEARTBEAT` (6) → `ShareRadioSession.scheduleRestoreIn(20s)`
+     (`HEARTBEAT_RESTORE_MS`). Optional; prepare→finished still works.
+   - `RadioHelperClient` (both the canonical `radio-helper/client/` template AND the `service-android` copy):
+     new fire-and-forget `heartbeat()` + `MSG_TRANSFER_HEARTBEAT` const.
+   - `ShareRadioController`: a 5s `heartbeatTick` (main-looper Handler) started on prepare-ack with the FIRST
+     beat fired IMMEDIATELY (`mainHandler.post`, not postDelayed) so the 20s is armed right at enable; each
+     beat resets it; stopped in `restoreRadios`. Call sites (SendActivity/ReceiverForegroundService) unchanged
+     — the controller encapsulates it. Net: a crash mid-transfer restores ~20s after the LAST beat instead of
+     waiting for the 20-min watchdog; a live transfer keeps beating so it's never cut.
+- STATUS: compile-only / device-UNVERIFIED. `:radio-helper:assembleDebug` + `:app:assembleDebug` SUCCESSFUL.
+  Both APKs refreshed: `radio-helper-debug.apk`, `super-drop-debug.apk`.
+- **Files:** `radio-helper/.../QuickShareWatcherService.kt`, `radio-helper/.../RadioService.kt`,
+  `radio-helper/client/RadioHelperClient.kt`, `service-android/.../RadioHelperClient.kt`,
+  `service-android/.../ShareRadioController.kt`, both APKs.
+
 ## [2026-06-09] radio-helper: Quick Share restore via 5s self-heartbeat (large transfers no longer cut)
 User idea: send a "still transferring" heartbeat every 5s and restore 20s after the last one, so a large
 transfer isn't cut. CORRECTION made: our app cannot heartbeat for Google's Quick Share (it's not part of
