@@ -48,15 +48,33 @@ FINISHED FEATURES
    service even when the app's process is dead, which is what makes the cold tap
    work.
 
-   Status (real-device test, 2026-06-09 — NOT a finished feature yet):
-   - Android 14, RECEIVE from native Quick Share via tap: worked, BUT it competes
-     with native Quick Share for the tap (both register the same NFC ID), so you
-     have to pick our app each time.
-   - Android 14, SEND (to native or to another Super Drop) via tap: did not work.
-   - Android 15: neither direction worked.
-   Root cause + how to localize is in BUGS.md #6. This should move out of
-   "finished" until the send path and the native-Quick-Share tap collision are
-   sorted; receive-on-Android-14 is the only part that worked.
+   Real-device findings (2026-06-09) and what we did about each:
+
+   • RECEIVE into our app, on Android 15, was being stolen by Google.
+     Why (verified from Google's code + on device): when two apps register the
+     same NFC ID, Android 15 routes the tap to the default "wallet" app (Google),
+     so our app never saw it (on Android 14 it showed a chooser instead). Fix
+     added: while our receive sheet is open we now claim the NFC ID for the tap
+     (CardEmulation.setPreferredService in ConsentTrampolineActivity), the one
+     documented way to win it on Android 15. Sheet closed → it falls back to
+     native. (Built; on-device confirmation pending.)
+
+   • SEND from our app to a receiver, by tap, didn't start the transfer.
+     Why (verified from a real device log + Google's code): a receiver that's
+     idle answers the first tap empty and only THEN wakes itself into receive and
+     starts advertising — so a single read got nothing. Fix added: our reader now
+     re-polls the tap for ~2.5s (every 250ms) on the same touch until the woken
+     receiver hands over its address, then feeds the existing (working) transfer.
+     (Built; on-device confirmation pending.)
+
+   • To see what's happening without a PC: added on-device diagnostics that
+     auto-upload the NFC tap details (see the separate diagnostics item), since
+     the tester has no adb.
+
+   Honest status: the NFC tap pieces are built and compile; the two fixes above
+   are grounded in Google's actual code + a real device log, but are NOT yet
+   confirmed working on a phone. Full reverse-engineered byte map + root causes
+   live in docs/NFC_INTEROP_BYTEMAP.md; device-test notes in BUGS.md #6.
 
 4) Tap an iPhone to share a link
    Tap your phone with an iPhone (or any phone) and it opens your pairing link in
