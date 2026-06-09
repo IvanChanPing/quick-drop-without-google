@@ -1,3 +1,26 @@
+## [2026-06-09] QS tile also turns Wi-Fi/BT on (radio-helper), restored on sheet close
+Tapping the Quick Settings tile to open the receive sheet now forces Wi-Fi + Bluetooth ON for the
+receive, matching the send + NFC-wake paths. Wired symmetric to the existing NFC-wake radio path:
+- `ReceiverForegroundService` (`:service-android`): new `ACTION_TILE_WAKE` + `startWithRadios(context)`
+  companion. On that action `onStartCommand` calls the existing `ensureRadiosForWake()`
+  (`RadioHelperClient` SESSION mode, `prepareForShare(RADIO_BOTH)`, async — no ANR). It does NOT arm the
+  60 s NFC visibility window (the tile owns visibility itself). Radios restore via the existing
+  `restoreRadiosAfterShare()` from `stopReceiverAndExit()` — which the tile's close path already triggers
+  (`TileVisibilityElevationHolder.restoreIfArmed` → `ReceiverForegroundService.stop`).
+- `BadaQuickShareTileService` (`:app`): the elevation branch now calls `startWithRadios(this)` instead of
+  `start(this)`. Only fires when the tile actually bumps visibility (was-off path); when already visible
+  the tile changes nothing (and has no restore hook), so radios are left alone there — consistent with the
+  existing "don't disturb a persistent always-on state" contract. The existing FGS-rejection catch still
+  rolls the bump back.
+- Plain `start(context)` (used by `MainActivity`) is unchanged — stays radio-free. NFC + send paths
+  untouched. No manifest change: `:service-android` already declares `BIND_RADIO` + the helper `<queries>`
+  (the NFC-wake path uses the same client).
+- **Build:** `:app:assembleDebug` BUILD SUCCESSFUL; `super-drop-debug.apk` refreshed at repo root.
+  Compile-only / device-UNVERIFIED: whether the helper actually flips the radios on the target OEM, and
+  the on-device restore-on-sheet-close, are the same open device tests as the NFC-wake radio path.
+- **Files:** `service-android/.../receiver/ReceiverForegroundService.kt`,
+  `app/.../tile/BadaQuickShareTileService.kt`.
+
 ## [2026-06-09] NFC tap-to-send: Wi-Fi-readiness grace retry + help-sheet tap guidance
 User: "fix number one and two" from the send-flow common-sense check — (1) the Wi-Fi-timing gap on the
 NFC tap dial, and (2) two-senders-can't-tap (which is a hardware limit, fixed as guidance).

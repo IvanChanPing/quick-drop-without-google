@@ -294,6 +294,15 @@ public class ReceiverForegroundService : Service() {
             armNfcWakeWindow()
         }
 
+        // Quick Settings tile tap (open receive sheet). The tile already
+        // manages the visibility bump + its restore; here we only force
+        // Wi-Fi + Bluetooth on for the receive. They are restored by
+        // [restoreRadiosAfterShare] when the sheet closes and stops the
+        // service the tile started (see [TileVisibilityElevationHolder]).
+        if (intent?.action == ACTION_TILE_WAKE) {
+            ensureRadiosForWake()
+        }
+
         return START_STICKY
     }
 
@@ -1187,6 +1196,18 @@ public class ReceiverForegroundService : Service() {
          */
         public const val ACTION_NFC_WAKE: String = "dev.superdrop.service.receiver.ACTION_NFC_WAKE"
 
+        /**
+         * Action sent by [dev.superdrop.tile.BadaQuickShareTileService] when the
+         * Quick Settings tile is tapped to open the receive sheet. The tile owns
+         * the visibility bump itself (via [MdnsVisibilityOverrideHolder] +
+         * [TileVisibilityElevationHolder]); this action additionally asks us to
+         * force Wi-Fi + Bluetooth ON for the receive through the radio-helper,
+         * restored on teardown ([restoreRadiosAfterShare] from
+         * [stopReceiverAndExit] when the sheet closes and stops the service the
+         * tile started). Not exported (package-internal control intent).
+         */
+        public const val ACTION_TILE_WAKE: String = "dev.superdrop.service.receiver.ACTION_TILE_WAKE"
+
         /** Logcat tag for cold NFC-wake lifecycle lines. */
         private const val NFC_WAKE_TAG: String = "BadaNfcWake"
 
@@ -1314,6 +1335,26 @@ public class ReceiverForegroundService : Service() {
          */
         public fun start(context: Context) {
             val intent = Intent(context, ReceiverForegroundService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
+
+        /**
+         * Bring up the foreground service AND force Wi-Fi + Bluetooth on for
+         * the receive (via the radio-helper), restored when the service is
+         * later stopped. Used by [dev.superdrop.tile.BadaQuickShareTileService]
+         * so opening the receive sheet from the Quick Settings tile also turns
+         * the radios on. Same platform-call wrapping as [start]; differs only
+         * by tagging the start intent with [ACTION_TILE_WAKE].
+         */
+        public fun startWithRadios(context: Context) {
+            val intent =
+                Intent(context, ReceiverForegroundService::class.java).apply {
+                    action = ACTION_TILE_WAKE
+                }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
             } else {

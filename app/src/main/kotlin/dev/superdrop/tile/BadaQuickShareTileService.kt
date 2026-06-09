@@ -105,7 +105,12 @@ internal class BadaQuickShareTileService : TileService() {
         if (!priorOverrideActive) {
             MdnsVisibilityOverrideHolder.setAlwaysVisible(true)
             try {
-                ReceiverForegroundService.start(this)
+                // startWithRadios (not start): opening the receive sheet from
+                // the tile also forces Wi-Fi + Bluetooth on via the radio-helper
+                // for the duration of the receive; they are restored when the
+                // sheet closes and stops this service (TileVisibilityElevationHolder
+                // -> ReceiverForegroundService.stop -> restoreRadiosAfterShare).
+                ReceiverForegroundService.startWithRadios(this)
                 startedService = true
             } catch (e: IllegalStateException) {
                 // Android 12+ forbids most background foreground-service
