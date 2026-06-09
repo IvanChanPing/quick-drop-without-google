@@ -66,6 +66,7 @@ import dev.superdrop.protocol.qr.QrTlvMatcher
 import dev.superdrop.protocol.qr.QrUrl
 import dev.superdrop.service.receiver.AdvertisedDeviceNames
 import dev.superdrop.service.radio.RadioHelperClient
+import dev.superdrop.service.radio.ShareRadioController
 import dev.superdrop.service.receiver.OutboundSessionActiveHolder
 import dev.superdrop.ui.BackdropBlurView
 import dev.superdrop.ui.sheet.DraggableSheetLayout
@@ -129,17 +130,18 @@ public class SendActivity : AppCompatActivity() {
     private var senderGattServer: BleGattInitialControlServer? = null
 
     /**
-     * radioClient — binds the universal `:radio-helper` so the SENDER's Wi-Fi +
-     * Bluetooth are forced ON for the whole send flow (discovery + transfer) and
-     * restored to the user's original state when the Send screen finishes. Mirrors
-     * the receiver's [dev.superdrop.service.receiver.ReceiverForegroundService]
-     * radio wiring (SESSION mode). Held for the activity lifetime; bound in
-     * [requestRadiosForSend] (onCreate), released in [restoreRadiosAfterSend]
-     * (onDestroy when finishing). The helper owns capture/enable/restore; this app
-     * tracks nothing. NOT device-verified end-to-end.
+     * shareRadios — the shared [ShareRadioController] that forces the SENDER's
+     * Wi-Fi + Bluetooth ON for the whole send flow (discovery + transfer) and
+     * restores the user's original state when the Send screen finishes. The SAME
+     * controller backs the receiver / NFC / tile paths
+     * ([dev.superdrop.service.receiver.ReceiverForegroundService]). Held for the
+     * activity lifetime; primed in [requestRadiosForSend] (onCreate), released in
+     * [restoreRadiosAfterSend] (onDestroy). The helper owns capture/enable/restore;
+     * this app tracks nothing. NOT device-verified end-to-end.
      */
-    private var radioClient: RadioHelperClient? = null
-    private var radioSharePrepared = false
+    private val shareRadios: ShareRadioController by lazy {
+        ShareRadioController(this, logTag = "BadaSendRadio")
+    }
 
     /**
      * Quick Share NFC tap-to-share reader (Phase 4, direction: us-as-sender).
@@ -361,11 +363,7 @@ public class SendActivity : AppCompatActivity() {
      * wrong signing key / force-stopped, radios are left as-is (user's own fallback).
      */
     private fun requestRadiosForSend() {
-        val client = radioClient ?: RadioHelperClient(this).also { radioClient = it }
-        client.connect { connected ->
-            if (!connected) return@connect
-            client.prepareForShare(RadioHelperClient.RADIO_BOTH) { radioSharePrepared = true }
-        }
+        shareRadios.requestRadiosOn(RadioHelperClient.RADIO_BOTH)
     }
 
     /**
@@ -376,13 +374,10 @@ public class SendActivity : AppCompatActivity() {
      * unbind this dead instance's client to avoid a duplicate binding.
      */
     private fun restoreRadiosAfterSend() {
-        val client = radioClient ?: return
-        if (isFinishing && radioSharePrepared) {
-            client.transferFinished()
-            radioSharePrepared = false
-        }
-        client.disconnect()
-        radioClient = null
+        // finishSession only on a true terminal; a config-change recreate
+        // (isFinishing == false) just unbinds and leaves the persisted,
+        // re-entrant helper session for the new instance to re-prepare.
+        shareRadios.restoreRadios(finishSession = isFinishing)
     }
 
     override fun onResume() {

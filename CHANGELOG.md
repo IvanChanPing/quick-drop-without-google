@@ -1,3 +1,25 @@
+## [2026-06-09] Refactor: one ShareRadioController for all radio-on/off paths
+Consolidated the duplicated radio-lease logic (send, NFC-wake, QS tile) into a single
+`ShareRadioController` in `:service-android` (`dev.superdrop.service.radio`). All three paths used to
+re-implement the same `RadioHelperClient` dance — connect → `prepareForShare(RADIO_BOTH)` → track a
+prepared flag → `transferFinished` + `disconnect`. Now they share one class.
+- New `ShareRadioController(context, logTag?)`: `requestRadiosOn(radios)` (best-effort, async, no ANR) +
+  `restoreRadios(finishSession=true)`. `finishSession=false` unbinds WITHOUT ending the helper session —
+  preserves the SENDER's config-change-recreate behaviour exactly.
+- `ReceiverForegroundService`: dropped `radioClient` + `radioSharePrepared` fields; `ensureRadiosForWake()`
+  → `shareRadios.requestRadiosOn(RADIO_BOTH)`, `restoreRadiosAfterShare()` → `restoreRadios(true)`. Keeps
+  the `NFC_WAKE_TAG` logging via the controller's `logTag`. Call sites (NFC wake + tile) unchanged.
+- `SendActivity`: dropped `radioClient` + `radioSharePrepared`; `requestRadiosForSend()` →
+  `requestRadiosOn`, `restoreRadiosAfterSend()` → `restoreRadios(finishSession = isFinishing)` (same
+  isFinishing nuance as before). Gains send-radio logging (`BadaSendRadio`) — net observability win.
+- Behaviour-preserving by construction; no manifest/permission/threading change. The radio-helper APP
+  remains the cross-app authority — this only de-duplicates the in-app client wiring.
+- **Build:** `:service-android` + `:app` `assembleDebug` BUILD SUCCESSFUL; `super-drop-debug.apk`
+  refreshed. Compile-verified; on-device radio toggling still UNVERIFIED (no device/helper here), same as
+  the existing radio paths.
+- **Files:** `service-android/.../service/radio/ShareRadioController.kt` (new),
+  `service-android/.../receiver/ReceiverForegroundService.kt`, `app/.../send/SendActivity.kt`.
+
 ## [2026-06-09] QS tile also turns Wi-Fi/BT on (radio-helper), restored on sheet close
 Tapping the Quick Settings tile to open the receive sheet now forces Wi-Fi + Bluetooth ON for the
 receive, matching the send + NFC-wake paths. Wired symmetric to the existing NFC-wake radio path:

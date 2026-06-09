@@ -35,6 +35,7 @@ import dev.superdrop.protocol.endpoint.EndpointInfo
 import dev.superdrop.protocol.endpoint.NearbyServiceId
 import dev.superdrop.protocol.nfc.NfcTapLinkHolder
 import dev.superdrop.service.radio.RadioHelperClient
+import dev.superdrop.service.radio.ShareRadioController
 import dev.superdrop.service.downloads.DownloadsWriterFactory
 import dev.superdrop.service.receiver.consent.ConsentBroadcastReceiver
 import dev.superdrop.service.receiver.consent.ConsentCoordinator
@@ -188,16 +189,15 @@ public class ReceiverForegroundService : Service() {
     private var nfcWakePriorOverride: Boolean = false
 
     /**
-     * Universal radio-helper client used to force Wi-Fi + Bluetooth ON for an
-     * NFC tap-to-receive wake (the helper captures the user's original state and
-     * restores it on [restoreRadiosAfterShare]). Held for the service lifetime,
-     * created lazily on the first wake. All calls are on the main thread per the
-     * client's threading contract. See [ensureRadiosForWake].
+     * Shared radio lease used to force Wi-Fi + Bluetooth ON for an NFC
+     * tap-to-receive wake or a Quick Settings tile open, restored at teardown.
+     * The same [ShareRadioController] type backs the sender too — see
+     * [ensureRadiosForWake] / [restoreRadiosAfterShare]. All calls on the main
+     * thread per the client's threading contract.
      */
-    private var radioClient: RadioHelperClient? = null
-
-    /** True once a wake asked the helper to prepare radios, so teardown restores. */
-    private var radioSharePrepared: Boolean = false
+    private val shareRadios: ShareRadioController by lazy {
+        ShareRadioController(this, logTag = NFC_WAKE_TAG)
+    }
 
     @Volatile
     private var discoveryDiagnosticsJob: Job? = null
@@ -351,21 +351,7 @@ public class ReceiverForegroundService : Service() {
      * actually flips the radios on the target OEM is the make-or-break.
      */
     private fun ensureRadiosForWake() {
-        val client = radioClient ?: RadioHelperClient(this).also { radioClient = it }
-        DiagnosticLog.w(NFC_WAKE_TAG, "nfc-wake: requesting Wi-Fi+BT via radio-helper")
-        client.connect { connected ->
-            if (!connected) {
-                DiagnosticLog.w(
-                    NFC_WAKE_TAG,
-                    "nfc-wake: radio-helper unavailable (not installed / wrong signing key / force-stopped) -> radios left as-is",
-                )
-                return@connect
-            }
-            client.prepareForShare(RadioHelperClient.RADIO_BOTH) { nowOn ->
-                radioSharePrepared = true
-                DiagnosticLog.w(NFC_WAKE_TAG, "nfc-wake: radio-helper prepared radios, now-on bitmask=$nowOn")
-            }
-        }
+        shareRadios.requestRadiosOn(RadioHelperClient.RADIO_BOTH)
     }
 
     /**
@@ -375,14 +361,7 @@ public class ReceiverForegroundService : Service() {
      * runs its restore even as this service goes away. Main-thread (teardown).
      */
     private fun restoreRadiosAfterShare() {
-        val client = radioClient ?: return
-        if (radioSharePrepared) {
-            DiagnosticLog.w(NFC_WAKE_TAG, "nfc-wake: transfer finished -> radio-helper restores radios it enabled")
-            client.transferFinished()
-            radioSharePrepared = false
-        }
-        client.disconnect()
-        radioClient = null
+        shareRadios.restoreRadios(finishSession = true)
     }
 
     /**
