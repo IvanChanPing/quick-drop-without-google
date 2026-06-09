@@ -159,17 +159,42 @@ internal object ShareRadioSession {
         return PendingIntent.getBroadcast(context.applicationContext, 0, intent, flags)
     }
 
-    /** Arm the inexact (Doze-friendly, no exact-alarm permission) safety alarm. */
-    private fun scheduleWatchdog(context: Context) {
+    /** Arm the safety alarm at now+WATCHDOG_MS (backstop for a missed finish). */
+    private fun scheduleWatchdog(context: Context) = scheduleRestoreIn(context, WATCHDOG_MS)
+
+    /**
+     * (Re)arm the restore alarm to fire [delayMs] from now, REPLACING any prior
+     * alarm (same PendingIntent). DURABLE by design: AlarmManager re-launches
+     * [ShareWatchdogReceiver] (→ [finish]) even if our process was frozen or killed
+     * in between — unlike an in-process `Handler.postDelayed`, which dies with the
+     * process. Exact + allow-while-idle: this APK targets API 28, so exact alarms
+     * need no SCHEDULE_EXACT_ALARM permission. Used by [QuickShareWatcherService] to
+     * schedule the post-Quick-Share restore on a short grace, and to push it back
+     * out to the full watchdog while Quick Share is in the foreground.
+     */
+    fun scheduleRestoreIn(
+        context: Context,
+        delayMs: Long,
+    ) {
         val am = context.applicationContext.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
-        val at = System.currentTimeMillis() + WATCHDOG_MS
+        val at = System.currentTimeMillis() + delayMs
         runCatching {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                am.setAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, watchdogPendingIntent(context))
+                am.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, at, watchdogPendingIntent(context))
             } else {
-                am.set(AlarmManager.RTC_WAKEUP, at, watchdogPendingIntent(context))
+                am.setExact(AlarmManager.RTC_WAKEUP, at, watchdogPendingIntent(context))
             }
-        }.onFailure { Log.w(TAG, "scheduleWatchdog failed: ${it.message}") }
+        }.onFailure { Log.w(TAG, "scheduleRestoreIn($delayMs) failed: ${it.message}") }
+    }
+
+    /**
+     * True while a prepared session is pending restore (we turned a radio ON and
+     * haven't restored yet). Read from the persisted flags so it's correct even
+     * after the alarm-driven [finish] ran in another process. For status/UI.
+     */
+    fun isSessionActive(context: Context): Boolean {
+        val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        return prefs.getBoolean(KEY_ENABLED_WIFI, false) || prefs.getBoolean(KEY_ENABLED_BT, false)
     }
 
     private fun cancelWatchdog(context: Context) {

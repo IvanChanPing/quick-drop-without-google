@@ -1,3 +1,30 @@
+## [2026-06-09] radio-helper: Quick Share restore is now alarm-driven (was lost when ColorOS killed the process)
+On-device the radios turned ON when Quick Share opened but **never turned back off** after the user was
+done. Root cause (found by reading the code, not guessing): the post-share restore used
+`Handler(mainLooper).postDelayed(restoreRunnable, 120s)` — an IN-PROCESS timer. When ColorOS froze/killed
+the helper's (background, no-foreground) process after Quick Share closed, that pending callback died with
+the process, so `finish()` was never called; only the 20‑min AlarmManager watchdog would eventually restore.
+- **Fix:** the restore is now a DURABLE `AlarmManager` alarm, reusing the existing
+  `ShareWatchdogReceiver → ShareRadioSession.finish()` path that already survives process death. New public
+  `ShareRadioSession.scheduleRestoreIn(context, delayMs)` (re)arms that alarm (same PendingIntent, so it
+  REPLACES any prior one) with `setExactAndAllowWhileIdle` (exact needs no permission at targetSdk 28);
+  `scheduleWatchdog` now delegates to it.
+- **`QuickShareWatcherService`** rewritten to transition-based edge detection (`quickShareInFront`): on
+  ENTER → `prepare(BOTH)` (which re-arms the 20‑min watchdog, replacing any short grace alarm if QS is
+  re-entered); on LEAVE → if `ShareRadioSession.isSessionActive` then `scheduleRestoreIn(GRACE_MS=120s)`,
+  else mark idle. No in-process timer; `Handler.postDelayed`/`restoreRunnable`/main-looper handler removed.
+- **`ShareRadioSession.isSessionActive(context)`** (new) — persisted ground-truth (did WE turn a radio on
+  and not yet restore). `QuickShareWatchStatus.inSession` field removed (truth now sourced from prefs so it
+  is correct even after the alarm-driven finish ran in another process).
+- **`SelfTestActivity`** — status block now shows **"restore pending: YES/no"** so the next on-device test
+  distinguishes "restore never fired" (this bug) from "restore ran but the Wi‑Fi-off was OEM-clamped".
+- STATUS: compile-only / device-UNVERIFIED. Builds OK. TEST: enable watcher, open Quick Share (radios ON,
+  "restore pending: YES"), leave Quick Share, wait ~2 min → radios should return to pre-share state and
+  "restore pending" → no. If it still doesn't: read the status block + capture logcat tags
+  `QuickShareWatcher`, `ShareRadioSession`, `ShareRadioSession/WD`.
+- **Files:** `QuickShareWatcherService.kt`, `QuickShareWatchStatus.kt`, `ShareRadioSession.kt`,
+  `SelfTestActivity.kt`, `radio-helper-debug.apk`.
+
 ## [2026-06-09] radio-helper: auto-detect Google Quick Share opening → flip radios (AccessibilityService)
 New feature on the **radio-helper** APK: detect when **Google Quick Share** comes to the foreground and,
 on its own (no command from the Super Drop app), run the existing share-radio flow (turn Wi‑Fi/Bluetooth

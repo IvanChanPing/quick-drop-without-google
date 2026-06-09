@@ -8,7 +8,6 @@ package dev.superdrop.radiohelper
 import android.accessibilityservice.AccessibilityService
 import android.os.Handler
 import android.os.HandlerThread
-import android.os.Looper
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 
@@ -49,12 +48,16 @@ import android.view.accessibility.AccessibilityEvent
  * the backstop if this service is killed. A future NotificationListener reading
  * Quick Share's progress notification could gate restore precisely.
  *
- * THREADING
- * ---------
- * [onAccessibilityEvent] runs on the main thread. [ShareRadioSession.prepare]/
- * [finish] can block (the silent Wi‑Fi ladder does socket/mDNS I/O), so the actual
- * work is posted to a background [HandlerThread]; the grace timer uses the main
- * looper only to schedule (its body re-posts to the worker). Never blocks main.
+ * THREADING / DURABILITY
+ * ----------------------
+ * [onAccessibilityEvent] runs on the main thread. [ShareRadioSession.prepare] can
+ * block (the silent Wi‑Fi ladder does socket/mDNS I/O), so it is posted to a
+ * background [HandlerThread]. The post-share RESTORE is deliberately NOT an
+ * in-process timer: it is an AlarmManager alarm ([ShareRadioSession.scheduleRestoreIn]
+ * → [ShareWatchdogReceiver] → [ShareRadioSession.finish]) so it fires even if our
+ * process is frozen/killed after Quick Share closes. (An earlier `Handler.postDelayed`
+ * grace timer lost the restore entirely when ColorOS killed the process — the radios
+ * stayed on; this alarm-based path fixes that.)
  *
  * STATUS: compile-only — the detection class match and the radio flip are
  * device-UNVERIFIED until run on the OnePlus with the service enabled. Test:
@@ -63,26 +66,18 @@ import android.view.accessibility.AccessibilityEvent
  * Quick Share for >2 min and confirm they restore.
  */
 internal class QuickShareWatcherService : AccessibilityService() {
-    // Worker thread for the blocking prepare()/finish() ladder — never main.
-    // bg is `by lazy` (not lateinit) so it's safe even if an event were delivered
-    // before onServiceConnected: HandlerThread.getLooper() blocks until ready.
+    // Worker thread for the blocking prepare() ladder — never main. bg is `by lazy`
+    // (not lateinit) so it's safe even if an event arrives before onServiceConnected:
+    // HandlerThread.getLooper() blocks until ready.
     private val worker = HandlerThread("qs-watcher").apply { start() }
     private val bg: Handler by lazy { Handler(worker.looper) }
 
-    // Main-looper handler used ONLY to schedule the debounced restore.
-    private val main = Handler(Looper.getMainLooper())
-
-    // restoreRunnable — fires GRACE_MS after Quick Share last left the foreground;
-    // if it hasn't come back, restore the radios we turned on.
-    private val restoreRunnable =
-        Runnable {
-            if (QuickShareWatchStatus.inSession) {
-                QuickShareWatchStatus.inSession = false
-                Log.i(TAG, "Quick Share gone ${GRACE_MS}ms → restoring radios")
-                QuickShareWatchStatus.update("Quick Share closed → restoring radios")
-                bg.post { ShareRadioSession.finish(applicationContext) }
-            }
-        }
+    // quickShareInFront — whether Quick Share's UI is the CURRENT foreground window.
+    // Tracks the enter/leave TRANSITIONS so we act once per transition, not on every
+    // sub-window event. The "is a restore pending" truth lives in the persisted
+    // session (ShareRadioSession.isSessionActive), which survives our process being
+    // killed; this flag is only for in-process edge detection.
+    @Volatile private var quickShareInFront = false
 
     override fun onServiceConnected() {
         Log.i(TAG, "connected — watching for Quick Share")
@@ -98,21 +93,33 @@ internal class QuickShareWatcherService : AccessibilityService() {
         if (pkg == GMS_PKG) QuickShareWatchStatus.window("$pkg / $cls")
 
         val isQuickShare = pkg == GMS_PKG && cls.contains(QS_CLASS_MARKER)
-        if (isQuickShare) {
-            // Quick Share is (still) in front — cancel any pending restore.
-            main.removeCallbacks(restoreRunnable)
-            if (!QuickShareWatchStatus.inSession) {
-                QuickShareWatchStatus.inSession = true
+        when {
+            isQuickShare && !quickShareInFront -> {
+                // ENTER: Quick Share just came to the front.
+                quickShareInFront = true
                 Log.i(TAG, "Quick Share foreground ($cls) → prepare share radios")
                 QuickShareWatchStatus.update("Quick Share detected → enabling Wi‑Fi/Bluetooth")
-                // prepare() is re-entrant/idempotent (seeds from the persisted
-                // session), so a repeated detect won't double-record.
+                // prepare() is re-entrant/idempotent and (re)arms the 20-min watchdog,
+                // which also REPLACES any pending short grace alarm if we re-entered
+                // Quick Share before the grace fired.
                 bg.post { ShareRadioSession.prepare(applicationContext, ShareRadioSession.RADIO_BOTH) }
             }
-        } else if (QuickShareWatchStatus.inSession) {
-            // Foreground moved off Quick Share — start/refresh the grace timer.
-            main.removeCallbacks(restoreRunnable)
-            main.postDelayed(restoreRunnable, GRACE_MS)
+            !isQuickShare && quickShareInFront -> {
+                // LEAVE: foreground moved off Quick Share. Schedule the restore on a
+                // DURABLE AlarmManager alarm (survives our process being frozen/killed
+                // by ColorOS after Quick Share closes), NOT an in-process timer. Skip
+                // if we turned nothing on (nothing to restore).
+                quickShareInFront = false
+                bg.post {
+                    if (ShareRadioSession.isSessionActive(applicationContext)) {
+                        Log.i(TAG, "Quick Share left → restore alarm in ${GRACE_MS / 1000}s")
+                        ShareRadioSession.scheduleRestoreIn(applicationContext, GRACE_MS)
+                        QuickShareWatchStatus.update("Quick Share left → restoring radios in ${GRACE_MS / 1000}s")
+                    } else {
+                        QuickShareWatchStatus.update("Quick Share left (nothing to restore)")
+                    }
+                }
+            }
         }
     }
 
@@ -121,7 +128,6 @@ internal class QuickShareWatcherService : AccessibilityService() {
     }
 
     override fun onDestroy() {
-        main.removeCallbacks(restoreRunnable)
         worker.quitSafely()
         QuickShareWatchStatus.update("disabled")
         super.onDestroy()

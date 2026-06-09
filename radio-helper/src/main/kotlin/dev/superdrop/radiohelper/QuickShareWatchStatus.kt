@@ -10,9 +10,11 @@ package dev.superdrop.radiohelper
  * ------------
  * `QuickShareWatchStatus` — a tiny in-memory status board for the Quick Share
  * auto-detect feature ([QuickShareWatcherService]). It records, for on-screen
- * display on [SelfTestActivity], the latest human-readable status line, the last
+ * display on [SelfTestActivity], the latest human-readable status line and the last
  * foreground window the watcher saw (so a mismatched class name is VISIBLE and
- * fixable without a decompile), and whether a radio session is currently active.
+ * fixable without a decompile). Whether a restore is actually pending is sourced
+ * separately from [ShareRadioSession.isSessionActive] (the persisted truth that
+ * survives our process being killed), not held here.
  *
  * WHY IT EXISTS
  * -------------
@@ -40,10 +42,6 @@ internal object QuickShareWatchStatus {
     @Volatile
     var lastWindow: String = "—"
         private set
-
-    /** True while we have an active prepare()'d session waiting to be restored. */
-    @Volatile
-    var inSession: Boolean = false
 
     fun update(status: String) {
         line = status

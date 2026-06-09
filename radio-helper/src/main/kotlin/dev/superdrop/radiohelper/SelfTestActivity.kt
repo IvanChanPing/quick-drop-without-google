@@ -377,6 +377,12 @@ internal class SelfTestActivity : Activity() {
         // service: whether it's enabled, the last GMS window it saw (to diagnose a
         // class-name mismatch), and its last action line.
         val qsEnabled = if (isQuickShareWatcherEnabled()) "ENABLED" else "DISABLED"
+        // restorePending — persisted ground-truth (ShareRadioSession.isSessionActive)
+        // of whether a radio WE turned on is still waiting to be restored. Shown so a
+        // "restore never fired" can be told apart from "restore ran but toggle-off
+        // failed": after leaving Quick Share + the grace window, this should flip to NO
+        // and Wi-Fi/BT above should return to their pre-share state.
+        val restorePending = if (ShareRadioSession.isSessionActive(this)) "YES (radio held on)" else "no"
         shizukuButton.visibility = if (ShizukuRadio.needsPermission) Button.VISIBLE else Button.GONE
         status.text =
             "Wi-Fi: $wifi    Bluetooth: $bt\n" +
@@ -384,6 +390,7 @@ internal class SelfTestActivity : Activity() {
             "self-ADB: $selfAdb\n" +
             "Shizuku: $shizuku\n" +
             "Quick Share auto-detect: $qsEnabled\n" +
+            "  restore pending: $restorePending\n" +
             "  last GMS window: ${QuickShareWatchStatus.lastWindow}\n" +
             "  status: ${QuickShareWatchStatus.line}\n\n$message"
     }
