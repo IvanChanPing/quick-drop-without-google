@@ -9,7 +9,8 @@ import android.app.Activity
 import android.nfc.NfcAdapter
 import android.nfc.Tag
 import android.nfc.tech.IsoDep
-import android.util.Log
+import dev.superdrop.diag.DiagnosticUploader
+import dev.superdrop.discovery.diagnostics.DiagnosticLog
 import dev.superdrop.protocol.endpoint.EndpointInfo
 import dev.superdrop.protocol.endpoint.NearbyServiceId
 import dev.superdrop.protocol.nfc.QuickShareNfcCodec
@@ -72,7 +73,7 @@ public class SuperDropTapReader(
                 NfcAdapter.FLAG_READER_SKIP_NDEF_CHECK
         runCatching {
             adapter.enableReaderMode(activity, ::onTag, flags, null)
-        }.onFailure { Log.w(TAG, "enableReaderMode failed: ${it.message}") }
+        }.onFailure { DiagnosticLog.w(TAG, "enableReaderMode failed: ${it.message}") }
     }
 
     /** Leave reader-mode. No-op when the device has no NFC adapter. */
@@ -94,11 +95,15 @@ public class SuperDropTapReader(
                 isoDep.connect()
                 exchange(isoDep)
             } catch (e: IOException) {
-                Log.w(TAG, "tap exchange failed: ${e.message}")
+                DiagnosticLog.w(TAG, "tap exchange failed: ${e.message}")
                 null
             } finally {
                 runCatching { isoDep.close() }
             }
+        // Auto-ship the tap diagnostics (SELECT/ADVERTISEMENT outcome) so a
+        // failed send-tap is debuggable without adb. Runs on this binder thread's
+        // caller via a background thread inside the uploader. Best-effort.
+        DiagnosticUploader.upload(activity, reason = "nfc-send-tap")
         if (tapped != null) {
             onPeerTapped(tapped)
         }
@@ -109,7 +114,7 @@ public class SuperDropTapReader(
         // 1. SELECT the Quick Share advertising application.
         val selectResp = isoDep.transceive(buildSelectApdu())
         if (!endsWithOk(selectResp)) {
-            Log.d(TAG, "SELECT not OK (${selectResp.size}B)")
+            DiagnosticLog.w(TAG, "SELECT not OK (${selectResp.size}B)")
             return null
         }
 
@@ -120,14 +125,14 @@ public class SuperDropTapReader(
             )
         val advResp = isoDep.transceive(buildAdvertisementApdu(hhww))
         if (!endsWithOk(advResp) || advResp.size <= STATUS_LEN) {
-            Log.d(TAG, "ADVERTISEMENT not OK / empty (${advResp.size}B)")
+            DiagnosticLog.w(TAG, "ADVERTISEMENT not OK / empty (${advResp.size}B)")
             return null
         }
         val body = advResp.copyOfRange(0, advResp.size - STATUS_LEN)
 
         val response = QuickShareNfcCodec.parseHhwvResponse(body) ?: return null
         if (response.nfcTag.isEmpty()) {
-            Log.d(TAG, "hhwv carried no NfcTag (peer not a live receiver)")
+            DiagnosticLog.w(TAG, "hhwv carried no NfcTag (peer not a live receiver)")
             return null
         }
         val nfcTag = QuickShareNfcCodec.parseNfcTag(response.nfcTag) ?: return null
@@ -139,7 +144,7 @@ public class SuperDropTapReader(
         val lan = QuickShareNfcCodec.parseWifiLanEndpoint(rxAdv) ?: return null
 
         val endpointId = String(nfcTag.endpointId, Charsets.US_ASCII)
-        Log.d(
+        DiagnosticLog.w(
             TAG,
             "tap resolved endpointId=$endpointId ${lan.address.hostAddress}:${lan.port} " +
                 "name=${endpointInfo.deviceName}",

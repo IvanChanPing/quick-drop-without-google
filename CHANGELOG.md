@@ -1,3 +1,23 @@
+## [2026-06-09] Diagnostics auto-upload (no adb) — NFC tap logs -> DiagnosticLog -> collector
+The user can't run adb, so NFC-tap diagnosis was stuck. Added an on-device auto-upload so recent
+diagnostics reach a developer collector with zero file-handling:
+- New `app/.../diag/DiagnosticUploader.kt`: `upload(context, reason, notify)` POSTs
+  `DiagnosticLog.dumpRecent()` (recent in-memory buffer) + device model / Android version / app version
+  to an HTTPS collector on a background thread (no ANR; best-effort; optional result Toast).
+- NFC tap files now log via `DiagnosticLog.w` instead of `android.util.Log` so the buffer/collector
+  capture them: `SuperDropTapReader` (sender) + `SuperDropTapHceService` (HCE receiver).
+- Auto-upload triggers: `SuperDropTapReader` after a send-tap (`nfc-send-tap`), `SuperDropTapHceService`
+  after an ADVERTISEMENT (`nfc-recv-tap`), and `MainActivity.onCreate` on a fresh open (`app-open`,
+  shows a Toast). The app-open trigger covers the receiver phone whose HCE may never fire on a tap.
+- Collector = `/root/superdrop-logs/collector.py` (:8499) behind a cloudflared quick tunnel; the
+  ephemeral URL is baked into `DiagnosticUploader.COLLECTOR_URL` (re-bake if the tunnel restarts).
+  INTERNET permission already declared.
+- **Build:** `:app:assembleDebug` BUILD SUCCESSFUL; `super-drop-debug.apk` refreshed. Server-side
+  receipt verified via curl through the public URL; the on-device POST path is exercised when the app
+  runs it (device-UNVERIFIED until then).
+- **Files:** `app/.../diag/DiagnosticUploader.kt` (new), `app/.../nfc/SuperDropTapReader.kt`,
+  `app/.../nfc/SuperDropTapHceService.kt`, `app/.../MainActivity.kt`.
+
 ## [2026-06-09] Refactor: one ShareRadioController for all radio-on/off paths
 Consolidated the duplicated radio-lease logic (send, NFC-wake, QS tile) into a single
 `ShareRadioController` in `:service-android` (`dev.superdrop.service.radio`). All three paths used to

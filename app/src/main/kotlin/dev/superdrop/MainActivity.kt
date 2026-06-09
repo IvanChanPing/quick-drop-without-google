@@ -27,6 +27,7 @@ import com.google.android.material.bottomnavigation.BottomNavigationView
 import dev.superdrop.battery.BatteryOptimizationOemHelper
 import dev.superdrop.battery.BatteryOptimizationPreferences
 import dev.superdrop.bugreport.BugReportFlowSupport
+import dev.superdrop.diag.DiagnosticUploader
 import dev.superdrop.consent.FullScreenIntentPermission
 import dev.superdrop.consent.FullScreenIntentPreferences
 import dev.superdrop.onboarding.PermissionRequirements
@@ -114,6 +115,14 @@ class MainActivity : AppCompatActivity() {
         // CreateDocument result launcher is registered while the
         // activity is in CREATED — registering after would throw.
         bugReportFlowSupport = BugReportFlowSupport.install(this)
+
+        // Auto-ship recent diagnostics on a fresh app open (not on rotation) so a
+        // tap test that just happened — including the receiver phone whose HCE may
+        // never have fired — reaches the developer collector without adb. Shows a
+        // toast with the result. DEBUG diagnostic; best-effort.
+        if (savedInstanceState == null) {
+            DiagnosticUploader.upload(this, reason = "app-open", notify = true)
+        }
 
         savedInstanceState?.let {
             onboardingLaunched = it.getBoolean(STATE_ONBOARDING_LAUNCHED, false)

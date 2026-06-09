@@ -8,7 +8,8 @@ package dev.superdrop.nfc
 import android.content.Intent
 import android.nfc.cardemulation.HostApduService
 import android.os.Bundle
-import android.util.Log
+import dev.superdrop.diag.DiagnosticUploader
+import dev.superdrop.discovery.diagnostics.DiagnosticLog
 import dev.superdrop.protocol.nfc.NfcTapLinkHolder
 import dev.superdrop.protocol.nfc.QuickShareNfcCodec
 import dev.superdrop.service.receiver.NfcColdReceiverPrimer
@@ -64,7 +65,7 @@ public class SuperDropTapHceService : HostApduService() {
         // SELECT by name (00 A4 04 00 <Lc> <AID>).
         if (apdu[1] == QuickShareNfcCodec.INS_SELECT && apdu[2] == P1_SELECT_BY_NAME) {
             return if (apduSelectsAid(apdu, QuickShareNfcCodec.ADVERTISING_AID)) {
-                Log.d(TAG, "SELECT F00000FE2C -> 9000")
+                DiagnosticLog.w(TAG, "SELECT F00000FE2C -> 9000")
                 QuickShareNfcCodec.SW_OK
             } else {
                 QuickShareNfcCodec.SW_FILE_NOT_FOUND
@@ -75,7 +76,11 @@ public class SuperDropTapHceService : HostApduService() {
         if (apdu[0] == QuickShareNfcCodec.CLA_PROPRIETARY &&
             apdu[1] == QuickShareNfcCodec.INS_ADVERTISEMENT
         ) {
-            return handleAdvertisement(apdu)
+            val response = handleAdvertisement(apdu)
+            // Auto-ship the receive-tap diagnostics (was our HCE invoked? did we
+            // prime a live tag or return empty?) so it's debuggable without adb.
+            DiagnosticUploader.upload(this, reason = "nfc-recv-tap")
+            return response
         }
 
         return QuickShareNfcCodec.SW_INS_NOT_SUPPORTED
@@ -104,7 +109,7 @@ public class SuperDropTapHceService : HostApduService() {
                     action = ReceiverForegroundService.ACTION_NFC_WAKE
                 }
             startForegroundService(intent)
-        }.onFailure { Log.w(TAG, "receive wake failed: ${it.message}") }
+        }.onFailure { DiagnosticLog.w(TAG, "receive wake failed: ${it.message}") }
     }
 
     /**
@@ -130,19 +135,19 @@ public class SuperDropTapHceService : HostApduService() {
                 val primed = NfcColdReceiverPrimer.prime(this)
                 fireReceiveWake()
                 if (primed == null) {
-                    Log.d(TAG, "ADVERTISEMENT cold, no Wi-Fi IP -> wake + empty hhwv")
+                    DiagnosticLog.w(TAG, "ADVERTISEMENT cold, no Wi-Fi IP -> wake + empty hhwv")
                     return QuickShareNfcCodec.encodeHhwvResponse(
                         QuickShareNfcCodec.HhwvResponse(nfcTag = ByteArray(0)),
                     ) + QuickShareNfcCodec.SW_OK
                 }
-                Log.d(TAG, "ADVERTISEMENT cold -> primed live tag + wake (cold == warm, single tap)")
+                DiagnosticLog.w(TAG, "ADVERTISEMENT cold -> primed live tag + wake (cold == warm, single tap)")
                 primed
             }
 
         // Parsing the request is informational; we always answer with our
         // own single advertised service regardless of the requested id.
         parseAdvertisementRequest(apdu)?.let { request ->
-            Log.d(TAG, "ADVERTISEMENT serviceId=${request.serviceId}")
+            DiagnosticLog.w(TAG, "ADVERTISEMENT serviceId=${request.serviceId}")
         }
 
         val nfcTag =
@@ -162,7 +167,7 @@ public class SuperDropTapHceService : HostApduService() {
                 encryptionKey = encryptionKey,
             )
 
-        Log.d(TAG, "ADVERTISEMENT -> hhwv tag(${nfcTag.size}B) rxAdv(${rxAdv.size}B) ${link.address.hostAddress}:${link.port}")
+        DiagnosticLog.w(TAG, "ADVERTISEMENT -> hhwv tag(${nfcTag.size}B) rxAdv(${rxAdv.size}B) ${link.address.hostAddress}:${link.port}")
         return QuickShareNfcCodec.encodeHhwvResponse(
             QuickShareNfcCodec.HhwvResponse(nfcTag = nfcTag, rxAdv = rxAdv),
         ) + QuickShareNfcCodec.SW_OK
