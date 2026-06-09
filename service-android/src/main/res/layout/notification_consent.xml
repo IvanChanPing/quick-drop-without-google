@@ -5,38 +5,68 @@
   native frame: small icon + app name + time; this controls the body). Bound +
   wired with PendingIntents at runtime in ConsentNotification.build().
 
-  Layout: title, one-line summary (sender + files + PIN), then the two consent
+  Layout: a top row (title + one-line summary on the LEFT, a small rounded
+  placeholder thumbnail on the RIGHT — notif_consent_thumb), then the two consent
   buttons as a centered pair with a small gap (Decline left / Accept right,
-  recolored). Only RemoteViews-supported views are used.
+  recolored). The LEFT-side icon is the DecoratedCustomViewStyle small-icon
+  circle (tinted via setColor in ConsentNotification.build). Only
+  RemoteViews-supported views are used (LinearLayout/TextView/Button/ImageView).
 
   NOTE: the dismiss animation is system-owned — an app cannot make a heads-up
   "slide away" on tap. For a slide-away popup, use the bottom sheet / overlay
   surface (our own windows), not the notification.
 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
     android:orientation="vertical"
     android:paddingTop="2dp"
     android:paddingBottom="6dp">
 
-    <TextView
-        android:id="@+id/notif_consent_title"
+    <!-- Top row: title+summary column (left, stretches) + thumbnail (right). -->
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:ellipsize="end"
-        android:maxLines="1"
-        android:textSize="15sp"
-        android:textStyle="bold" />
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
 
-    <TextView
-        android:id="@+id/notif_consent_body"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="3dp"
-        android:ellipsize="end"
-        android:maxLines="2"
-        android:textSize="13sp" />
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/notif_consent_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textSize="15sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/notif_consent_body"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="3dp"
+                android:ellipsize="end"
+                android:maxLines="2"
+                android:textSize="13sp" />
+        </LinearLayout>
+
+        <!-- notif_consent_thumb — small rounded placeholder thumbnail of the
+             incoming file(s) on the RIGHT (44dp square; bitmap set at runtime
+             via setImageViewBitmap with ConsentThumbnail.photo()). -->
+        <ImageView
+            android:id="@+id/notif_consent_thumb"
+            android:layout_width="44dp"
+            android:layout_height="44dp"
+            android:layout_marginStart="12dp"
+            android:scaleType="fitCenter"
+            tools:ignore="ContentDescription" />
+    </LinearLayout>
 
     <!-- Buttons as a centered pair with a small gap (moved closer together,
          no longer pinned to the opposite edges). -->

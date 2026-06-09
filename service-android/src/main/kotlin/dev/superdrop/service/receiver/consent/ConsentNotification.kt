@@ -206,6 +206,9 @@ public object ConsentNotification {
                 .setContentText(content.body)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setCategory(NotificationCompat.CATEGORY_CALL)
+                // Tints the DecoratedCustomViewStyle small-icon circle (the
+                // left-side icon) brand blue.
+                .setColor(ConsentThumbnail.LEFT_ICON_TINT)
                 // Dismissing the notification (swipe) does NOT auto-reject
                 // — the peer is left waiting for an explicit decision via
                 // the trampoline activity. This matches NearDrop behaviour
@@ -255,6 +258,15 @@ public object ConsentNotification {
                         setTextViewText(R.id.notif_consent_decline, content.rejectLabel)
                         setOnClickPendingIntent(R.id.notif_consent_accept, acceptIntent)
                         setOnClickPendingIntent(R.id.notif_consent_decline, rejectIntent)
+                        // RECOLORED layout has a right-side placeholder thumbnail of
+                        // the incoming file(s); the BRIDGE layout has no such view, so
+                        // only bind it for the recolored layout.
+                        if (style == ConsentNotificationStylePreferences.Style.RECOLORED) {
+                            setImageViewBitmap(
+                                R.id.notif_consent_thumb,
+                                ConsentThumbnail.photo(ConsentThumbnail.THUMB_PX, ConsentThumbnail.THUMB_PX),
+                            )
+                        }
                     }
                 builder
                     .setStyle(NotificationCompat.DecoratedCustomViewStyle())

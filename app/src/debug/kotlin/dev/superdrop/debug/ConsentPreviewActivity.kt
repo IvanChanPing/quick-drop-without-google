@@ -8,6 +8,7 @@ import android.os.Bundle
 import android.widget.RemoteViews
 import androidx.core.app.NotificationCompat
 import dev.superdrop.service.R as ServiceR
+import dev.superdrop.service.receiver.consent.ConsentThumbnail
 
 /**
  * DEBUG-ONLY preview of the incoming-transfer consent notification.
@@ -54,6 +55,13 @@ class ConsentPreviewActivity : Activity() {
                 setTextViewText(ServiceR.id.notif_consent_body, "1 file (207 KB) · PIN 7699")
                 setTextViewText(ServiceR.id.notif_consent_accept, "Accept")
                 setTextViewText(ServiceR.id.notif_consent_decline, "Decline")
+                // The recolored layout carries the right-side placeholder thumbnail.
+                if (style == "recolored") {
+                    setImageViewBitmap(
+                        ServiceR.id.notif_consent_thumb,
+                        ConsentThumbnail.photo(ConsentThumbnail.THUMB_PX, ConsentThumbnail.THUMB_PX),
+                    )
+                }
             }
 
         val n =
@@ -64,6 +72,7 @@ class ConsentPreviewActivity : Activity() {
                 .setContentText("1 file (207 KB) · PIN 7699")
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
                 .setCategory(NotificationCompat.CATEGORY_CALL)
+                .setColor(ConsentThumbnail.LEFT_ICON_TINT)
                 .setOngoing(true)
                 .setAutoCancel(false)
                 .setStyle(NotificationCompat.DecoratedCustomViewStyle())

@@ -1,3 +1,28 @@
+## [2026-06-09] Consent heads-up: right-side thumbnail + tinted left icon
+
+Ported the HeadsUp Demo's small consent-notification refinements into the real
+incoming-transfer consent heads-up (RECOLORED default style):
+
+- **Right-side placeholder thumbnail** (`notif_consent_thumb`) of the incoming
+  file(s), added to `notification_consent.xml` (top row = title/summary column +
+  44dp rounded thumbnail). No real preview exists pre-accept, so it is a
+  Canvas-drawn grey "photo" placeholder (`ConsentThumbnail.photo`).
+- **Left-side icon tinted blue** via `setColor(ConsentThumbnail.LEFT_ICON_TINT)`
+  on the DecoratedCustomViewStyle small-icon circle.
+- New `ConsentThumbnail.kt` (service-android) generates the bitmap; bound in
+  `ConsentNotification.build()` (production, recolored only) and the debug
+  `ConsentPreviewActivity` (preview parity).
+- BRIDGE / SHEET styles unchanged. Buttons unchanged.
+
+Files: `service-android/.../consent/ConsentThumbnail.kt`,
+`service-android/.../res/layout/notification_consent.xml`,
+`service-android/.../consent/ConsentNotification.kt`,
+`app/src/debug/.../ConsentPreviewActivity.kt`.
+
+Status: rendering PROVEN via `ConsentPreviewActivity --es style recolored` on the
+emulator (exact production layout + binding). Live inbound-transfer path
+INFERRED-identical (same layout/binding); not exercisable on the emulator.
+
 # Changelog — Super Drop (fork of Bada)
 
 All notable changes to this fork. Upstream Bada history is preserved in git;
