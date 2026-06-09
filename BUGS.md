@@ -41,6 +41,38 @@ final verification needs the user's phones.
    isn't running or isn't restoring. Likely coupled to #4 (wrong task/instance, or finish()
    not firing on back/dismiss). INVESTIGATE finish()/onDestroy path + restore logic.
 
+6. **[BUG] NFC tap-to-share — real-device test matrix (2026-06-09).** First on-device test
+   of the tap feature (it shipped compile-only). Observed:
+   - Android 14, RECEIVE from native Quick Share via tap: WORKED — but it was "fighting"
+     with native Quick Share over the tap; the user had to keep selecting our app each tap.
+   - Android 14, SEND (to native Quick Share OR to another Super Drop) via tap: did NOT work.
+   - Android 15, either direction: did NOT work at all.
+
+   Grounded analysis (from code + the verified Quick Share NFC notes; the exact failure point
+   on each path needs an on-device logcat capture — the code already logs it, see below):
+   - "Had to keep selecting our app" = AID **F00000FE2C collision**. Our HCE
+     (`SuperDropTapHceService`, category="other") and GMS Quick Share both register that AID,
+     so Android shows the app-disambiguation chooser on every tap. This is a known/documented
+     collision; there is no clean "win the routing" for a category-other AID shared with GMS.
+   - SEND fails because our reader (`SuperDropTapReader`) only yields a peer if the tapped HCE
+     answers SELECT+ADVERTISEMENT with a hhwv carrying a NfcTag AND a Wi-Fi-LAN rxAdv:
+       * to another Super Drop: phone B must be in RECEIVE with `NfcTapLinkHolder` populated
+         (receiver live + visible + the tap-share setting permitting). If B wasn't in that
+         state — or both phones were on the SEND sheet (both in reader-mode, so neither
+         presents an HCE — the "two senders can't tap" hardware limit) — the reader gets no
+         tag. Likely logcat: "hhwv carried no NfcTag (peer not a live receiver)".
+       * to native Quick Share: a native phone just sitting there isn't armed as a receiver,
+         and its HCE is gated; whether GMS returns a usable Wi-Fi-LAN tag to a third-party
+         reader is unconfirmed. Likely logcat: "ADVERTISEMENT not OK / empty" or "no NfcTag".
+   - Android 15 nothing worked (incl. receive): UNKNOWN — must capture logcat. Candidates to
+     CHECK (not yet confirmed): A15 HCE/observe-mode or AID-routing changes; cold-wake
+     foreground-service-from-HCE restrictions; reader-mode behavior; tap-share setting default.
+
+   HOW TO LOCALIZE (on-device, the instrument already exists): `adb logcat -s SuperDropTapReader
+   SuperDropTapHceService BadaNfcWake BadaNfcColdPrime` while tapping. The reader prints exactly
+   where it stops (SELECT / ADVERTISEMENT / no NfcTag / resolved); the HCE prints whether it was
+   asked and whether the link holder was live. Do NOT change code before these logs localize it.
+
 ## Notes
 - #4 and #5 are both tile/visibility and likely share the task-handling root cause.
 - Fix verification: code + redroid where possible (tile launch task, name fallback); the
