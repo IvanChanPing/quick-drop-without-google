@@ -53,7 +53,6 @@ import android.os.IBinder
 import android.os.Looper
 import android.os.Message
 import android.os.Messenger
-import android.os.RemoteException
 import android.util.Log
 import java.util.ArrayDeque
 
@@ -86,12 +85,15 @@ class RadioHelperClient(context: Context) {
             },
         )
 
-    private val connection =
+    // Explicit type: connection and connectTimeout reference each other, which
+    // makes Kotlin's type inference recurse if either is left to inference.
+    private val connection: ServiceConnection =
         object : ServiceConnection {
             override fun onServiceConnected(
                 name: ComponentName?,
                 service: IBinder?,
             ) {
+                mainHandler.removeCallbacks(connectTimeout)
                 outgoing = service?.let { Messenger(it) }
                 pendingOnConnected?.invoke(outgoing != null)
                 pendingOnConnected = null
@@ -103,6 +105,21 @@ class RadioHelperClient(context: Context) {
         }
 
     private var pendingOnConnected: ((Boolean) -> Unit)? = null
+
+    private val mainHandler = Handler(Looper.getMainLooper())
+
+    // Fallback if a bind that returned true never actually connects (e.g. a sticky
+    // OEM force-stop where the helper process can't be started): without this the
+    // caller's connect() callback would hang forever. Fires connect(false) + unbinds.
+    private val connectTimeout: Runnable =
+        Runnable {
+            if (outgoing == null) {
+                val cb = pendingOnConnected
+                pendingOnConnected = null
+                runCatching { appContext.unbindService(connection) }
+                cb?.invoke(false)
+            }
+        }
 
     /**
      * Bind the helper's RadioService. [onConnected] is called with `true` when
@@ -120,7 +137,16 @@ class RadioHelperClient(context: Context) {
             HELPER_PACKAGES.any { pkg ->
                 runCatching {
                     appContext.bindService(
-                        Intent().setComponent(ComponentName(pkg, HELPER_SERVICE)),
+                        // FLAG_INCLUDE_STOPPED_PACKAGES: an explicit bind to a Service
+                        // is not subject to the broadcast-receiver "stopped-state"
+                        // exclusion, and this flag FORCES matching a force-stopped /
+                        // never-opened helper — so our app can WAKE the helper even
+                        // after the user force-stopped it. (Aggressive OEM force-stop,
+                        // e.g. ColorOS, may still need one manual open — then connect()
+                        // returns false and the caller falls back.)
+                        Intent()
+                            .setComponent(ComponentName(pkg, HELPER_SERVICE))
+                            .addFlags(Intent.FLAG_INCLUDE_STOPPED_PACKAGES),
                         connection,
                         Context.BIND_AUTO_CREATE,
                     )
@@ -130,6 +156,9 @@ class RadioHelperClient(context: Context) {
             pendingOnConnected = null
             Log.w(TAG, "helper not installed / bind denied (same signing key?)")
             onConnected(false)
+        } else {
+            // Guard against a bind that returns true but never connects.
+            mainHandler.postDelayed(connectTimeout, CONNECT_TIMEOUT_MS)
         }
     }
 
@@ -224,6 +253,7 @@ class RadioHelperClient(context: Context) {
 
     /** Unbind. Call when the app no longer needs the helper. */
     fun disconnect() {
+        mainHandler.removeCallbacks(connectTimeout)
         if (outgoing != null) {
             runCatching { appContext.unbindService(connection) }
             outgoing = null
@@ -236,6 +266,7 @@ class RadioHelperClient(context: Context) {
         // The helper APK. Release first, then the debug build (handy in testing).
         private val HELPER_PACKAGES = listOf("dev.superdrop.radiohelper", "dev.superdrop.radiohelper.debug")
         private const val HELPER_SERVICE = "dev.superdrop.radiohelper.RadioService"
+        private const val CONNECT_TIMEOUT_MS = 5_000L
 
         // MUST match RadioService in the helper.
         private const val MSG_SET_WIFI = 1

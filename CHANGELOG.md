@@ -5,6 +5,22 @@ entries here cover only fork-specific changes.
 
 ## [Unreleased]
 
+### 2026-06-09 (b) — RadioHelperClient: wake a force-stopped helper + connect timeout + compile-verified
+- **Wake after force-stop (user ask):** the client bind now adds `FLAG_INCLUDE_STOPPED_PACKAGES` to the
+  explicit `bindService` intent, so it starts the helper even if it was force-stopped / never opened
+  since install (Services aren't subject to the broadcast-receiver stopped-state exclusion). Aggressive
+  OEM force-stop may still need one manual open — handled by the fallback below.
+- **No-hang guard:** added a 5s connect timeout — if a bind returns true but never connects (sticky-OEM
+  force-stop), `connect()` now returns `false` (+ unbinds) instead of leaving the callback hanging
+  forever. `disconnect()` cancels it.
+- **Compile-verified:** temporarily compiled `RadioHelperClient.kt` inside the helper module — caught a
+  Kotlin recursive type-inference error (mutual `connection`↔`connectTimeout` refs) and fixed it with
+  explicit types (`connection: ServiceConnection`, `connectTimeout: Runnable`). `compileDebugKotlin`
+  BUILD SUCCESSFUL; temp copy removed (client stays a copy-paste file under `radio-helper/client/`, not
+  in the APK).
+- Helper module unchanged this entry → `radio-helper-debug.apk` not rebuilt. Client still compile-only
+  until wired into a real app's share flow.
+
 ### 2026-06-09 — Universal helper: drop-in client + HELPER-OWNED share session (capture/restore) + direct API
 - **Goal (user):** any of our file-sharing apps routes Wi-Fi/BT toggling THROUGH the one installed
   radio-helper; the HELPER (not the app) decides what was off, turns it on, and restores it — the app
