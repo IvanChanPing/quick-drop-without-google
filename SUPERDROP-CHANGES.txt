@@ -2,7 +2,9 @@ SUPER DROP — WHAT WE ADDED (one pull request per thing)
 
 Only the finished features we built on top of the base app, plus a groundwork
 section for the pieces we started but didn't finish. Names are written to sell
-the feature; descriptions are plain English.
+the feature; the plain description leads, with a short "Technical" block under
+the ones that need it. (PR descriptions on GitHub are Markdown, so screenshots /
+GIFs can be dragged straight in — good fit for the UI ones.)
 
 
 ====================================================================
@@ -22,25 +24,59 @@ FINISHED FEATURES
    for you (and restores them when you close the sheet) and closes the
    notification shade so you can see your screen.
 
+   Technical: a TileService whose tap forces the receiver "visible" override on,
+   starts the foreground receiver service with ACTION_TILE_WAKE (which calls the
+   radio-helper to enable Wi-Fi + BT), and uses startActivityAndCollapse to drop
+   the shade. The prior visibility + radio state is captured and restored when the
+   receive sheet closes.
+
 3) Tap to share
    You can now tap two phones together to start a transfer. The tap passes your
    identity and your Wi-Fi address and starts the transfer. It even works when the
    other phone is just sitting idle with the app closed — the tap wakes it into
    receive mode — and a single tap is all it takes.
 
+   Technical: uses standard Android NFC. The receiver runs a Host Card Emulation
+   service on the Nearby Connections AID F00000FE2C; the sender uses NFC
+   reader-mode. On tap the sender sends SELECT + an ADVERTISEMENT command and the
+   receiver answers with its endpoint info plus a Wi-Fi-LAN address (IP:port)
+   packed in Quick Share's own NFC blob (the "deym" tag, marked
+   P2P_POINT_TO_POINT). NFC only does the handoff — the actual file transfer then
+   runs over the normal Wi-Fi (mDNS/TCP) path. "Idle phone" support: tapping a
+   closed/idle receiver's HCE starts its foreground service, opens a short
+   visibility window, and posts the Accept prompt — Android can launch an HCE
+   service even when the app's process is dead, which is what makes the cold tap
+   work.
+
 4) Tap an iPhone to share a link
    Tap your phone with an iPhone (or any phone) and it opens your pairing link in
    that phone's browser — a simple way to hand off to a device that doesn't run
    the app.
+
+   Technical: the phone exposes an NDEF record (an HCE NDEF service) carrying the
+   QR pairing URL. iOS reads NDEF tags without an app and offers to open the URL,
+   so the iPhone lands on the pairing link in Safari. Separate from #3 — this is
+   a plain NDEF URL tag, not the Quick Share AID exchange.
 
 5) Made the heads-up notification prettier
    Redesigned the incoming-transfer pop-up so the Accept and Decline buttons are
    bigger, clearer, and easier to hit — color-coded and on opposite sides, with a
    thumbnail of what's coming in, so you can act on it at a glance.
 
+   Technical: a custom RemoteViews notification layout under
+   DecoratedCustomViewStyle (Decline left, Accept right) with a drawn placeholder
+   thumbnail and a tinted small icon.
+
+   Image for the PR: docs/pr-images/receive-notification.jpg
+
 6) "Files received" notification with an Open button
    When a transfer finishes you get a heads-up that opens the file you just
    received in one tap (or your Downloads if it can't open it directly).
+
+   Technical: a high-importance completion notification; the Open action resolves
+   the received file's MediaStore Downloads content:// Uri (ACTION_VIEW with a
+   read grant), falling back to the system Downloads view when the single file
+   can't be resolved.
 
 7) Automatically turn Wi-Fi and Bluetooth on for a transfer, then off again
    When a transfer starts, the app switches Wi-Fi and Bluetooth on for you and
@@ -51,10 +87,44 @@ FINISHED FEATURES
    needed because the main app can't toggle the radios on modern Android by
    itself; the helper handles it and the main app just asks it to.
 
+   Technical:
+   - Why a separate helper: the radio-toggle APIs are gated by targetSdk, not by
+     a grantable permission. WifiManager.setWifiEnabled() only works for an app
+     targeting SDK <= 28, and BluetoothAdapter.enable()/disable() only for SDK
+     <= 32. The main app targets a modern SDK, so it legally can't call them; the
+     helper is a tiny APK (dev.superdrop.radiohelper) that targets SDK 28 and can.
+   - How apps talk to it: the helper exposes a bound Messenger service guarded by
+     a signature permission (BIND_RADIO). Clients need the same signing key and a
+     <queries> entry for the helper package. Two modes: SESSION
+     (prepareForShare / transferFinished — the helper captures the original radio
+     state, turns on only what was off, and restores only what it turned on) and
+     DIRECT (setWifi / setBluetooth / queryState).
+   - Bluetooth: zero setup — the SDK-28 helper calls BluetoothAdapter.enable()/
+     disable() directly.
+   - Wi-Fi (silent): needs WRITE_SECURE_SETTINGS, which a sideloaded app can only
+     get over ADB. The helper does this once, on-device, with no PC needed after
+     setup:
+       * pair to the phone's own wireless debugging (Android 11+) via a
+         notification inline-reply (so the pairing dialog stays open), then
+       * self-grant the permission:
+           adb shell pm grant dev.superdrop.radiohelper android.permission.WRITE_SECURE_SETTINGS
+         (run once; survives reboot, lost only on reinstall), then
+       * toggle Wi-Fi over the local ADB connection with:
+           svc wifi enable   /   svc wifi disable
+   - No per-reboot step: on boot the helper re-enables wireless debugging
+     (adb_wifi_enabled via WRITE_SECURE_SETTINGS), re-finds the local adbd port
+     over mDNS (_adb-tls-connect._tcp), and reconnects with its stored key.
+   - Fallback ladder if a silent path isn't available on the device: direct
+     setWifiEnabled -> self-ADB -> Shizuku -> the Wi-Fi settings panel.
+
 8) Battery-optimization button that actually works on OnePlus
    The built-in "stop the app being put to sleep" button didn't work on OnePlus,
    so we replaced it with a one-tap Allow that sticks (and falls back to the
    settings list on phones that ignore the pop-up).
+
+   Technical: fires ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS (the one-tap
+   "Allow" dialog) and, on OEM ROMs that no-op it, escalates to the App Info /
+   battery settings page.
 
 
 ====================================================================
@@ -78,3 +148,10 @@ GROUNDWORK (started, not finished/turned on yet)
     Prepped the live status-bar progress chip so a transfer can show up at the top
     of the screen / in the OEM "island." It's wired but not switched on yet
     (waiting on a build-tool version).
+
+13) (OPTION) Bridge-app-style animation on NFC tap
+    A separate PR from the regular tap-to-share (#3): on an NFC tap, play the
+    fancy "bridge" animation — the receive prompt sliding in / morphing into a
+    pill over whatever's on screen — for an iOS-like reveal. This is the NFC-tap
+    trigger wired to the animated overlay groundwork in #10. Proposed / to-build,
+    not done yet.
