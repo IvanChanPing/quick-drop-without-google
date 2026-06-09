@@ -17,6 +17,8 @@ FINISHED FEATURES
    more being forced all the way into the app just to send or receive something —
    just like the old Quick Share. A much better improvement.
 
+   Image for the PR: docs/pr-images/send-bottom-sheet.png
+
 2) Quick tile that opens a bottom sheet to receive
    A Quick Settings tile that opens the receive sheet and makes you visible to
    any nearby phone, so they can send to you straight away — no opening the app
@@ -29,6 +31,8 @@ FINISHED FEATURES
    radio-helper to enable Wi-Fi + BT), and uses startActivityAndCollapse to drop
    the shade. The prior visibility + radio state is captured and restored when the
    receive sheet closes.
+
+   Image for the PR: docs/pr-images/receive-tile-sheet.png
 
 3) Tap to share
    You can now tap two phones together to start a transfer. The tap passes your

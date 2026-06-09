@@ -1,3 +1,19 @@
+## [2026-06-09] PR list: add screenshots for the two UI features (send sheet, receive tile)
+Docs-only. Added "Image for the PR" lines to the per-PR list (`SUPERDROP-CHANGES.txt`) for the two
+features that are best sold with a picture, matching the existing format already used by #5.
+- #1 "Bottom sheet for sending" → `docs/pr-images/send-bottom-sheet.png` (from on-emulator capture
+  `sd_send3.png`): the outgoing send sheet showing "1 file · 15.2 KB · Looking for nearby devices… ·
+  Cancel" with the QR icon — the share-menu bottom sheet in action, not the app home screen.
+- #2 "Quick tile that opens a bottom sheet to receive" → `docs/pr-images/receive-tile-sheet.png`
+  (from `sd_tile.png`): the receive sheet the QS tile opens, "Ready to receive / Waiting for a nearby
+  device to share…" over the home screen.
+- Images chosen by actually viewing every candidate (`sd_send.png` = home screen, `sd_send2.png` =
+  send sheet showing the no-payload error, `docs/assets/send-ui.jpg` = home screen) and picking the
+  one that truthfully depicts the feature. All three `Image for the PR` paths verified to resolve to
+  real committed files.
+- **Files:** `SUPERDROP-CHANGES.txt`, `docs/pr-images/send-bottom-sheet.png`,
+  `docs/pr-images/receive-tile-sheet.png`. No code touched; nothing to build.
+
 ## [2026-06-09] NFC send-tap: re-poll the ADVERTISEMENT to catch a cold receiver waking
 Device upload proved our send-tap read native's HCE as EMPTY (native, in receive, wakes itself on the
 first ADVERTISEMENT via djvf.f PendingIntent but answers empty that round). Native↔native still works
