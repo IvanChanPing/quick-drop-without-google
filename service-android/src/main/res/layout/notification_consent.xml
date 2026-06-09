@@ -20,9 +20,11 @@
     xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="wrap_content"
+    android:gravity="center_vertical"
+    android:minHeight="108dp"
     android:orientation="vertical"
-    android:paddingTop="2dp"
-    android:paddingBottom="6dp">
+    android:paddingTop="8dp"
+    android:paddingBottom="10dp">
 
     <!-- Top row: title+summary column (left, stretches) + thumbnail (right). -->
     <LinearLayout
@@ -43,7 +45,7 @@
                 android:layout_height="wrap_content"
                 android:ellipsize="end"
                 android:maxLines="1"
-                android:textSize="15sp"
+                android:textSize="16sp"
                 android:textStyle="bold" />
 
             <TextView
@@ -53,7 +55,7 @@
                 android:layout_marginTop="3dp"
                 android:ellipsize="end"
                 android:maxLines="2"
-                android:textSize="13sp" />
+                android:textSize="14sp" />
         </LinearLayout>
 
         <!-- notif_consent_thumb — small rounded placeholder thumbnail of the
@@ -61,8 +63,8 @@
              via setImageViewBitmap with ConsentThumbnail.photo()). -->
         <ImageView
             android:id="@+id/notif_consent_thumb"
-            android:layout_width="44dp"
-            android:layout_height="44dp"
+            android:layout_width="52dp"
+            android:layout_height="52dp"
             android:layout_marginStart="12dp"
             android:scaleType="fitCenter"
             tools:ignore="ContentDescription" />

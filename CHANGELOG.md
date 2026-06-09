@@ -1,3 +1,11 @@
+## Consent heads-up: slightly larger
+
+Made the consent heads-up a little bigger while keeping the Decline/Accept
+buttons visible in the collapsed/heads-up peek (no expand needed). In
+`notification_consent.xml`: root `minHeight=108dp` + `gravity=center_vertical`,
+padding 8dp/10dp, thumbnail 44dp→52dp, title 15sp→16sp, body 13sp→14sp.
+Verified via the consent preview harness (peek shows both buttons).
+
 ## [2026-06-09] Consent heads-up: right-side thumbnail + tinted left icon
 
 Ported the HeadsUp Demo's small consent-notification refinements into the real
