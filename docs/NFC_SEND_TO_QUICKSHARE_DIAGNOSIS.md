@@ -9,7 +9,9 @@
   share**, and that is the ONLY thing to fix. FORBIDDEN: building new behaviors (e.g. a BLE FastInitiation
   advertiser while the share sheet is open — REJECTED), and analyzing Super Drop / bada to engineer the fix.
   ALLOWED: analyze **Quick Share only** to learn how its NFC tap initiates a share, then make our tap do that.
-- **GOAL (narrowed):** make the NFC tap initiate the share. Learn the mechanism purely from Quick Share.
+- **GOAL (user, 2026-06-10, FINAL):** find out exactly what the ORIGINAL Google Quick Share does for its
+  NFC-tap-to-share, and make our tap do THAT. Map the COMPLETE ORDERED flow from GMS first (no piecemeal),
+  then replicate. Mapping in progress via parallel GMS decompile readers; see §COMPLETE FLOW MAP (building).
 - **DONE (verified this session):**
   - Round-2 device trace captured (`/root/nfc-diag/collector.log`): SELECT=`9000` OK, ADVERTISEMENT=`0000`
     on all 11 re-poll attempts + later taps. Re-poll hypothesis OVERTURNED; not a byte bug, not timing.
@@ -548,3 +550,37 @@ sharing between your OWN devices (same Google account), which is the case that a
 3. Both ends must RESET after each attempt (sender tap/reader state; receiver surface) so a re-tap works.
 4. The "no confirm" auto-accept is self-share (same account) — likely a confirm will appear for Super Drop → QS;
    that's a stock-QS limitation, not our bug.
+
+## ★ COMPLETE ORDERED MAP — WHAT ORIGINAL QUICK SHARE DOES FOR THE NFC TAP (GMS 26.18.33, verified by 4 parallel decompile readers, file:line evidence in journal history)
+
+### A. SENDER, when the share sheet is open (class dpst.i — ShareTarget + attachments)
+1. Arms NFC reader mode: `enableReaderMode(flags=0x181 = NFC-A|SKIP_NDEF|NO_PLATFORM_SOUNDS, presence=100ms)` (dnzf/dnzn/dnzj; dnzp.c gates on nfc feature+permission+adapter-enabled).
+2. On tap → `dnzh.onTagDiscovered` → rebroadcasts `TAG_DISCOVERED`(setPackage gms, extra TAG) to GMS; the reader callback is NON-BLOCKING. The actual IsoDep exchange is `djkb.c(Tag)`.
+3. Starts **FastInit BLE SCAN** (looking for receivers; "Starting scanning for Fast Initiation") — the send sheet SCANS; it does NOT emit FastInit advertising (advertising is tied to the receive surface).
+4. Starts Nearby **startDiscovery** per-medium (NFC/BLE/BT/WIFI_LAN/WIFI_AWARE), gated by the DiscoveryOptions mediums array (`dfad.call`). So the sender is concurrently DISCOVERING over Wi-Fi/BLE.
+
+### B. The NFC tap exchange (sender = reader, `djkb.c`)
+- SELECT: `00 A4 04 00 05 F0 00 00 FE 2C` (no Le byte).
+- ADVERTISEMENT: `80 01 00 00 <Lc> <hhww> FF` (trailing **Le=0xFF**). The sender's `hhww` populates **all three fields**: serviceId="NearbySharing"(#1) + **localEndpointId(#2)** + **endpointInfo(#3)** — it advertises ITSELF to the receiver.
+- Receiver HCE responds `hhwv`: c=`deym`(version+PCP+endpointId+serviceIdHash+endpointInfo+**6-byte BT-Classic MAC**), d=rxAdv connectivity caps (incl WIFI_LAN), e=extra. **If the receiver is idle (not advertising) → HCE fires the WAKE (djvf.f → opens MainActivity) and returns 0000.**
+- Reader parses hhwv (`dfdo.run`): registers the WIFI_LAN/NFC instant-connection endpoint FIRST, then checks the BT MAC; **if the tag has NO BT-Classic MAC, dfdo.run ABORTS the BT medium (return-void)** — but the WIFI_LAN/NFC endpoint is already registered.
+- NFC can carry data (CONNECT `80 02` + DATA `80 03` stream) but is just one medium; the connection layer (`dfck.a`) picks among NFC / WIFI_LAN / BLUETOOTH by a server-priority sort — typically upgrading to WIFI_LAN.
+
+### C. Idle receiver → WAKE → becomes connectable
+- Wake `djvf.f` fires PI → opens `…nearby.sharing.main.MainActivity` (extra is_from_fast_init=true).
+- MainActivity registers a FOREGROUND **ReceiveSurface** → the receiver starts **ADVERTISING** over Nearby (BLE + BT-Classic→Wi-Fi upgrade). (No NFC advert re-registration observed on this path; the FastInit HUN/BLE drives it.)
+- The phones have separated by now (NFC dropped) → the rendezvous completes over the NORMAL Nearby channel: the SENDER's concurrent discovery (A.4) finds the now-advertising receiver and connects (medium priority; WIFI_LAN possible). NFC tag is NOT needed post-wake.
+
+### D. Auto-accept (NO confirm) — three paths (skipLocal=true), set in `drbk`
+1. **self-share** = sender+receiver on the SAME Google account (certificate match: `dqne.c`/`dqtt.e`/`TransferMetadata.isSelfShare`). 
+2. `isIncomingConnection` (a Nearby-Connections-engine flag).
+3. QR-code / out-of-band handshake authenticator.
+The TAP itself does NOT grant no-confirm. ⇒ a non-Google-account sender (Super Drop) generally CANNOT get the silent auto-accept — expect a confirm (self-share needs same account; the other two need a Connections-internal flag / a QR handshake).
+
+### E. Teardown (so retry works)
+- Sender reader mode auto-disposed via a Compose DisposableEffect (`dnzk.disableReaderMode`) when the share UI leaves composition.
+- Connect failure (all media tried) → `dfck.a` throws `dfcj` → reported via `dfet.X`.
+- Discovery/advertising torn down + per-service state cleared by `dfhl` when the last client stops.
+
+### ⇒ THE ESSENCE TO REPLICATE
+The NFC tap in original Quick Share is a NON-BLOCKING **wake + advertise-self** gesture, fully DECOUPLED from the transfer. The transfer always rides the normal Nearby Connections discovery/connect (Wi-Fi/BLE), which the sender runs concurrently. To "do what Quick Share did": (1) tap arms a non-blocking reader; (2) on tap, hand the tag to the connection layer AND keep the normal discovery running so the woken/advertising receiver is found and connected over Wi-Fi/BLE — do NOT block or dead-end on the NFC ADVERTISEMENT re-poll; (3) match the real APDU framing (SELECT no-Le; ADVERTISEMENT Le=0xFF; hhww with localEndpointId+endpointInfo); (4) reset reader/discovery state after each attempt; (5) accept that a confirm will appear (no self-share for a non-account sender).
