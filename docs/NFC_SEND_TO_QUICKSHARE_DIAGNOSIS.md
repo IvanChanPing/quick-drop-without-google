@@ -19,8 +19,21 @@
   mDNS/Wi-Fi-LAN (`192.168.1.139:53601`, already resolved in-trace) with NO tag — verify stock QS accepts
   an inbound Nearby connection while idle/visible; (B) require the receiver to be on the QS *send* sheet for
   the tag path; (C) accept tap-to-a-QS-*receiver* as a QS design limitation.
-- **NEXT STEP:** verify fork (A): can we dial the mDNS-resolved QS endpoint and complete a Nearby handshake
-  to a visible-but-idle QS receiver? (Trace already shows we discover it but never dial it.)
+  - **Fork (A) sender side ALREADY EXISTS in the shipped APK (code-proven this session):** the QS mDNS
+    device reaches our picker as a `NearbyPeerEvent.Resolved` (the trace's `discovery: resolved peer=endpoint:L6DT`
+    line is emitted by `SendPeerPickerController.onDiscoveryEvent`); the picker filters ONLY on
+    `SendBootstrapPlan.resolve(peer).isConnectable`, NOT on `hidden`; a WIFI_LAN peer with a primary address +
+    port (`192.168.1.139:53601`) yields a `NearbyPeerRoute.Lan` → `isConnectable=true` → it renders as a
+    selectable chip "Quick Share device (L6DT)". Tapping that chip → `onPeerSelected` → the same Wi-Fi-LAN
+    connect loop the NFC tap uses (`SendActivity onNfcPeerTapped→onPeerSelected→604→671`). So NO NFC tag and NO
+    new build are needed to ATTEMPT a Wi-Fi-LAN send to a visible QS phone.
+- **NEXT STEP (no build needed — device test of fork A):** on the sender, open Super Drop's send sheet, pick a
+  file, set the OTHER phone's Quick Share to visible/"Everyone", wait for the **"Quick Share device (XXXX)"**
+  chip to appear in the picker, and TAP THE CHIP (not the NFC tap). Observe: does our app connect over Wi-Fi-LAN
+  and does the QS phone show an incoming-transfer prompt? PROVEN-from-code = the chip appears + we dial the LAN
+  endpoint; UNVERIFIED = whether stock QS ACCEPTS our inbound Nearby Connections handshake (the make-or-break
+  unknown). If it connects → tap was never needed. If it fails at the handshake → map our outbound Nearby
+  connection vs what stock QS's WIFI_LAN listener expects.
 - **KEY PATHS:** journal=this file · trace=`/root/nfc-diag/collector.log` · GMS smali=`/root/nfc-diag/gms-smali`
   · djvf=`/root/nfc-diag/gms-smali/classes/djvf.smali` · reader=`app/.../nfc/SuperDropTapReader.kt`
   · collector=`/root/nfc-diag/collector.py` (127.0.0.1:7911) · app=`/root/agent-work/projects/bada-fork`.
@@ -327,6 +340,16 @@ Sender = CPH2515 OnePlus Nord N30 5G/A14, instrumented build. Receiver = real Qu
 ---
 
 ## ROUND-2 RESULT + VERIFIED REGISTRATION MAP (2026-06-10, resumed after session limit)
+
+> **RESUME AUDIT (2026-06-10, this session):** confirmed this file is THE canonical journal for the task
+> (related: `docs/NFC_INTEROP_BYTEMAP.md` byte map + memory `project_superdrop_nfc_url_opens_browser_2026_06_09`).
+> Already done by the prior session (NOT redone): Steps 1/2/3/6/9 findings below — APDU bytes, HCE
+> ADVERTISEMENT handler + `djvf` g/f/d/h/i semantics, reader primitives, the SuperDropTapReader
+> instrumentation (already in `super-drop-debug.apk`), and the Round-2 trace capture itself (already in
+> `collector.log`). This session's NEW work = the registration-CALLER map below (resolves the open question
+> the prior session stalled on: jadx-full was only ~16% when the limit hit). Honest note: reviving the
+> collector + re-baking `COLLECTOR_URL` + rebuilding the APK was NOT needed for the pending step (Round-2 was
+> already captured) — it only serves a future follow-up trace.
 
 **Round-2 device trace (collector.log, sender CPH2515/Android 14, receiver = real Quick Share):**
 - `SELECT … resp=9000` ✓ — AID `F00000FE2C` selected/accepted by the real HCE.
