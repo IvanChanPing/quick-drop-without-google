@@ -1,5 +1,31 @@
 # Diagnosis & Fix Plan — Super Drop SENDER → tap → NATIVE Google Quick Share RECEIVER
 
+> **THIS FILE IS THE TASK JOURNAL** (per the task-journal rule). Update the block below after every
+> turn; append a dated entry on every discovery. A fresh session should resume from here + the memory index.
+
+## CURRENT STATE / NEXT STEP   (updated 2026-06-10 15:1x)
+- **GOAL:** Super Drop, as the NFC reader-mode SENDER, taps a phone running stock Google Quick Share and
+  sends a file over QS's native Wi-Fi-LAN path. (Super Drop↔Super Drop out of scope.)
+- **DONE (verified this session):**
+  - Round-2 device trace captured (`/root/nfc-diag/collector.log`): SELECT=`9000` OK, ADVERTISEMENT=`0000`
+    on all 11 re-poll attempts + later taps. Re-poll hypothesis OVERTURNED; not a byte bug, not timing.
+  - Full registration map proven from baksmali of all 15 GMS 26.18.33 dexes (`/root/nfc-diag/gms-smali`):
+    a QS phone returns a real NFC tag ONLY while running **NFC-enabled startDiscovery** (the QS *send*
+    sheet open). Idle/receiving phone → `djvf.g==null` → HCE returns `0000`. Wake (`djvf.f`) is a no-op
+    unless FastInit scanning registered a wake PI (screen unlocked + QS enabled). See the dated entry below.
+  - Reader instrumentation (hex SELECT/ADV bytes + tag-loss timing) already shipped in `super-drop-debug.apk`.
+  - Collector revived + `COLLECTOR_URL` re-baked to live tunnel (for any follow-up trace).
+- **OPEN DECISION FORK (needs user):** (A) use the tap only as a trigger and connect to the QS phone over
+  mDNS/Wi-Fi-LAN (`192.168.1.139:53601`, already resolved in-trace) with NO tag — verify stock QS accepts
+  an inbound Nearby connection while idle/visible; (B) require the receiver to be on the QS *send* sheet for
+  the tag path; (C) accept tap-to-a-QS-*receiver* as a QS design limitation.
+- **NEXT STEP:** verify fork (A): can we dial the mDNS-resolved QS endpoint and complete a Nearby handshake
+  to a visible-but-idle QS receiver? (Trace already shows we discover it but never dial it.)
+- **KEY PATHS:** journal=this file · trace=`/root/nfc-diag/collector.log` · GMS smali=`/root/nfc-diag/gms-smali`
+  · djvf=`/root/nfc-diag/gms-smali/classes/djvf.smali` · reader=`app/.../nfc/SuperDropTapReader.kt`
+  · collector=`/root/nfc-diag/collector.py` (127.0.0.1:7911) · app=`/root/agent-work/projects/bada-fork`.
+
+
 **Goal (user, 2026-06-09):** make our Super Drop app, as the SENDER (NFC reader-mode), tap a
 phone running stock Google Quick Share (the RECEIVER / HCE on AID `F00000FE2C`) and actually send
 the file over Quick Share's native path. Super Drop↔Super Drop is explicitly out of scope.
@@ -297,4 +323,48 @@ Sender = CPH2515 OnePlus Nord N30 5G/A14, instrumented build. Receiver = real Qu
   mode (→ `90 00`, no body). Step 2 (HCE accept conditions) + Step 9 (actual 2 bytes) resolve this. Note the
   earlier user report "A15 Super Drop → A14 Quick Share worked" — IF that receiver was truly stock QS, it
   argues against H-A (format) and toward H-B (state); but that's unverified and must not be assumed.
+
+---
+
+## ROUND-2 RESULT + VERIFIED REGISTRATION MAP (2026-06-10, resumed after session limit)
+
+**Round-2 device trace (collector.log, sender CPH2515/Android 14, receiver = real Quick Share):**
+- `SELECT … resp=9000` ✓ — AID `F00000FE2C` selected/accepted by the real HCE.
+- `ADVERTISEMENT … resp=0000` on **ALL 11 re-poll attempts** (+22ms → +2754ms) and again on later taps.
+  The 2 bytes are `00 00` (the not-advertising trailer), returned EVERY time; the receiver never woke
+  (user: "wouldn't let me tap again until I turned real Quick Share off and on, then it did the same").
+- **H-B confirmed, H-A refuted, re-poll hypothesis OVERTURNED:** our APDU is byte-accepted; longer
+  re-polling cannot help. The receiver simply never registers an NFC advertisement → `djvf.g==null`.
+
+**VERIFIED REGISTRATION CHAIN (baksmali of all 15 GMS 26.18.33 dexes → `/root/nfc-diag/gms-smali`):**
+- HCE `NfcAdvertisingChimeraService.processCommandApdu` ADVERTISEMENT(80 01) branch (classes8, ~L1197):
+  `g = djvf.g(serviceId)`; if `g==null` → log *"…not currently advertising for service %s"* → `djvf.f(serviceId)`
+  (the WAKE) → return `00 00`. If `g!=null` → `djvf.d(svc, hhww.d, hhww.e)` (push sender endpoint) → return tag.
+- `djvf` (classes/djvf.smali, confirmed): `b`=svc→PendingIntent(wake); `f(svc)`=`b.get(svc).send()` **but
+  NO-OP if b has no PI**; `c`=svc→advertisement bytes; `g(svc)`=`c.get`; `h(...)`=register advertisement; `i(pi)`=register wake PI for "NearbySharing".
+- **Wake PI registration `djvf.i()`** ← ONLY `NearbySharingChimeraService.X()` = "start FastInitiation
+  scanning". X() **bails without registering if the screen is locked** ("Stopping FastInitiation scanning
+  because the screen is locked") or FastInit disabled (aP()/aQ()). Triggered by screen-on AND by
+  `SetFastInitNotificationEnabled(true)` (via `dmfk`). Torn down (`i(null)`) when QS stops.
+- **Advertisement registration `djvf.h()`** ← `djkb.q()` ← `deyl.i()` = **startNfcAdvertising** (log:
+  *"became NFC discoverable"*) ← **the startDiscovery path ONLY** (`dfad.call()` gated by
+  `deyl.f(DiscoveryOptions)` deciding NFC participates; and `dfet.G(…DiscoveryOptions…)`).
+
+**THE DECISIVE CONSTRAINT (verified):** A Quick Share phone exposes a *readable NFC tag* (answers our
+ADVERTISEMENT with a real `hhwv` instead of `0000`) **ONLY while it is itself running NFC-enabled
+DISCOVERY — i.e. the Quick Share SEND sheet open, scanning for recipients.** A phone that is idle, or on
+the *receive* screen, is NOT NFC-discoverable → returns `0000`. The HCE's wake (`djvf.f`) can only fire if
+FastInit scanning registered a wake PI (screen unlocked + QS enabled); even then the wake launches the QS
+UI, which does not auto-enter NFC discovery without user action — so our 2.5s window saw `0000` throughout.
+
+**WHAT THIS MEANS FOR THE GOAL (Super Drop sender → tap → native Google Quick Share *receiver*):** the
+intended target (a phone the user wants to RECEIVE) is exactly the state in which stock QS is NOT
+NFC-discoverable. So the NFC-*tag* path cannot, by itself, make an idle/receiving QS phone hand us a tag.
+**However** — our app already resolves that same QS phone over mDNS/Wi-Fi-LAN the entire time
+(`endpoint:L6DT/143F/21UX/… 192.168.1.139:53601 mediums=[WIFI_LAN]`, displayName "Quick Share device").
+So the live OPEN QUESTION / decision fork (for the user): (A) treat the tap purely as a trigger and connect
+to the mDNS-resolved QS endpoint over Wi-Fi-LAN (no tag needed) — needs verifying stock QS accepts an
+inbound Nearby connection while idle/visible; or (B) require the receiver to be on the QS *send* sheet for
+the tag path; or (C) accept that tap-to-send-to-a-QS-receiver is a QS design limitation. NEXT: verify (A) —
+can we dial `192.168.1.139:53601` and complete a Nearby handshake to a visible-but-idle QS receiver?
 </content>
