@@ -44,7 +44,40 @@
 - VERIFIED (our code): we do NOT emit any BLE advertisement — `BluetoothLeAdvertiser`/`startAdvertising` appear NOWHERE in `app/src/main/kotlin/dev/superdrop/`; the "FastInitiation pulse" is only a comment (`SendActivity:231`, `SendPeerPickerController:44`). So as a sender we scan/discover but never emit the proximity pulse that actually triggers QS.
 - **CONCLUSION / NEW DIRECTION:** stop trying to fix the NFC-tag exchange for send-to-QS-receiver (dead end, verified). To make our "tap"/proximity send to a native QS receiver work we must: (1) **emit the QS-compatible BLE FastInitiation pulse** from our sender (frame bytes NOT yet mapped — service data under 0xFE2C/FastInit; map from GMS next, no-piecemeal); (2) connect over **Wi-Fi-LAN** to the QS endpoint (our picker already discovers + can dial `192.168.1.139:53601`); (3) receiver preconditions (visible + screen-on + BT-on + location-on) must hold.
 - **OPEN UNKNOWNS:** exact FastInit BLE frame bytes (map from gms-smali); whether stock QS accepts our Wi-Fi-LAN Nearby handshake after FastInit detection (device test). 
-- **NEXT STEP:** (cheap, no build) run the picker-dial test from the prior entry to see if a LAN connect alone reaches QS; (real) map the FastInitiation BLE advertisement bytes from GMS so we can emit the proximity pulse.
+- **NEXT STEP:** the FastInitiation frame is now fully mapped (see §FASTINIT FRAME below). Decide: build a
+  minimal BLE FastInitiation emitter in Super Drop (BluetoothLeAdvertiser, no GMS) + on-device test whether a
+  visible QS phone shows "Device nearby is sharing"; THEN tackle the post-accept Nearby Connections transfer.
+
+## FASTINIT FRAME — COMPLETE VERIFIED MAP (GMS 26.18.33, jadx of `dnmj`/`dnlw`/`dekv`/`deku` + scan-filter smali)
+Source: emitter `dnmj.l(int type, dekv, deku)` (`classes/dnmj.smali` / `jadx-fastinit/.../dnmj.java`),
+frame holder `dnlw` (`classes8/dnlw.smali`). Advertise = `degc.e(AdvertisingSetParameters, AdvertiseData, …)`.
+- **Transport:** BLE **legacy** advertising — `AdvertisingSetParameters`: `setLegacyMode(true)`,
+  `setConnectable(false)`, `setScannable(!flag)`, `setTxPowerLevel(1)`, `setInterval(160)` (≈INTERVAL_LOW/fast).
+  (A legacy `AdvertiseSettings{mode=LOW_LATENCY(2), tx=HIGH(3), connectable=false}` is built but discarded.)
+- **AdvertiseData:** `setIncludeDeviceName(false)`, `setIncludeTxPowerLevel(false)`, ONE service-data entry:
+  - **UUID = `0xFE2C`** (`dnlw.a = dejv.a("FE2C")` → `0000FE2C-0000-1000-8000-00805F9B34FB`).
+  - **data = 24 bytes** (`Arrays.copyOf(…, dnlw.e + 19)`, `dnlw.e = len(FC128E)+2 = 5`):
+    - `[0..2]` = **`FC 12 8E`** — fixed prefix `dnlw.b = bihg.d("FC128E")`.
+    - `[3]` = **byte0** = `((version<<5)&0xE0) | ((type<<2)&0x1C) | (hasUWB?2:0) | (hasExtra?1:0)`. Construction
+      uses `version(dnlw.f)=0`; `type(dnlw.g)=` the `l()` arg. **type 0=NOTIFY, 1=SILENT, -1=NONE** (`dnmj.b(I)`).
+      ⇒ standard NOTIFY, no metadata → **byte0 = `0x00`**.
+    - `[4]` = **byte1** = `(byte)(-dnlw.a())` = TX/RSSI **calibration** from Phenotype `ifkq.a.mj().h()` (negated abs);
+      a small constant; receiver uses it for distance, it does NOT gate detection.
+    - `[5..]` = optional sections, else zero-pad: UWB `dekv` (UwbComplexChannel) byte `((deku.b==1?0:32)|dekv.a())`
+      + `deku.e()` (8 random bytes) when `d()`; then `e`/`f` extra arrays when `c()`. All NULL for a plain BLE
+      share → zero-padded.
+    - `[23]` = `0x80` if "require BT" (`dnlw.j`) else `0x00`.
+- **Receiver match (scan filter, `dnmj` smali L1261-1269):** `ScanFilter.setServiceData(FE2C, {FC 12 8E})` with
+  NO mask ⇒ matches ANY advert with service-data UUID FE2C whose data **starts with `FC 12 8E`**. (2nd filter =
+  UUID-only, gated by `ifif.aJ()`.) On match, byte0 type=0 ⇒ NOTIFY ⇒ "Device nearby is sharing" HUN — IF the
+  receiver is visible + screen-unlocked + Bluetooth-on + location-on + battery-ok (`NearbySharingChimeraService.X`).
+- **MINIMAL EMITTABLE FRAME (to trigger the HUN):** serviceData(`FE2C`, `FC 12 8E 00 <cal> 00*18 00`) — 24 bytes,
+  byte0=`0x00` (NOTIFY), byte1=calibration (any plausible small value, e.g. the config default), rest zero. Emit
+  via `BluetoothLeAdvertiser.startAdvertisingSet(legacy, non-connectable)` — pure AOSP, needs `BLUETOOTH_ADVERTISE`.
+- **⚠️ SCOPE (proactive-foresight):** this frame only makes the receiver **show the HUN / become primed** — it is
+  NOT the file transfer. After the user accepts, stock QS expects the full **Nearby Connections** handshake +
+  Quick Share payload (over BLE/Wi-Fi-LAN). FastInit is necessary but NOT sufficient; the transfer protocol is the
+  next, larger map. UNKNOWNS: exact `cal` default; whether our non-Google sender can complete the Nearby handshake.
 
 
 **Goal (user, 2026-06-09):** make our Super Drop app, as the SENDER (NFC reader-mode), tap a
