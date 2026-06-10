@@ -492,3 +492,40 @@ receiving phone needs BT + Location ON + unlocked + nearby-scanning enabled.
 browsing; from the sender's Super Drop send screen, tap it → it should auto-open Quick Share. If it STILL
 doesn't open with all those ON, there is a deeper difference (next: extract the exact GMS reader ADVERTISEMENT
 bytes + verify djvf is the same process for HCE and FastInit) — but the protocol says our tap reaches the wake.
+
+## ⚠️ SYMPTOM REFINED BY USER (2026-06-10) — wake WORKS; post-wake receive does NOT initiate; teardown broken
+User: our tap "would wake once but not initiate the receiving, and then didn't tear down so it wouldn't do it
+again." ⇒ RETRACT the "Bluetooth/Location was off" conclusion — the wake PI WAS registered and OUR TAP FIRED IT
+(Quick Share opened on the receiver). The real gap is the SECOND half of the flow:
+  (1) after `djvf.f()` opens Quick Share on the idle receiver, the receive does NOT initiate (no transfer);
+  (2) a stuck state isn't torn down, so a second tap won't re-trigger.
+So this is the post-wake handshake + teardown — NOT the wake, NOT our ADVERTISEMENT bytes (proven correct).
+NEXT: map from Quick Share ONLY — after the wake PI opens QS on the receiver, what makes it actually start
+receiving (does it auto-register its NFC advertisement so the sender's re-poll gets the tag, or does it need
+the sender presented via another channel?), and how QS tears the tap down so it can be retried.
+
+## ✅✅ WHY IT WAKES BUT DOESN'T RECEIVE / WON'T RETRY (2026-06-10, Quick Share code only — answers the user)
+Verified from GMS 26.18.33:
+- The NFC tap's ENTIRE job is the WAKE: `djvf.f()` fires a PendingIntent whose inner intent is
+  `Intent.setClassName(ctx, "com.google.android.gms.nearby.sharing.main.MainActivity")` (X() L29197). So the tap
+  OPENS Quick Share (MainActivity) on the receiver. It carries NO file and establishes NO connection itself.
+- After MainActivity opens, the receiver registers a **ReceiveSurface** (`RegisterReceiveSurfaceParams`) → it
+  becomes a visible/advertising Quick Share receiver. The actual transfer then completes over the NORMAL Nearby
+  Wi-Fi/BLE rendezvous — the SENDER discovers the now-visible receiver and connects (the path that already works).
+- The NFC ADVERTISEMENT exchange returns empty (`djvb.a()` = the `0000` we saw) on the wake; the phones separate
+  right after the tap (ISO-DEP "Tag was lost"), so re-polling the NFC tag post-tap cannot complete the rendezvous —
+  it MUST finish over Wi-Fi/BLE.
+
+**So the symptom maps exactly:**
+- "wakes once" = the wake PI fired, MainActivity opened. ✓
+- "doesn't initiate the receiving" = after the wake, the share is NOT carried through the normal Wi-Fi/BLE path
+  to the now-awake receiver; the flow stopped at the empty NFC exchange.
+- "doesn't tear down / won't do it again" = the half-open state isn't reset (receiver left on MainActivity as a
+  registered receive surface; sender tap/reader state stuck), so a second tap can't cleanly re-wake.
+
+**FIX DIRECTION (fixing the tap, derived from Quick Share — NOT a rewrite):** treat the tap as WAKE-ONLY: after
+the tap fires Quick Share's wake, complete the share over the normal channel (discover the now-visible receiver
+and connect — the working path), and reset both ends after each attempt so it can be retried. The NFC exchange
+itself is not the data path and should not be depended on to "initiate the receiving."
+OPEN/UNVERIFIED: whether the woken MainActivity auto-receives vs needs a user confirm (user's QS→QS obs = auto);
+the exact teardown QS does on a failed tap (next, if needed).
