@@ -465,3 +465,30 @@ Verified from GMS 26.18.33 (`classes8/dnzf,dnzh,dnzp`):
   instrumented reader (logs SELECT/ADV bytes): tap the QS phone in each state, see which returns a real tag.
 - NOTE: our reader's ADVERTISEMENT is accepted by the HCE (it reached the g==null lookup branch), so no APDU
   bug is evident — the gap is the receiver not advertising, i.e. its STATE, not our bytes.
+
+## ✅ RESOLUTION (2026-06-10) — why the tap auto-opens an idle QS phone, and why ours didn't (Quick Share only)
+User's working behavior: two QS phones, neither in the app; one enters QS SEND, taps the other while it's
+just browsing → the browsing phone AUTO-OPENS Quick Share and receives. That auto-open = the **`djvf.f()` wake**.
+
+VERIFIED CHAIN (all from GMS 26.18.33, no app analysis):
+1. `hhww` proto: serviceId = `c` = **proto field #1** (info string `ဈ…` → field1=c, field2=d, field3=e).
+   Our reader sends serviceId as field 1 (`0A 0D "NearbySharing"`). ⇒ **our ADVERTISEMENT bytes are CORRECT.**
+2. HCE ADVERTISEMENT branch (`NfcAdvertisingChimeraService` ~L1197-1245): `g = djvf.g("NearbySharing")` → null
+   → log "not currently advertising" → **`djvf.f("NearbySharing")`** (the WAKE) → return `djvb.a()` = `0000`.
+   ⇒ our `0000` trace is THIS branch — meaning **our tap DID reach `djvf.f()` (the wake call).**
+3. `djvf.f(str)` = `b.get(str).send()` — fires the wake PendingIntent IF registered; **NO-OP if not registered.**
+4. The wake PI is registered ONLY by `djvf.i()` ← `NearbySharingChimeraService.X()` = "start FastInitiation
+   scanning", which BAILS (no registration) unless: screen UNLOCKED, FastInit/"nearby scanning" ENABLED,
+   Location ON, Bluetooth ON, battery not low ("Stopping FastInitiation scanning because …" L28149/28207/28270/28291/28389).
+
+**CONCLUSION:** our NFC tap is protocol-correct and already reaches Quick Share's wake. The idle phone opens
+Quick Share IFF it had the wake handler registered — i.e. its Quick Share was FastInitiation-scanning at tap
+time (screen unlocked + Bluetooth ON + Location ON + nearby-scanning enabled + battery ok). In the user's
+working QS→QS test the browsing phone met those. When our tap got `0000`-with-no-open, the target was missing
+one — most commonly **Bluetooth or Location OFF**. ⇒ **likely NOTHING to fix in the app's tap bytes**; the
+receiving phone needs BT + Location ON + unlocked + nearby-scanning enabled.
+
+**CONFIRMATION TEST (no build):** on the receiving phone turn ON Bluetooth + Location, unlock it, leave it
+browsing; from the sender's Super Drop send screen, tap it → it should auto-open Quick Share. If it STILL
+doesn't open with all those ON, there is a deeper difference (next: extract the exact GMS reader ADVERTISEMENT
+bytes + verify djvf is the same process for HCE and FastInit) — but the protocol says our tap reaches the wake.
