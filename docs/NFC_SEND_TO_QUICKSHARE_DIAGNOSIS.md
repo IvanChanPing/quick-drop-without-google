@@ -529,3 +529,22 @@ and connect — the working path), and reset both ends after each attempt so it 
 itself is not the data path and should not be depended on to "initiate the receiving."
 OPEN/UNVERIFIED: whether the woken MainActivity auto-receives vs needs a user confirm (user's QS→QS obs = auto);
 the exact teardown QS does on a failed tap (next, if needed).
+
+## NO-CONFIRM AUTO-RECEIVE = SELF-SHARE (same account) — 2026-06-10, Quick Share only
+User: QS→QS had NO confirm tap (auto-received). Quick Share has a **self-share** concept: `TransferMetadata.isSelfShare`,
+and a "self-share with no account" fallback-visibility check (`NearbySharingChimeraService` L64976). Self-share =
+sharing between your OWN devices (same Google account), which is the case that auto-accepts WITHOUT a confirmation.
+- STRONG INFERENCE (not a fully-isolated gate, obfuscated): the QS→QS no-confirm the user saw = self-share, i.e.
+  the two phones were on the same account. A non-Google sender (Super Drop) is NOT a same-account device, so a
+  woken QS receiver would NOT classify it as self-share → would show a confirmation (or only accept if visibility =
+  Everyone/Contacts). So the seamless "no confirm" QS→QS experience is likely NOT replicable for Super Drop → QS;
+  a confirm is the expected stock behavior for a 3rd-party sender.
+- This is SEPARATE from the core break: even WITH a confirm, ours currently wakes but never initiates the transfer.
+
+## CONSOLIDATED ANSWER (what the tap must do)
+1. Tap = WAKE only → opens QS MainActivity on the receiver (ours already does this — "wakes once"). ✓
+2. After wake, the SHARE must be carried over the normal Nearby Wi-Fi/BLE channel (the path Super Drop already does)
+   to the now-visible receiver — this is the missing "initiate the receiving" step. NFC does not carry it.
+3. Both ends must RESET after each attempt (sender tap/reader state; receiver surface) so a re-tap works.
+4. The "no confirm" auto-accept is self-share (same account) — likely a confirm will appear for Super Drop → QS;
+   that's a stock-QS limitation, not our bug.
