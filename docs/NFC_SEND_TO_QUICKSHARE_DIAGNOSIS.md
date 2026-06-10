@@ -38,6 +38,14 @@
   · djvf=`/root/nfc-diag/gms-smali/classes/djvf.smali` · reader=`app/.../nfc/SuperDropTapReader.kt`
   · collector=`/root/nfc-diag/collector.py` (127.0.0.1:7911) · app=`/root/agent-work/projects/bada-fork`.
 
+## DECISIVE 2026-06-10 — THE NFC TAG IS THE WRONG MEDIUM FOR THIS GOAL; real path = BLE FastInitiation + Wi-Fi-LAN
+- VERIFIED (gms-smali): the wake re-sends the FastInit HUN PendingIntent (`SafePendingIntentChimeraBroadcastReceiver.onHandleIntent`) — it does NOT call startDiscovery. The NFC tag (`djvf.h`) is registered ONLY from the Nearby `StartDiscoveryParams` path (`dfad`/`depr`/`dfet.G`). ⇒ an idle / receiving / merely-visible QS phone NEVER exposes a readable NFC tag and the tap's wake cannot make it. So **tapping a native-QS phone you want to RECEIVE → `0000` forever. The NFC-tag route (our `SuperDropTapReader`/`SuperDropTapHceService` F00000FE2C path) cannot deliver to a stock-QS receiver.** This is why "it wasn't receiving / wasn't going through."
+- VERIFIED (gms-smali): stock QS's proximity "tap" = **BLE FastInitiation**, not NFC. The receiver runs FastInitiation SCANNING (gated: screen unlocked, FastInit enabled, location ON, Bluetooth ON, battery not low — `NearbySharingChimeraService` L28149/28207/28270/28291/28389) and, on detecting a sender's FastInit BLE signal while `isVisibleToSomeSender`, shows the "Device nearby is sharing" HUN (`is_from_fast_init` L26936, "Displaying FastInit HUN" L27566) → transfer over Wi-Fi-LAN.
+- VERIFIED (our code): we do NOT emit any BLE advertisement — `BluetoothLeAdvertiser`/`startAdvertising` appear NOWHERE in `app/src/main/kotlin/dev/superdrop/`; the "FastInitiation pulse" is only a comment (`SendActivity:231`, `SendPeerPickerController:44`). So as a sender we scan/discover but never emit the proximity pulse that actually triggers QS.
+- **CONCLUSION / NEW DIRECTION:** stop trying to fix the NFC-tag exchange for send-to-QS-receiver (dead end, verified). To make our "tap"/proximity send to a native QS receiver work we must: (1) **emit the QS-compatible BLE FastInitiation pulse** from our sender (frame bytes NOT yet mapped — service data under 0xFE2C/FastInit; map from GMS next, no-piecemeal); (2) connect over **Wi-Fi-LAN** to the QS endpoint (our picker already discovers + can dial `192.168.1.139:53601`); (3) receiver preconditions (visible + screen-on + BT-on + location-on) must hold.
+- **OPEN UNKNOWNS:** exact FastInit BLE frame bytes (map from gms-smali); whether stock QS accepts our Wi-Fi-LAN Nearby handshake after FastInit detection (device test). 
+- **NEXT STEP:** (cheap, no build) run the picker-dial test from the prior entry to see if a LAN connect alone reaches QS; (real) map the FastInitiation BLE advertisement bytes from GMS so we can emit the proximity pulse.
+
 
 **Goal (user, 2026-06-09):** make our Super Drop app, as the SENDER (NFC reader-mode), tap a
 phone running stock Google Quick Share (the RECEIVER / HCE on AID `F00000FE2C`) and actually send
