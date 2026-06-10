@@ -600,3 +600,22 @@ Our impl read: `app/.../nfc/SuperDropTapReader.kt` + `core-protocol/.../nfc/Quic
 | **Teardown** | Reader auto-disposed (Compose); discovery/advertising cleared by `dfhl` on last client | `tapReader?.disable()` on tap/destroy; no discovery to reset; stuck if exchange half-completes | Contributes to "won't retry" |
 
 **THE DISCONNECT (one sentence):** original Quick Share uses the tap as a *non-blocking wake* and lets the file transfer complete over a *concurrently-running Nearby discovery/connect* (so an idle receiver is woken, then found via discovery and connected); Super Drop instead makes the tap a *blocking, all-or-nothing NFC exchange* that only connects if the receiver hands back a Wi-Fi-LAN tag during the 2.5 s re-poll — so when the receiver is idle (returns `0000` = wake), ours wakes it but then gives up instead of falling through to discover-and-connect. Secondary divergences (ADVERTISEMENT Le=0x00 vs 0xFF; hhww missing localEndpointId+endpointInfo; no BT-Classic endpoint) would also block the case where the receiver IS already advertising.
+
+## VERIFIED 2026-06-10 — QS reader is ONE-SHOT (no re-poll); + the one remaining gap for a 110% fix
+- `djkb.c(Tag)` (GMS): opens IsoDep → `djvh.d()` SELECT → iterates the registered services and sends **ONE**
+  ADVERTISEMENT per service (`djvh.b`), tracking a "already read advertisement for service %s" set to AVOID
+  re-reading. On an empty/failure response (`djvb.d()`=true, the 0000 wake) it does NOT re-poll the NFC — it
+  abandons NFC; the woken receiver's transfer completes over the SEPARATE Nearby discovery. So QS = one-shot
+  wake. Our `SuperDropTapReader` does a 2.5s/11-attempt re-poll loop = divergent (waits on NFC vs hands off).
+- User CONFIRMED: the underlying Super Drop↔QS transfer ALWAYS worked since the beginning — do NOT touch it;
+  only the NFC tap is broken. This RESOLVES the prior make-or-break unknown (transfer interop works).
+- Our app ALREADY has a safe "wake→watch discovery→auto-connect, prefer Wi-Fi-LAN" pattern: `onQrPeersResolved`
+  / `chooseQrMatch` (the QR-link share path). The NFC tap fix would mirror it.
+- ⚠️ THE ONE THING NOT YET 110%: how the QS sender IDENTIFIES the specific woken receiver to auto-connect to,
+  since the 0000 wake returns NO endpointId. Candidate (strong, not fully pinned): the woken receiver
+  advertises FastInit BLE (FE2C/FC128E) which the SENDER (scanning FastInit) detects = proximity correlation.
+  The QR path identifies by a QR key; the NFC tap has no such key. Until this is pinned, an auto-connect to
+  "the QS peer that appears after the tap" is a heuristic (safe for the common single-tap case, unproven vs QS).
+- ⇒ NOT implementing yet (per user's 110% bar): diagnosis + architecture are verified; the woken-receiver
+  identification correlation is the single unpinned link. Options: (a) pin it from the decompile; (b) ship a
+  bounded/observable heuristic + device-verify.
