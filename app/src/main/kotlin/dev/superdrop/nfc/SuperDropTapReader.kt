@@ -113,7 +113,13 @@ public class SuperDropTapReader(
     @Suppress("ReturnCount")
     private fun exchange(isoDep: IsoDep): TappedPeer? {
         // 1. SELECT the Quick Share advertising application.
-        val selectResp = isoDep.transceive(buildSelectApdu())
+        val selectApdu = buildSelectApdu()
+        val selectResp = isoDep.transceive(selectApdu)
+        // DIAG (instrumentation-only, Round-2): log the exact SELECT bytes both ways
+        // so we can see the real HCE's verdict (90 00 vs error SW) — readAdvertisement
+        // previously logged only response SIZE, which could not distinguish an
+        // accepted-but-empty `djvb.a()` from a rejection. No behavior change.
+        DiagnosticLog.w(TAG, "SELECT apdu=${hex(selectApdu)} resp=${hex(selectResp)}")
         if (!endsWithOk(selectResp)) {
             DiagnosticLog.w(TAG, "SELECT not OK (${selectResp.size}B)")
             return null
@@ -136,11 +142,26 @@ public class SuperDropTapReader(
                 QuickShareNfcCodec.HhwwRequest(serviceId = NearbyServiceId.VALUE),
             )
         val advApdu = buildAdvertisementApdu(hhww)
-        val deadline = SystemClock.elapsedRealtime() + TAP_RETRY_WINDOW_MS
+        DiagnosticLog.w(TAG, "ADV apdu=${hex(advApdu)}")
+        val startMs = SystemClock.elapsedRealtime()
+        val deadline = startMs + TAP_RETRY_WINDOW_MS
         var attempt = 0
         while (true) {
             attempt++
-            readAdvertisement(isoDep, advApdu, attempt)?.let { return it }
+            // DIAG: log the exact attempt + elapsed at which the tag is lost, so we
+            // can see WHEN (relative to firing the wake on attempt 1) the receiver's
+            // ISO-DEP link drops vs the re-poll window. Rethrow so onTag's existing
+            // catch path is unchanged (instrumentation-only).
+            try {
+                readAdvertisement(isoDep, advApdu, attempt, startMs)?.let { return it }
+            } catch (e: IOException) {
+                DiagnosticLog.w(
+                    TAG,
+                    "ADVERTISEMENT tag lost on attempt $attempt " +
+                        "(+${SystemClock.elapsedRealtime() - startMs}ms): ${e.message}",
+                )
+                throw e
+            }
             if (SystemClock.elapsedRealtime() >= deadline) {
                 DiagnosticLog.w(
                     TAG,
@@ -168,10 +189,17 @@ public class SuperDropTapReader(
         isoDep: IsoDep,
         advApdu: ByteArray,
         attempt: Int,
+        startMs: Long,
     ): TappedPeer? {
         val advResp = isoDep.transceive(advApdu)
         if (!endsWithOk(advResp) || advResp.size <= STATUS_LEN) {
-            DiagnosticLog.w(TAG, "ADVERTISEMENT empty/not-OK (attempt $attempt, ${advResp.size}B)")
+            // DIAG: log the FULL response bytes (not just size) + elapsed, so the
+            // empty `djvb.a()` (error trailer, wake fired) is distinguishable from a
+            // `90 00` accepted-but-empty and we can time how long the wake takes.
+            DiagnosticLog.w(
+                TAG,
+                "ADVERTISEMENT empty/not-OK attempt=$attempt resp=${hex(advResp)} (+${SystemClock.elapsedRealtime() - startMs}ms)",
+            )
             return null
         }
         val body = advResp.copyOfRange(0, advResp.size - STATUS_LEN)
@@ -239,6 +267,22 @@ public class SuperDropTapReader(
     private companion object {
         private const val TAG = "SuperDropTapReader"
         private const val STATUS_LEN = 2
+
+        /** Max bytes hex-dumped per diagnostic line (keeps uploads bounded). */
+        private const val HEX_DUMP_MAX = 80
+
+        /**
+         * `hex` — bounded uppercase hex dump of an APDU / response for the NFC-tap
+         * diagnostics (Round-2 instrumentation). Truncates past [HEX_DUMP_MAX] bytes
+         * with a `…(NB)` suffix so a stray large frame can't bloat the upload.
+         */
+        private fun hex(bytes: ByteArray): String {
+            val n = minOf(bytes.size, HEX_DUMP_MAX)
+            val sb = StringBuilder(n * 2 + 8)
+            for (i in 0 until n) sb.append("%02X".format(bytes[i].toInt() and 0xFF))
+            if (bytes.size > HEX_DUMP_MAX) sb.append("…(${bytes.size}B)")
+            return sb.toString()
+        }
 
         /**
          * How long to keep re-sending the ADVERTISEMENT on one sustained tap

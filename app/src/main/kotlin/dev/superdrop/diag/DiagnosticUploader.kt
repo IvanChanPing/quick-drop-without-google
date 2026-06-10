@@ -45,9 +45,14 @@ import java.nio.charset.StandardCharsets
 public object DiagnosticUploader {
     /**
      * Ephemeral cloudflared collector endpoint (POST body = recent diagnostics).
-     * Re-bake if the tunnel restarts. Verified reachable 2026-06-09.
+     * Re-bake if the tunnel restarts. Re-baked 2026-06-10 for the Round-2
+     * NFC-tap-to-Quick-Share byte trace (SuperDropTapReader logs SELECT/ADV
+     * response bytes + tag-loss timing); collector = /root/nfc-diag/collector.py
+     * on the dev box behind this quick tunnel. NOTE: the on-device
+     * shake-to-bug-report (BugReportFlowSupport) captures the SAME DiagnosticLog
+     * ring in a ZIP with no network dependency — use that if the tunnel is down.
      */
-    private const val COLLECTOR_URL = "https://worcester-jack-britney-daniel.trycloudflare.com/"
+    private const val COLLECTOR_URL = "https://missing-advocate-wing-programmer.trycloudflare.com/"
 
     private const val CONNECT_TIMEOUT_MS = 10_000
     private const val READ_TIMEOUT_MS = 15_000

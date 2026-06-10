@@ -1,3 +1,42 @@
+## [2026-06-10] Round-2 trace is DECISIVE — overturns the re-poll hypothesis; collector revived for follow-up
+Resumed the session that hit its limit mid-investigation. The Round-2 device trace was already captured
+(`/root/nfc-diag/collector.log`, sender = CPH2515 / Android 14, receiver = real Quick Share, rotating hidden
+endpoints `143F→21UX→MGJ6→46ZU` @ `192.168.1.139:53601`):
+- `SELECT … resp=9000` ✓ — our SELECT of AID `F00000FE2C` is accepted.
+- **`ADVERTISEMENT … resp=0000` on ALL 11 re-poll attempts** (+22ms → +2754ms) AND again on later taps. Our APDU
+  `800100000F0A0D4E656172627953686172696E6700` parses cleanly (byte-perfect). The receiver returned the 2-byte
+  not-advertising trailer `00 00` every time and **never woke** (user: "wouldn't let me tap again until I turned
+  real Quick Share off and on, then it did the same").
+- **Conclusion (verified, not hypothesis):** the wall is NOT timing and NOT our bytes — re-polling longer changes
+  nothing. The real QS receiver simply never registers an NFC advertisement for our tap, so `djvf.g("NearbySharing")`
+  stays null and `djvf.f()` (the wake) is a no-op because no wake `PendingIntent` was registered (`djvf.b` empty).
+  Investigation now: find the callers of `djvf.i()` (register wake PI) and `djvf.h()` (register advertisement) in the
+  full GMS dex to learn WHAT receiver state registers them — i.e. whether a cold/visible-but-idle QS is reachable by
+  our tap at all, or only one already on the receive screen. (baksmali of all 15 GMS dexes in progress.)
+- **`DiagnosticUploader.kt`:** re-baked the (again-dead) `COLLECTOR_URL` to a fresh live quick tunnel and revived
+  `collector.py` (127.0.0.1:7911) for any follow-up trace; documented the on-device shake-to-bug-report as the
+  network-free fallback. Rebuilt `super-drop-debug.apk`.
+- STATUS: analysis/RE step; no reader behavior change this entry. Device test not required until the registration
+  path is mapped. **Files:** `app/.../diag/DiagnosticUploader.kt`, `super-drop-debug.apk`, `CHANGELOG.md`.
+
+## [2026-06-09] NFC send-to-Quick-Share diagnosis: re-baked diagnostics collector + reader byte/timing instrumentation
+Investigating why **Super Drop sender → tap → native Google Quick Share** fails (first tap "opens Quick Share
+but never sends", then stuck). Decompiled GMS 26.18.33 (jadx) and verified the real NFC protocol:
+`NfcAdvertisingChimeraService.processCommandApdu` handles SELECT/ADVERTISEMENT(80 01)/CONNECT(80 02)/DATA(80 03);
+on ADVERTISEMENT for an idle receiver `djvf.g(svc)==null` → **`djvf.f(svc)` fires a PendingIntent that WAKES Quick
+Share into advertising** → a re-polled ADVERTISEMENT then returns the `hhwv` tag. Our Round-1 device trace shows our
+reader DID trigger the wake but lost the ISO-DEP link ("Tag was lost") at ~1s before the woken QS re-advertised.
+Full analysis: `docs/NFC_SEND_TO_QUICKSHARE_DIAGNOSIS.md`.
+- **`DiagnosticUploader.kt`:** re-baked the dead `COLLECTOR_URL` to a live quick tunnel (collector =
+  `/root/nfc-diag/collector.py` on the dev box) so on-device NFC-tap traces upload without adb.
+- **`SuperDropTapReader.kt`:** instrumentation-ONLY (no behavior change) — logs the exact SELECT + ADVERTISEMENT
+  request/response BYTES (hex), per-attempt elapsed, and the precise tag-loss attempt+timing; added a bounded
+  `hex()` helper. Round-1 logged only response SIZE, which couldn't distinguish an accepted-but-empty `90 00` from
+  an error SW. This Round-2 build measures the real bytes + wake timing before any reader fix.
+- STATUS: `:app:assembleDebug` SUCCESSFUL; `super-drop-debug.apk` refreshed. Diagnostic instrument, device test pending.
+- **Files:** `app/.../diag/DiagnosticUploader.kt`, `app/.../nfc/SuperDropTapReader.kt`,
+  `docs/NFC_SEND_TO_QUICKSHARE_DIAGNOSIS.md`, `super-drop-debug.apk`.
+
 ## [2026-06-09] Two restore modes: Quick Share = 2-min timeout; our own apps = 5s heartbeat resetting a 20s timer
 Per user, the helper now does TWO things by source:
 1. **Click Share (Quick Share, accessibility-detected):** `LEFT_GRACE_MS` renamed `LEAVE_TIMEOUT_MS` and set to
