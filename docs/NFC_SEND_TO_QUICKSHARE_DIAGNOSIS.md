@@ -4,8 +4,12 @@
 > turn; append a dated entry on every discovery. A fresh session should resume from here + the memory index.
 
 ## CURRENT STATE / NEXT STEP   (updated 2026-06-10 15:1x)
-- **GOAL:** Super Drop, as the NFC reader-mode SENDER, taps a phone running stock Google Quick Share and
-  sends a file over QS's native Wi-Fi-LAN path. (Super Drop↔Super Drop out of scope.)
+- **⛔ SCOPE CORRECTION (user, 2026-06-10, emphatic):** the Super Drop app ALREADY worked perfectly with
+  Quick Share — DO NOT rewrite it or change what it did. The ONLY broken thing is **the NFC tap initiating a
+  share**, and that is the ONLY thing to fix. FORBIDDEN: building new behaviors (e.g. a BLE FastInitiation
+  advertiser while the share sheet is open — REJECTED), and analyzing Super Drop / bada to engineer the fix.
+  ALLOWED: analyze **Quick Share only** to learn how its NFC tap initiates a share, then make our tap do that.
+- **GOAL (narrowed):** make the NFC tap initiate the share. Learn the mechanism purely from Quick Share.
 - **DONE (verified this session):**
   - Round-2 device trace captured (`/root/nfc-diag/collector.log`): SELECT=`9000` OK, ADVERTISEMENT=`0000`
     on all 11 re-poll attempts + later taps. Re-poll hypothesis OVERTURNED; not a byte bug, not timing.
@@ -432,3 +436,32 @@ inbound Nearby connection while idle/visible; or (B) require the receiver to be 
 the tag path; or (C) accept that tap-to-send-to-a-QS-receiver is a QS design limitation. NEXT: verify (A) —
 can we dial `192.168.1.139:53601` and complete a Nearby handshake to a visible-but-idle QS receiver?
 </content>
+
+## QUICK-SHARE TAP-INITIATION MECHANISM (2026-06-10, Quick Share code ONLY — per user scope)
+Verified from GMS 26.18.33 (`classes8/dnzf,dnzh,dnzp`):
+- QS sender arms NFC reader mode: `dnzf` → `NfcAdapter.enableReaderMode` while the share screen is up.
+- On tap, `dnzh.onTagDiscovered(Tag)` → `dnzp.a(tag)` builds Intent(`android.nfc.action.TAG_DISCOVERED`,
+  `setPackage("com.google.android.gms")`, extra `android.nfc.extra.TAG`=tag) → `sendBroadcast`. It hands the
+  raw tapped Tag to GMS; GMS internally runs the `F00000FE2C` ISO-DEP exchange + starts the connection.
+- ⇒ QS "tap initiates a share" = sender reads the tapped phone's NFC advertisement tag and connects to the
+  endpoint in it. Precondition (verified earlier): the tapped phone must be PRESENTING that tag (registered
+  only via NFC-enabled startDiscovery). No tag presented → nothing to initiate.
+- STILL TO LOCK (from user): the exact tap scenario (who taps whom; which device runs what) — determines
+  which QS state must present the tag, hence the exact fix. Then map that remaining piece (Quick Share only).
+
+### ROLE ASSIGNMENT VERIFIED (2026-06-10, Quick Share only) — scenario: Super Drop(send) → tap → native QS(receive)
+- QS SENDER surface = `dpst` (handles `ShareTarget`/attachments/onSelectFilesRequest) — this is the share sheet.
+  It ARMS NFC reader mode (`dpst` → `dnzp.c` → `dnzn`/`dnzf` enableReaderMode). So **the QS sender is the
+  reader/initiator** — exactly the role Super Drop plays. ✓ (Our reader side matches QS's design.)
+- On tap, the sender does NOT do the exchange itself; `dnzh.onTagDiscovered` → `dnzp.a(tag)` builds
+  Intent(TAG_DISCOVERED, setPackage gms, extra TAG) → sendBroadcast → GMS runs the F00000FE2C exchange.
+- ⇒ The tap reads the TAPPED phone's NFC advertisement tag. That tag is registered only while the tapped phone
+  runs NFC-enabled discovery (`djvf.h ← startNfcAdvertising ← startDiscovery`, NFC in DiscoveryOptions.o + flag
+  `ifif.aC()`). The QS receive surface (`ReceiveSurfaceChimeraService`) is about DeviceVisibility/advertising +
+  Wi-Fi connect; NOT yet proven to register an NFC advertisement.
+- **LINCHPIN (unresolved): which QS receiver state actually PRESENTS the NFC tag** (idle vs on the "Receive"/
+  visible screen vs on QS's own send screen). The Round-2 trace got `0000` because the receiver was not
+  presenting a tag (user: "wasn't receiving"). Cleanest resolution = on-device observation with our EXISTING
+  instrumented reader (logs SELECT/ADV bytes): tap the QS phone in each state, see which returns a real tag.
+- NOTE: our reader's ADVERTISEMENT is accepted by the HCE (it reached the g==null lookup branch), so no APDU
+  bug is evident — the gap is the receiver not advertising, i.e. its STATE, not our bytes.
