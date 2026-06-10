@@ -584,3 +584,19 @@ The TAP itself does NOT grant no-confirm. ⇒ a non-Google-account sender (Super
 
 ### ⇒ THE ESSENCE TO REPLICATE
 The NFC tap in original Quick Share is a NON-BLOCKING **wake + advertise-self** gesture, fully DECOUPLED from the transfer. The transfer always rides the normal Nearby Connections discovery/connect (Wi-Fi/BLE), which the sender runs concurrently. To "do what Quick Share did": (1) tap arms a non-blocking reader; (2) on tap, hand the tag to the connection layer AND keep the normal discovery running so the woken/advertising receiver is found and connected over Wi-Fi/BLE — do NOT block or dead-end on the NFC ADVERTISEMENT re-poll; (3) match the real APDU framing (SELECT no-Le; ADVERTISEMENT Le=0xFF; hhww with localEndpointId+endpointInfo); (4) reset reader/discovery state after each attempt; (5) accept that a confirm will appear (no self-share for a non-account sender).
+
+## ★ OURS vs ORIGINAL QUICK SHARE — THE DISCONNECT (research comparison, 2026-06-10)
+Our impl read: `app/.../nfc/SuperDropTapReader.kt` + `core-protocol/.../nfc/QuickShareNfcCodec.kt` (verified this session).
+
+| Aspect | Original Quick Share (GMS, verified) | Super Drop (ours, verified) | Impact |
+|---|---|---|---|
+| **Tap architecture** | Reader callback `dnzh` is **NON-BLOCKING**: rebroadcasts the Tag and returns; the connection runs ASYNC in the Nearby engine | `onTag` **BLOCKS** on the binder thread doing a 2.5s ADVERTISEMENT re-poll loop; only calls `onPeerTapped` if it gets a tag | **CORE** |
+| **Coupling to transfer** | Tap is DECOUPLED — transfer rides the **concurrent Nearby discovery/connect**; the tag is just one of several endpoints fed in; idle receiver is found via discovery AFTER the wake | Tap is the **SOLE** path: if the NFC re-poll returns `0000` (idle receiver waking), it returns null → **gives up**, no fall-through to discovery/connect | **CORE — this is why it wakes but never receives** |
+| **Endpoint sources** | Registers NFC endpoint + **BT-Classic** endpoint + Wi-Fi-LAN caps; connection layer picks medium by priority | Requires the hhwv tag to carry a **Wi-Fi-LAN rxAdv**, else returns null; no BT-Classic path, no discovery fallback | Major |
+| **SELECT bytes** | `00 A4 04 00 05 F00000FE2C` (no Le) | `00 A4 04 00 05 F00000FE2C 00` (trailing Le=00) | Minor (likely tolerated) |
+| **ADVERTISEMENT Le** | `... FF` (Le=0xFF) | `... 00` (Le=0x00) | Possible — wrong max-resp length |
+| **hhww fields** | serviceId(#1) + **localEndpointId(#2)** + **endpointInfo(#3)** — sender advertises ITSELF | serviceId(#1) **only** (codec supports field2/3 but reader passes null) | Major — receiver can't learn the sender's endpoint to connect back (HCE g!=null branch uses #2/#3 via djvf.d) |
+| **Reader flags** | `0x181` = NFC-A \| SKIP_NDEF \| NO_PLATFORM_SOUNDS; presence 100ms | NFC-A \| **NFC-B** \| SKIP_NDEF; presence null(default) | Minor |
+| **Teardown** | Reader auto-disposed (Compose); discovery/advertising cleared by `dfhl` on last client | `tapReader?.disable()` on tap/destroy; no discovery to reset; stuck if exchange half-completes | Contributes to "won't retry" |
+
+**THE DISCONNECT (one sentence):** original Quick Share uses the tap as a *non-blocking wake* and lets the file transfer complete over a *concurrently-running Nearby discovery/connect* (so an idle receiver is woken, then found via discovery and connected); Super Drop instead makes the tap a *blocking, all-or-nothing NFC exchange* that only connects if the receiver hands back a Wi-Fi-LAN tag during the 2.5 s re-poll — so when the receiver is idle (returns `0000` = wake), ours wakes it but then gives up instead of falling through to discover-and-connect. Secondary divergences (ADVERTISEMENT Le=0x00 vs 0xFF; hhww missing localEndpointId+endpointInfo; no BT-Classic endpoint) would also block the case where the receiver IS already advertising.
