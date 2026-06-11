@@ -14,11 +14,13 @@ import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
+import android.view.ViewGroup
 import android.view.WindowInsets
+import android.view.animation.DecelerateInterpolator
 import android.view.animation.LinearInterpolator
 import android.view.animation.OvershootInterpolator
 import android.widget.LinearLayout
-import androidx.core.view.animation.PathInterpolatorCompat
+import androidx.core.view.doOnLayout
 
 /**
  * Kotlin port of the OShare bottom-sheet card container (see
@@ -47,9 +49,10 @@ public class DraggableSheetLayout
         private var onDismiss: (() -> Unit)? = null
 
         /**
-         * Optional content view that is counter-scaled during the entrance bounce
-         * so ONLY the sheet's rounded background stretches and the content stays
-         * put. Null (default) = the whole sheet (background + content) bounces.
+         * Optional content view that is counter-scaled (about its own centre)
+         * during the entrance bounce so it does NOT stretch but still RIDES with
+         * the card; the rounded background does the visible stretching. Null
+         * (default) = the whole sheet (background + content) scales together.
          * Set via [setBounceContent].
          */
         private var bounceContent: View? = null
@@ -73,45 +76,51 @@ public class DraggableSheetLayout
         }
 
         /**
-         * Entrance animation. Two stages, by design:
+         * Entrance animation. Two stages that OVERLAP so they read as one motion:
          *  1. The WHOLE sheet slides up from below the bottom of the screen and
-         *     LANDS cleanly — iOS-style ease-out ([PathInterpolatorCompat], variable
-         *     speed), NO whole-card overshoot (this is the change from the old
-         *     [OvershootInterpolator] slide, which bounced the entire card up and
-         *     down past its resting spot).
-         *  2. Anchored at the sheet's BOTTOM edge, only the rounded BACKGROUND then
-         *     stretches up and snaps back (the content is counter-scaled to stay
-         *     put). A smooth single hump — no wobble, not jerky. See
-         *     [playTopElasticStretch].
+         *     LANDS cleanly — [DecelerateInterpolator] (variable speed), NO
+         *     whole-card overshoot.
+         *  2. Starting just BEFORE the slide ends (so the bounce continues the
+         *     slide's momentum rather than pausing), the card's rounded BACKGROUND
+         *     stretches up at the top and snaps back — one smooth hump, no wobble.
+         *     The content rides with it but does not stretch (see [bounceContent]).
+         *     See [playTopElasticStretch].
          */
         public fun playEntrance(onComplete: (() -> Unit)? = null) {
-            post {
-                // Start fully BELOW the bottom of the screen (own height + bottom
-                // padding/inset + a margin) so it visibly slides up into place.
-                translationY = (height + paddingBottom + ENTRANCE_OFFSET_PX).toFloat()
+            // doOnLayout guarantees a valid measured [height] before we compute the
+            // start offset. A bare post{} can run while height is still 0, which made
+            // the sheet start only a few px low and look like it FADED in near its
+            // resting spot instead of sliding up from the bottom of the screen.
+            doOnLayout {
+                val marginBottom = (layoutParams as? ViewGroup.MarginLayoutParams)?.bottomMargin ?: 0
+                // Whole sheet starts just below the bottom edge of the screen.
+                translationY = (height + paddingBottom + marginBottom + ENTRANCE_OFFSET_PX).toFloat()
                 scaleY = 1f
                 animate()
                     .translationY(0f)
                     .setDuration(ENTRANCE_DURATION_MS)
-                    // iOS-style ease-out: fast start, long gentle settle (variable
-                    // speed) rather than a constant glide.
-                    .setInterpolator(PathInterpolatorCompat.create(0.16f, 1f, 0.3f, 1f))
-                    .withEndAction { playTopElasticStretch(onComplete) }
+                    .setInterpolator(DecelerateInterpolator(ENTRANCE_DECEL))
                     .start()
+                // Kick the top stretch BEFORE the slide finishes (overlap its tail)
+                // so the bounce flows continuously out of the slide's momentum — not
+                // "slide stops, pause, then bounce". Negative/short delays clamp to 0.
+                postDelayed(
+                    { playTopElasticStretch(onComplete) },
+                    (ENTRANCE_DURATION_MS - BOUNCE_OVERLAP_MS).coerceAtLeast(0L),
+                )
             }
         }
 
         /**
-         * Stage 2 of the entrance: a bottom-anchored stretch of the TOP edge that
-         * affects ONLY the sheet's rounded background. [pivotY] is the sheet's
-         * bottom so scaling Y leaves the bottom planted and the top extends up,
-         * then returns to rest via [topStretchProfile] — a SINGLE smooth hump
-         * (extend + snap back, NO wobble / no dip below rest), with zero velocity
-         * at both ends so the hand-off from the slide and the settle are not jerky.
-         * When [bounceContent] is set, it is counter-scaled by the inverse about
-         * the SAME bottom pivot, so the content (icons/text) does NOT move — only
-         * the card surface stretches. Tune with [ENTRANCE_STRETCH] (extend amount)
-         * and [STRETCH_DURATION_MS] (shorter = snappier). Resets scales on end.
+         * Stage 2 of the entrance: a bottom-anchored stretch of the card's rounded
+         * BACKGROUND. [pivotY] is the sheet's bottom so the bottom stays planted and
+         * the TOP extends up, then returns via [topStretchProfile] — a SINGLE smooth
+         * hump (extend + snap back, NO wobble), started overlapping the slide so it
+         * feels continuous. When [bounceContent] is set it is counter-scaled by the
+         * inverse about its OWN CENTRE: that cancels the STRETCH (content keeps its
+         * size, doesn't distort) while still letting the content RIDE up/down with
+         * the bounce (it stays "attached" to the card). Tune with [ENTRANCE_STRETCH]
+         * and [STRETCH_DURATION_MS]. Resets scales on end.
          */
         private fun playTopElasticStretch(onComplete: (() -> Unit)? = null) {
             pivotY = height.toFloat() // bottom edge = anchor; top is free to stretch
@@ -122,12 +131,12 @@ public class DraggableSheetLayout
                 addUpdateListener { a ->
                     val k = 1f + ENTRANCE_STRETCH * topStretchProfile(a.animatedFraction)
                     scaleY = k
-                    // Counter-scale the content about the same screen point as the
-                    // sheet's bottom pivot (content-local: its own height + the
-                    // sheet's bottom padding). k * (1/k) about one point = identity,
-                    // so the content stays put while the background stretches.
+                    // Inverse-scale about the content's own centre: removes the
+                    // vertical stretch (no distortion) but, because the parent scale
+                    // still moves the content's position, it rides up/down with the
+                    // bounce — "moves with it but doesn't stretch".
                     content?.let {
-                        it.pivotY = it.height.toFloat() + paddingBottom
+                        it.pivotY = it.height.toFloat() / 2f
                         it.scaleY = 1f / k
                     }
                 }
@@ -235,18 +244,24 @@ public class DraggableSheetLayout
         public companion object {
             private const val ENTRANCE_OFFSET_PX = 80
 
-            // Stage 1 — whole-sheet slide-up from below the screen, iOS-style
-            // ease-out (variable speed, set in [playEntrance]); lands clean.
+            // Stage 1 — whole-sheet slide-up from below the screen, decelerating to
+            // a clean landing (variable speed; the gentler decelerate the user
+            // preferred over a sharper ease).
             private const val ENTRANCE_DURATION_MS = 300L
+            private const val ENTRANCE_DECEL = 1.6f
 
-            // Stage 2 — bottom-anchored stretch of ONLY the card surface (content
-            // counter-scaled): extends up ONCE and snaps back, NO wobble / no dip
-            // below rest (a single smooth raised-cosine hump with zero velocity at
-            // both ends so it is not jerky). ENTRANCE_STRETCH = peak scaleY delta
-            // (~4.5% top stretch); raise for a bigger extend. STRETCH_DURATION_MS =
+            // Stage 2 — bottom-anchored stretch of the card's rounded BACKGROUND:
+            // the top extends up ONCE and snaps back, NO wobble / no dip below rest
+            // (a single smooth raised-cosine hump). The content is counter-scaled
+            // about its own centre so it RIDES with the bounce but does NOT stretch.
+            // ENTRANCE_STRETCH = peak scaleY delta (~4.5%); STRETCH_DURATION_MS =
             // how long the extend+snap takes (shorter = snappier / feels more real).
             private const val ENTRANCE_STRETCH = 0.045f
             private const val STRETCH_DURATION_MS = 260L
+
+            // How long BEFORE the slide ends to kick the bounce, so it flows out of
+            // the slide's momentum instead of "slide stops, pause, then bounce".
+            private const val BOUNCE_OVERLAP_MS = 90L
 
             /** Total wall-time of the entrance (slide + top stretch). Callers use
              *  it to time a follow-on reveal (e.g. delaying the peer icons until the

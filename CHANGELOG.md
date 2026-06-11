@@ -1,3 +1,23 @@
+## [2026-06-11] Send sheet entrance: fix off-screen start, ride-not-stretch content, continuous timing; QR text trimmed
+Round of corrections per user:
+1. **Actually slides from off-screen** — the start offset was computed in a `post{}` that could run while
+   `height` was still 0, so it looked like a fade-in from near the resting spot. Moved to `doOnLayout`
+   (valid height) and the start now adds the sheet's bottom margin too → it genuinely starts below the
+   screen and slides up.
+2. **Slide speed restored** — reverted the iOS `PathInterpolatorCompat` back to `DecelerateInterpolator`
+   (the previous, gentler feel the user preferred).
+3. **Content rides, doesn't stretch** — the counter-scale pivot moved from the sheet's bottom (which pinned
+   content perfectly still, looked detached) to the content's OWN CENTRE. This cancels the vertical stretch
+   but keeps the parent-scale translation, so the icons/text move WITH the card without distorting.
+4. **Continuous bounce timing** — the bounce was chained on the slide's end, giving a "slide stops, pause,
+   then bounce" feel. It now starts `BOUNCE_OVERLAP_MS` (90ms) BEFORE the slide ends so it flows out of the
+   slide's momentum.
+5. **QR panel text** — removed the long `show_qr_nfc_hint` paragraph (it forced the panel to scroll) and the
+   `send_qr_nfc_hint` TextView; folded a few words into the existing intro instead: "…can receive the files,
+   or tap to share with an iPhone."
+- **Files:** `app/.../ui/sheet/DraggableSheetLayout.kt`, `app/.../res/layout/activity_send.xml`,
+  `app/.../res/values/strings.xml`, `SUPERDROP-CHANGES.txt`. Build pending; on-device feel UNVERIFIED.
+
 ## [2026-06-11] Send sheet entrance: background-only bounce, iOS easing, smoother + faster (per user)
 Further feedback on the entrance ("only the background should bounce, content shouldn't bob"; "variable
 speed like iPhone"; "slide from below the screen"; "felt jerky"; "took too long to feel real"):
