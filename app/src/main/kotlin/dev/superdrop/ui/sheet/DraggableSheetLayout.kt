@@ -153,33 +153,31 @@ public class DraggableSheetLayout
                         "animDurScale=${currentAnimatorDurationScale()} animatorsEnabled=${animatorsEnabled()}",
                 )
                 if (doSlide) {
-                    // Snap to a PRECISE just-below-the-edge start (replacing the coarse
-                    // full-screen offset from prepareOffscreen — both off-screen, so no
-                    // visible jump), then slide up to rest and decelerate into place.
+                    // Entrance = rise + GROW: the card starts just below the bottom edge
+                    // at ENTRANCE_START_SCALE of its size and slides up WHILE expanding to
+                    // full size. The grow is anchored at the bottom-centre (pivotX = mid,
+                    // pivotY = bottom) so the card "comes up" out of the bottom as it
+                    // expands. Snap to the precise off-screen start first (both off-screen,
+                    // no visible jump). iOS-style variable-speed ease-out (tune SLIDE_EASE_*).
                     translationY = (height + paddingBottom + marginBottom + ENTRANCE_OFFSET_PX).toFloat()
+                    pivotX = width / 2f
+                    pivotY = height.toFloat()
+                    scaleX = ENTRANCE_START_SCALE
+                    scaleY = ENTRANCE_START_SCALE
                     animate()
                         .translationY(0f)
+                        .scaleX(1f)
+                        .scaleY(1f)
                         .setDuration(ENTRANCE_SLIDE_MS)
-                        // iOS-style variable-speed ease-out (cubic bezier): quick to set
-                        // off, then a long smooth deceleration into rest — less mechanical
-                        // than a plain DecelerateInterpolator. Tune via SLIDE_EASE_*.
                         .setInterpolator(
                             PathInterpolator(SLIDE_EASE_X1, SLIDE_EASE_Y1, SLIDE_EASE_X2, SLIDE_EASE_Y2),
                         )
+                        // The top-edge bounce plays once the card reaches full size
+                        // (SEQUENTIAL — the grow and the bounce both drive scaleY, so they
+                        // can't overlap; the hand-off is seamless because both are at
+                        // scaleY = 1 at that instant — "expand to full, then bounce").
+                        .withEndAction { playTopElasticStretch(onComplete) }
                         .start()
-                    // Kick the top-edge bounce BEFORE the slide fully lands so it flows
-                    // OUT of the slide's momentum as ONE continuous motion — not "slide
-                    // finishes, pause, then a separate bounce" (which read as weird). The
-                    // slide is decelerating (slowing into rest) and the raised-cosine
-                    // bounce ramps up from zero, so the two slow phases overlap and blend;
-                    // the bounce's peak lands just after the sheet settles. Tune the feel
-                    // with BOUNCE_OVERLAP_MS (bigger = bounce starts earlier / more
-                    // overlap). Both the slide animator and this postDelayed run on the
-                    // real-time clock, so the overlap is stable.
-                    postDelayed(
-                        { playTopElasticStretch(onComplete) },
-                        (ENTRANCE_SLIDE_MS - BOUNCE_OVERLAP_MS).coerceAtLeast(0L),
-                    )
                 } else {
                     // Not pre-hidden (receive sheet): no slide, just the bounce.
                     postDelayed({ playTopElasticStretch(onComplete) }, WINDOW_SETTLE_MS)
@@ -409,11 +407,11 @@ public class DraggableSheetLayout
             private const val SLIDE_EASE_X2 = 0.5f
             private const val SLIDE_EASE_Y2 = 1f
 
-            // How long BEFORE the slide lands to kick the top-edge bounce so it overlaps
-            // the slide's tail and reads as ONE continuous motion (not "slide ends,
-            // pause, bounce"). Bigger = earlier/more overlap. Kept ~37% of the slide so
-            // the bounce starts in the slide's last third regardless of slide speed.
-            private const val BOUNCE_OVERLAP_MS = 90L
+            // The card grows from this fraction of its size up to full during the
+            // entrance (slide + expand), anchored at the bottom-centre so it "comes up"
+            // out of the bottom as it expands. 0.5 = starts at half size; 1.0 = no grow
+            // (pure slide). Tunable.
+            private const val ENTRANCE_START_SCALE = 0.5f
 
             // Fallback delay before the bounce on the NO-slide path (receive sheet,
             // which never calls prepareOffscreen): a brief settle so the bounce doesn't
@@ -427,7 +425,7 @@ public class DraggableSheetLayout
             // ride up. A fixed dp (not a % of the tall card) so the extend is small +
             // consistent. STRETCH_DURATION_MS = its length.
             private const val ENTRANCE_TOP_EXTEND_DP = 16f
-            private const val STRETCH_DURATION_MS = 260L
+            private const val STRETCH_DURATION_MS = 200L // shortened from 260 (snappier bounce)
 
             // Where the top-stretch hump PEAKS (fraction of STRETCH_DURATION_MS). < 0.5
             // makes it asymmetric: a quick extend up to the peak then a slower elastic

@@ -1,3 +1,17 @@
+## [2026-06-11] Send sheet entrance: slide + GROW-from-half + a shorter bounce
+User idea: "what if the card came up starting at half its size, expanded to full, then played the bounce." Plus:
+shorten the bounce.
+- GROW: the entrance now animates `translationY` + `scaleX` + `scaleY` together — the card starts just below the
+  bottom edge at `ENTRANCE_START_SCALE = 0.5` of its size and slides up WHILE expanding to full size, anchored at the
+  bottom-centre so it "comes up" out of the bottom. `ENTRANCE_START_SCALE` is tunable (1.0 = pure slide, no grow).
+- The top-edge bounce now plays SEQUENTIALLY after the card reaches full size (via `withEndAction`, replacing the
+  earlier pre-land overlap / `BOUNCE_OVERLAP_MS`) — because the grow and the bounce both drive `scaleY` they can't
+  overlap, but the hand-off is seamless (both at scaleY=1 at that instant): "expand to full, then bounce".
+- SHORTER BOUNCE: `STRETCH_DURATION_MS` 260 → 200.
+
+Replaces the slide-only entrance (easy revert if the grow is too much). Receive sheet unaffected (no grow).
+BUILD SUCCESSFUL. Feel UNVERIFIED on-device — user tests. File: DraggableSheetLayout.kt.
+
 ## [2026-06-11] Send sheet entrance: iOS variable-speed slide + a more elastic (less mechanical) bounce
 User feedback: the motion felt too mechanical. Two feel changes (tuning-only, no structural change):
 - SLIDE: replaced `DecelerateInterpolator` with an iOS-style cubic-bezier ease-out via `PathInterpolator` (control
