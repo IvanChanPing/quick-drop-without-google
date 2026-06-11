@@ -74,15 +74,22 @@ FINISHED FEATURES
    receive-routing path is built and pending an on-device check. Full
    reverse-engineered byte map lives in docs/NFC_INTEROP_BYTEMAP.md.
 
-4) Tap an iPhone to share a link
-   Tap your phone with an iPhone (or any phone) and it opens your pairing link in
-   that phone's browser — a simple way to hand off to a device that doesn't run
-   the app.
+4) The QR code button also turns your phone into an NFC tag for iPhones
+   When you open the in-sheet QR code (the "Show QR" button on the send sheet),
+   your phone simultaneously becomes a tappable NFC tag carrying that same pairing
+   link. Tap an iPhone (or any phone) to the back and it opens the link in that
+   phone's browser — a simple way to hand off to a device that doesn't run the app,
+   no QR scanning needed.
 
-   Technical: the phone exposes an NDEF record (an HCE NDEF service) carrying the
-   QR pairing URL. iOS reads NDEF tags without an app and offers to open the URL,
-   so the iPhone lands on the pairing link in Safari. Separate from #3 — this is
-   a plain NDEF URL tag, not the Quick Share AID exchange.
+   Technical: opening the QR panel publishes the freshly generated, single-use
+   pairing URL (the exact link the QR encodes) to an NDEF Host Card Emulation
+   service (SuperDropNdefApduService, AID D2760000850101). iOS reads NDEF tags
+   without an app and offers to open the URL, so the iPhone lands on the pairing
+   link in Safari. The QR button is the trigger: showing the QR sets the live URL
+   and arms the tag; closing the QR / ending the send clears it. Because one NFC
+   radio can't be a reader and a tag at once, opening the QR panel also drops the
+   Quick Share tap reader-mode while the iPhone tag is armed. Separate from #3 —
+   this is a plain NDEF URL tag, not the Quick Share AID exchange.
 
 5) Made the heads-up notification prettier
    Redesigned the incoming-transfer pop-up so the Accept and Decline buttons are

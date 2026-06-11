@@ -1,3 +1,13 @@
+## [2026-06-11] PR breakdown item #4 reframed around the QR-button → iPhone NFC tag (per user, its own PR)
+User wants the "QR code button produces the NFC tag for iPhone" change captured as its own separate PR.
+It already is item #4; sharpened the copy so the QR-button coupling is explicit (it was described only as
+"the phone exposes an NDEF record"). Grounded in verified code: `SendActivity.onShowQrClicked()` sets
+`NfcLinkHolder.currentUrl = url` (the same single-use QR link) which `SuperDropNdefApduService`
+(AID D2760000850101) serves as an NDEF tag; opening the QR panel also drops the tap reader-mode (one NFC
+radio can't be reader + tag at once); cleared when the QR session ends. Title changed to "The QR code
+button also turns your phone into an NFC tag for iPhones".
+- **Files:** `SUPERDROP-CHANGES.txt`. (Docs only — no code/APK change.)
+
 ## [2026-06-11] Rewrote PR breakdown item #3 "Tap to share" as the working feature only
 Per user: the PR copy should describe the FINISHED working feature, not "here was the non-working
 version + a fix on top" (a reviewer shouldn't implement the bad version then patch it). Rewrote item #3
