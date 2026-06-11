@@ -652,3 +652,16 @@ Our impl read: `app/.../nfc/SuperDropTapReader.kt` + `core-protocol/.../nfc/Quic
 7. VERIFY: device test = tap idle QS phone (BT+location+visible), watch it open + receive (or confirm). I cannot
    drive it; hand the user a precise test. APDU framing fixes (Le=0xFF, hhww+localEndpointId+endpointInfo) for
    the real-tag path included.
+
+## ⛔ CORRECTION (2026-06-11) — my earlier "Super Drop emits no BLE advertisement" was WRONG
+The DECISIVE-section claim "we do NOT emit any BLE advertisement" is FALSE — it was grepped only over `app/`.
+Super Drop HAS a full Quick Share interop stack (consistent with user: "the app worked perfectly with QS"):
+- `discovery-android/.../ble/BleQuickShareAdvertiser.kt`, `core-protocol/.../endpoint/BleServiceData.kt` — emits
+  the BLE FastInitiation advertisement (FE2C / FC128E), endpointId threaded as `secret_id_hash` (type=NOTIFY).
+- `app/.../send/SendActivity.kt:237 startSenderGattServer()` + `discovery-android/.../bootstrap/BleGattInitialControlServer.kt` — GATT bootstrap.
+- `discovery-android/.../NearbyPeerDiscovery.kt` — discovery; `core-protocol/.../connection/OutboundConnectionDriver.kt` — the transfer (works).
+⇒ So the send sheet ALREADY emits FastInit + runs discovery + can connect/transfer to QS. The ONLY gap is the NFC
+tap not triggering that existing flow on a 0000 wake. The whole earlier "build a FastInit emitter" detour was
+doubly wrong (we already have it). Pausing implementation to READ the existing FastInit/GATT/discovery/connect
+path before wiring the tap into it (per the 110% bar). NEXT (step 2, corrected): read BleQuickShareAdvertiser +
+NearbyPeerDiscovery + OutboundConnectionDriver + onPeerSelected to learn exactly what the tap must hand off to.
