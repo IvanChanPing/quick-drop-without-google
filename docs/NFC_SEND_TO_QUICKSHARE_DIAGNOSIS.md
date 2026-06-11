@@ -36,10 +36,11 @@
   also turns your phone into an NFC tag for iPhones" (per user, its own separate PR). Grounded:
   `SendActivity.onShowQrClicked()` line 1739 sets `NfcLinkHolder.currentUrl`; `SuperDropNdefApduService`
   (AID D2760000850101) serves it; opening the QR drops tap reader-mode (one radio). User confirmed #5
-  stays as just the recolored style (other 2 styles not working). OPEN (await user): whether to fold the
-  peer-name-not-IP fix (096673f — nameless/stock peers show "Quick Share device" not a raw IP) into #1,
-  and whether to add a debug-only developer-diagnostics note (auto-upload + toggle currently excluded as
-  debug scaffolding).
+  stays as just the recolored style (other 2 styles not working). RESOLVED 2026-06-11 (commit `b1315e6`):
+  the peer-name-not-IP fix (096673f) was added as its OWN finished item #9 ("Cleaner device names in the
+  send picker"); groundwork renumbered 9–13 → 10–14 (finished #1–#8 unchanged). Debug diagnostics
+  (auto-upload + toggle) kept OUT of the PR copy (debug-only, per user). SUPERDROP-CHANGES.txt = 14 items,
+  all synced to verified code.
 - **NEXT STEP (open, low-priority):** (1) the tap fix worked but was reported intermittent once — if it
   recurs, read the auto-uploaded trace (`reason=nfc-send-tap`/`send-leave`) to see which step stalls (SELECT /
   ADV / discovery / connect). (2) Pin the BT-pair-request source when the user can say which phone + name.
