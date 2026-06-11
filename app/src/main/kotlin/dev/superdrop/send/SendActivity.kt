@@ -258,7 +258,7 @@ public class SendActivity : AppCompatActivity() {
         // onResume/onPause + the QR open/close handlers so it is active
         // only while the send sheet is up and the iPhone-link QR panel
         // (which uses the NDEF HCE) is closed.
-        tapReader = SuperDropTapReader(this, ::onNfcPeerTapped, ::onNfcTapWake)
+        tapReader = SuperDropTapReader(this, ::onNfcPeerTapped, ::onNfcTapWake, ::onNfcTapDiagnostic)
 
         binding.sendCancelButton.setOnClickListener { onCancelClicked() }
         binding.sendDoneButton.setOnClickListener { finish() }
@@ -436,10 +436,29 @@ public class SendActivity : AppCompatActivity() {
     }
 
     /**
+     * Per-tap outcome from [SuperDropTapReader] (resolved / woke / failed + raw bytes).
+     * Surfaced as an on-screen Toast AND a diagnostic line so the NFC tap is debuggable
+     * WITHOUT internet/adb (the collector is internet-dependent and unreliable mid-share).
+     * Runs on a binder thread -> marshalled to the UI thread.
+     */
+    private fun onNfcTapDiagnostic(summary: String) {
+        runOnUiThread {
+            if (isFinishing || isDestroyed) return@runOnUiThread
+            logOutboundDiagnostic(summary)
+            nfcTapToast(summary)
+        }
+    }
+
+    /** Long Toast for the NFC-tap debug flow — shown on the send sheet so each tap's
+     * outcome is visible (and screenshot-able) with no internet. */
+    private fun nfcTapToast(message: String) {
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+    }
+
+    /**
      * Combined discovery-resolved callback wired into [SendPeerPickerController]. Feeds
      * BOTH the QR-link auto-connect ([onQrPeersResolved]) and the NFC tap-wake
-     * auto-connect ([onNfcTapWakePeersResolved]) off the single discovery stream, so
-     * neither path needs its own discovery subscription.
+     * auto-connect ([onNfcTapWakePeersResolved]) off the single discovery stream.
      */
     private fun onSendPeersResolved(resolved: List<NearbyPeer>) {
         onQrPeersResolved(resolved)
@@ -452,42 +471,65 @@ public class SendActivity : AppCompatActivity() {
      * returns no endpoint over NFC (`0000`). Exactly as stock Quick Share does, we do NOT
      * re-poll the NFC; we open a short window during which the already-running discovery's
      * first matching Quick Share receiver is auto-connected (see [onNfcTapWakePeersResolved]).
+     * A delayed check logs+Toasts at the window end if NOTHING connected (no silent failure).
      * Marshalled onto the UI thread because the reader callback runs on a binder thread.
      */
     private fun onNfcTapWake() {
         runOnUiThread {
             if (isFinishing || isDestroyed) return@runOnUiThread
-            tapWakeWindowUntilMs = SystemClock.elapsedRealtime() + TAP_WAKE_WINDOW_MS
+            val thisWindow = SystemClock.elapsedRealtime() + TAP_WAKE_WINDOW_MS
+            tapWakeWindowUntilMs = thisWindow
             tapWakeConnectStarted = false
+            val now = peerPickerController.resolvedPeers()
             logOutboundDiagnostic(
-                "nfc tap-wake: receiver woken; watching discovery for it (${TAP_WAKE_WINDOW_MS}ms)",
+                "nfc tap-wake: receiver woken; watching discovery ${TAP_WAKE_WINDOW_MS}ms " +
+                    "(${now.size} peer(s) already: ${now.joinToString { it.displayName() }})",
             )
-            // A matching receiver may have already been discovered before the tap (no new
-            // discovery event would fire), so re-check the current snapshot immediately.
-            onNfcTapWakePeersResolved(peerPickerController.resolvedPeers())
+            nfcTapToast("NFC tap WOKE receiver — finding it (${now.size} peers now)")
+            // A matching receiver may already be discovered (no new event would fire) -> re-check now.
+            onNfcTapWakePeersResolved(now)
+            // No-silent-failure: if nothing connects within the window, say so on screen.
+            binding.root.postDelayed({
+                if (!tapWakeConnectStarted && tapWakeWindowUntilMs == thisWindow && !isFinishing) {
+                    val peers = peerPickerController.resolvedPeers()
+                    val msg =
+                        "NFC tap-wake: NO Quick Share receiver found in ${TAP_WAKE_WINDOW_MS / 1000}s " +
+                            "(saw ${peers.size}: ${peers.joinToString { "${it.displayName()}" +
+                                "[hidden=${it.endpointInfo?.hidden},lan=${it.lanEndpoint != null}]" }})"
+                    logOutboundDiagnostic(msg)
+                    nfcTapToast(msg)
+                }
+            }, TAP_WAKE_WINDOW_MS)
         }
     }
 
     /**
      * While a tap-wake window is open, auto-connect to the first discovered Quick Share
-     * receiver via the SAME [onPeerSelected] path the picker/QR use — preferring a
-     * Wi-Fi-LAN route (the reliable one). Single-shot ([tapWakeConnectStarted]) and
-     * time-bounded so a stale/unrelated peer is never grabbed.
+     * receiver via the SAME [onPeerSelected] path the picker/QR use — Wi-Fi-LAN preferred.
+     * Single-shot + time-bounded. Logs EVERY evaluation (peer list + decision) so a failure
+     * to find/connect the woken receiver is never silent.
      */
     private fun onNfcTapWakePeersResolved(resolved: List<NearbyPeer>) {
         if (tapWakeConnectStarted || SystemClock.elapsedRealtime() > tapWakeWindowUntilMs) return
+        logOutboundDiagnostic(
+            "nfc tap-wake eval: ${resolved.size} peer(s): " +
+                resolved.joinToString {
+                    "${it.displayName()}[hidden=${it.endpointInfo?.hidden}," +
+                        "name=${it.endpointInfo?.deviceName},lan=${it.lanEndpoint != null}," +
+                        "connectable=${it.isConnectable}]"
+                },
+        )
         val candidate =
             resolved.firstOrNull { it.lanEndpoint != null && isLikelyQuickShareReceiver(it) }
                 ?: resolved.firstOrNull { isLikelyQuickShareReceiver(it) }
-                ?: return
+                ?: return // no QS-like peer yet; keep watching (window-end check will report if none)
         tapWakeConnectStarted = true
         // A tap commits us to a peer; stop reader-mode so a second tag cannot race the
         // connection that is now starting (mirrors onNfcPeerTapped).
         tapReader?.disable()
-        logOutboundDiagnostic(
-            "nfc tap-wake: auto-connecting to woken receiver ${candidate.stableId} " +
-                "route=${if (candidate.lanEndpoint != null) "wifi-lan" else "ble"}",
-        )
+        val route = if (candidate.lanEndpoint != null) "wifi-lan" else "ble"
+        logOutboundDiagnostic("nfc tap-wake: auto-connecting to ${candidate.stableId} route=$route")
+        nfcTapToast("NFC tap-wake: connecting to ${candidate.displayName()} over $route")
         onPeerSelected(candidate)
     }
 

@@ -40,7 +40,16 @@ public class SuperDropTapReader(
     private val activity: Activity,
     private val onPeerTapped: (TappedPeer) -> Unit,
     private val onTapWake: () -> Unit = {},
+    /**
+     * One-line human-readable summary of EVERY tap (resolved / woke / failed) with the
+     * raw SELECT/ADVERTISEMENT bytes, so the send UI can surface it on-screen (Toast) —
+     * the on-device, no-internet observability path. Called on a binder thread; the
+     * activity marshals to the UI thread.
+     */
+    private val onTapDiagnostic: (String) -> Unit = {},
 ) {
+    /** Raw SELECT/ADVERTISEMENT bytes of the in-flight exchange, for [onTapDiagnostic]. */
+    private var lastExchangeSummary: String = ""
     /**
      * A peer discovered via an NFC tap, ready to be injected into the send
      * flow.
@@ -91,12 +100,14 @@ public class SuperDropTapReader(
      */
     private fun onTag(tag: Tag) {
         val isoDep = IsoDep.get(tag) ?: return
+        lastExchangeSummary = "no IsoDep exchange"
         val result =
             try {
                 isoDep.connect()
                 exchange(isoDep)
             } catch (e: IOException) {
                 DiagnosticLog.w(TAG, "tap exchange failed: ${e.message}")
+                lastExchangeSummary += " IO=${e.message}"
                 TapResult.Failed
             } finally {
                 runCatching { isoDep.close() }
@@ -105,6 +116,15 @@ public class SuperDropTapReader(
         // failed send-tap is debuggable without adb. Runs on this binder thread's
         // caller via a background thread inside the uploader. Best-effort.
         DiagnosticUploader.upload(activity, reason = "nfc-send-tap")
+        // On-screen, no-internet observability: surface EVERY tap outcome to the UI.
+        val outcome =
+            when (result) {
+                is TapResult.Resolved -> "RESOLVED ${result.peer.endpointId}"
+                TapResult.Woke -> "WOKE (receiver idle → handing off to discovery)"
+                TapResult.Failed -> "FAILED (no QS HCE / tag lost)"
+            }
+        DiagnosticLog.w(TAG, "tap outcome=$outcome | $lastExchangeSummary")
+        onTapDiagnostic("NFC tap: $outcome | $lastExchangeSummary")
         when (result) {
             // The HCE returned a real Quick Share advertisement tag (the receiver was
             // already advertising) -> connect to its Wi-Fi-LAN endpoint directly.
@@ -157,6 +177,7 @@ public class SuperDropTapReader(
         // 1. SELECT the Quick Share advertising application.
         val selectApdu = buildSelectApdu()
         val selectResp = isoDep.transceive(selectApdu)
+        lastExchangeSummary = "SELECT=${hex(selectResp)}"
         DiagnosticLog.w(TAG, "SELECT apdu=${hex(selectApdu)} resp=${hex(selectResp)}")
         if (!endsWithOk(selectResp)) {
             DiagnosticLog.w(TAG, "SELECT not OK (${selectResp.size}B) — not a Quick Share HCE")
@@ -175,6 +196,7 @@ public class SuperDropTapReader(
             )
         val advApdu = buildAdvertisementApdu(hhww)
         val advResp = isoDep.transceive(advApdu)
+        lastExchangeSummary += " ADV=${hex(advResp)}"
         DiagnosticLog.w(TAG, "ADV apdu=${hex(advApdu)} resp=${hex(advResp)}")
 
         val peer = parseTappedPeer(advResp)

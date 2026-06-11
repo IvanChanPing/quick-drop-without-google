@@ -705,3 +705,18 @@ over mDNS, `endpoint:L6DT … WIFI_LAN`). So instant when visible. `TAP_WAKE_WIN
 ceiling for a not-yet-discovered (colder/visibility-off) receiver — it does NOT delay the instant path.
 NOTE: the instant path REQUIRES the receiver to be discoverable (visibility on) so we have it pre-tap — same
 precondition QS itself needs.
+
+## OBSERVABILITY ADDED 2026-06-11 (all-at-once, on-screen, no-internet) — after the fix failed with no trace
+User's new-build test left ZERO collector entries (collector path is INTERNET-dependent + fragile; the sender
+phone's POSTs never arrived). So we were blind. Added comprehensive, on-SCREEN observability across the WHOLE
+tap path, NO silent failure paths:
+- `SuperDropTapReader`: new `onTapDiagnostic` callback fires for EVERY tap with the raw SELECT/ADV bytes +
+  outcome (RESOLVED/WOKE/FAILED). 
+- `SendActivity`: `onNfcTapDiagnostic` → Toast + log every tap outcome. `onNfcTapWake` Toasts "WOKE — finding it
+  (N peers)" + posts a window-END check that Toasts "NO Quick Share receiver found in 15s (saw N: …)" if nothing
+  connected. `onNfcTapWakePeersResolved` LOGS every discovery eval (each peer's hidden/name/lan/connectable) and
+  Toasts "connecting to X over wifi-lan" on auto-connect. Connect outcome already shows in the status panel.
+- ⇒ each failure mode is now a distinct ON-SCREEN Toast the user can screenshot (no internet/adb/shake needed):
+  no-tap-Toast=reader didn't fire; FAILED=not the QS HCE; WOKE+no-receiver=woken phone never appeared in our
+  discovery; connecting+status-panel-fail=connect-level. Full trace also in DiagnosticLog ring (shake bug report).
+- STATUS: build SUCCESSFUL, `super-drop-debug.apk` refreshed. Instrumentation; behavior of the fix unchanged.
