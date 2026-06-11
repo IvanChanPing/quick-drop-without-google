@@ -17,8 +17,8 @@ import android.view.View
 import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.WindowInsets
-import android.view.animation.DecelerateInterpolator
 import android.view.animation.LinearInterpolator
+import android.view.animation.PathInterpolator
 import android.view.animation.OvershootInterpolator
 import android.widget.LinearLayout
 import androidx.core.view.doOnLayout
@@ -160,7 +160,12 @@ public class DraggableSheetLayout
                     animate()
                         .translationY(0f)
                         .setDuration(ENTRANCE_SLIDE_MS)
-                        .setInterpolator(DecelerateInterpolator(ENTRANCE_DECEL))
+                        // iOS-style variable-speed ease-out (cubic bezier): quick to set
+                        // off, then a long smooth deceleration into rest — less mechanical
+                        // than a plain DecelerateInterpolator. Tune via SLIDE_EASE_*.
+                        .setInterpolator(
+                            PathInterpolator(SLIDE_EASE_X1, SLIDE_EASE_Y1, SLIDE_EASE_X2, SLIDE_EASE_Y2),
+                        )
                         .start()
                     // Kick the top-edge bounce BEFORE the slide fully lands so it flows
                     // OUT of the slide's momentum as ONE continuous motion — not "slide
@@ -279,14 +284,25 @@ public class DraggableSheetLayout
         }
 
         /**
-         * Single-hump stretch profile used by [playTopElasticStretch]: a raised
-         * cosine `0.5 * (1 - cos(2*pi*t))` that is 0 at t=0, rises to a single peak
-         * of 1 at t=0.5, and returns to 0 at t=1 — staying >= 0 the whole way AND
-         * with ZERO velocity at both ends (unlike a half-sine, which starts at full
-         * speed and feels jerky). One smooth extend + snap back, no wobble.
+         * Single-hump stretch profile used by [playTopElasticStretch], 0 at t=0, peak
+         * of 1 at t=[TOP_STRETCH_PEAK_FRACTION], back to 0 at t=1. It is ASYMMETRIC: a
+         * quick extend up to the peak then a slower, eased RECOIL back to rest — a
+         * "stretch and elastically settle" feel rather than the symmetric (mechanical)
+         * raised-cosine pulse it replaced. Each side is its own raised-cosine, so there
+         * is ZERO velocity at t=0, at the peak, and at t=1, and the value never dips
+         * below rest (no wobble). Tune the snappiness with [TOP_STRETCH_PEAK_FRACTION]
+         * (smaller = quicker extend / longer elastic settle).
          */
         private fun topStretchProfile(t: Float): Float {
-            return (0.5 * (1.0 - Math.cos(t.toDouble() * 2.0 * Math.PI))).toFloat()
+            val peak = TOP_STRETCH_PEAK_FRACTION.toDouble()
+            val d = t.toDouble().coerceIn(0.0, 1.0)
+            return if (d <= peak) {
+                // quick extend up to the peak
+                (0.5 * (1.0 - Math.cos(Math.PI * (d / peak)))).toFloat()
+            } else {
+                // slower, eased recoil back to rest
+                (0.5 * (1.0 + Math.cos(Math.PI * ((d - peak) / (1.0 - peak))))).toFloat()
+            }
         }
 
         /**
@@ -381,7 +397,17 @@ public class DraggableSheetLayout
             // is not masked by the window's own animation.
             private const val ENTRANCE_OFFSET_PX = 80
             private const val ENTRANCE_SLIDE_MS = 240L // snappier than the old 300ms
-            private const val ENTRANCE_DECEL = 1.4f
+
+            // iOS-style variable-speed ease-out for the slide, as a cubic-bezier
+            // (PathInterpolator control points P1=(x1,y1), P2=(x2,y2); ends fixed at
+            // (0,0)->(1,1)). This curve (~easeOutQuart) sets off quickly then decelerates
+            // smoothly into rest — the "iPhone" variable speed, less mechanical than a
+            // plain DecelerateInterpolator. Tune toward (0.16,1,0.3,1) for a more
+            // dramatic ease, or (0.33,1,0.68,1) for a gentler one.
+            private const val SLIDE_EASE_X1 = 0.25f
+            private const val SLIDE_EASE_Y1 = 1f
+            private const val SLIDE_EASE_X2 = 0.5f
+            private const val SLIDE_EASE_Y2 = 1f
 
             // How long BEFORE the slide lands to kick the top-edge bounce so it overlaps
             // the slide's tail and reads as ONE continuous motion (not "slide ends,
@@ -395,12 +421,18 @@ public class DraggableSheetLayout
             private const val WINDOW_SETTLE_MS = 260L
 
             // Stage 2 — bottom-anchored stretch of the card's rounded BACKGROUND: the
-            // top edge extends up by ENTRANCE_TOP_EXTEND_DP and snaps back, NO wobble
-            // (a single smooth raised-cosine hump). The elements are counter-scaled to
-            // keep their size and just ride up. A fixed dp (not a % of the tall card)
-            // so the extend is small + consistent. STRETCH_DURATION_MS = its length.
+            // top edge extends up by ENTRANCE_TOP_EXTEND_DP and elastically settles back,
+            // NO wobble (an ASYMMETRIC single hump — quick extend, slow eased recoil; see
+            // topStretchProfile). The elements are counter-scaled to keep their size and
+            // ride up. A fixed dp (not a % of the tall card) so the extend is small +
+            // consistent. STRETCH_DURATION_MS = its length.
             private const val ENTRANCE_TOP_EXTEND_DP = 16f
             private const val STRETCH_DURATION_MS = 260L
+
+            // Where the top-stretch hump PEAKS (fraction of STRETCH_DURATION_MS). < 0.5
+            // makes it asymmetric: a quick extend up to the peak then a slower elastic
+            // settle back — the "more elastic, less mechanical" feel. Tunable.
+            private const val TOP_STRETCH_PEAK_FRACTION = 0.30f
 
             /** Total wall-time of the entrance (slide + bounce). Callers use it to time
              *  a follow-on reveal (e.g. delaying the peer icons until the entrance has

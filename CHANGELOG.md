@@ -1,3 +1,17 @@
+## [2026-06-11] Send sheet entrance: iOS variable-speed slide + a more elastic (less mechanical) bounce
+User feedback: the motion felt too mechanical. Two feel changes (tuning-only, no structural change):
+- SLIDE: replaced `DecelerateInterpolator` with an iOS-style cubic-bezier ease-out via `PathInterpolator` (control
+  points `(0.25,1,0.5,1)` — quick to set off, then a long smooth deceleration into rest = the "iPhone variable
+  speed"). Control points are tunable constants `SLIDE_EASE_X1/Y1/X2/Y2`; toward `(0.16,1,0.3,1)` = more dramatic,
+  `(0.33,1,0.68,1)` = gentler.
+- BOUNCE: `topStretchProfile` changed from a symmetric raised-cosine to an ASYMMETRIC single hump — peak at
+  `TOP_STRETCH_PEAK_FRACTION = 0.30` (quick extend, then a slower eased recoil), so the top edge "stretches and
+  elastically settles" instead of a uniform mechanical pulse. Still zero velocity at start/peak/end and never dips
+  below rest (no wobble). Tunable.
+
+Receive sheet's bounce gets the same elastic profile (consistent). BUILD SUCCESSFUL; feel UNVERIFIED on-device —
+user tests. Also refreshed SUPERDROP-CHANGES.txt item #1 to the current entrance. File: DraggableSheetLayout.kt.
+
 ## [2026-06-11] Send sheet entrance: keep the bottom action row planted during the bounce
 The bounce now rides the pill + upper content up with the stretching top edge, but the user wanted the BOTTOM
 elements — the "Can't find the device?" help link and the Cancel/Done button — to NOT be carried by the bounce

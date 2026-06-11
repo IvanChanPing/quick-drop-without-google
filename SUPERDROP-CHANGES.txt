@@ -18,26 +18,31 @@ FINISHED FEATURES
    just like the old Quick Share. A much better improvement.
 
    Optional polish (can be kept or left out): the sheet has an entrance — it slides
-   up from below the bottom of the screen and, as it lands, the rounded card's top
-   edge gives one small "extend and snap back". The bounce flows straight out of the
-   slide as one continuous motion (not a separate beat afterwards). Only the rounded
-   card background stretches; the contents — the device-name pill, text, and icons —
-   keep their exact size and just ride up a little with it, so nothing distorts. And
-   if you want, the discovered-device icons can be held back until the entrance
-   finishes, so none pop in mid-slide. Both the bounce and the icon delay are self-
-   contained and don't touch discovery — each can be kept or dropped independently of
-   the bottom-sheet change.
+   up from below the bottom of the screen with an iPhone-style variable speed (quick
+   to set off, then easing smoothly into place) and, as it lands, the rounded card's
+   top edge gives one small elastic "extend and settle". The bounce flows straight out
+   of the slide as one continuous motion (not a separate beat afterwards). Only the
+   rounded card background stretches; the contents keep their exact size, so nothing
+   distorts — the device-name pill and the device picker ride up glued to the
+   stretching top edge, while the bottom action row (the "Can't find the device?" link
+   and the Cancel button) stays planted, so the stretch opens in the gap between them.
+   And if you want, the discovered-device icons can be held back until the entrance
+   finishes, so none pop in mid-slide. The bounce and the icon delay are self-contained
+   and don't touch discovery — each can be kept or dropped independently of the
+   bottom-sheet change.
 
-   Technical: the slide is a view-level translate, kicked from
-   Activity.onEnterAnimationComplete() — i.e. AFTER the activity window has finished
-   its own open transition — so it runs in the already-visible window and isn't
-   masked by the window animation (starting it earlier, in onCreate, is what made the
-   sheet "appear already settled" with only a fade on OnePlus). The window's own open
-   animation is a soft fade with no vertical translate, so it doesn't compete with the
-   slide. The bounce stretches only the card background (sheet scaleY about the
-   bottom) while the content wrapper is counter-scaled about its centre so the
-   elements keep their size and ride up slightly; it is kicked just before the slide
-   lands so the slide and bounce read as one motion.
+   Technical: the slide is a view-level translate with an iOS-style cubic-bezier
+   ease-out, kicked from Activity.onEnterAnimationComplete() — i.e. AFTER the activity
+   window has finished its own open transition — so it runs in the already-visible
+   window and isn't masked by the window animation (starting it earlier, in onCreate,
+   is what made the sheet "appear already settled" with only a fade on OnePlus). The
+   window's own open animation is a soft fade with no vertical translate, so it doesn't
+   compete with the slide. The bounce stretches only the card background (sheet scaleY
+   about the bottom) on an asymmetric profile (quick extend, slow elastic settle, no
+   wobble); the content wrapper is counter-scaled about its TOP so the pill + picker
+   ride up with the top edge, and the bottom action row is translated back down by the
+   same amount to stay planted. It is kicked just before the slide lands so the slide
+   and bounce read as one motion.
 
    Image for the PR: docs/pr-images/send-sheet-device.jpg (real device — OnePlus
    Nord N30 5G: header pill with your phone name, "1 file 240.5 KB", "Tap a device
