@@ -1,3 +1,23 @@
+## [2026-06-11] Send sheet entrance: pill pinned to the top edge + a quicker slide
+Two polish tweaks from on-device feedback (slide + overlap from the entries below are confirmed working on the
+OnePlus):
+- PILL PINNED TO TOP: during the bounce the rounded card's top edge stretches up, but the device-name pill was no
+  longer riding up with it (a gap opened above the pill). Fixed by counter-scaling the content wrapper about its
+  TOP instead of its centre (`bounceContent.pivotY = 0f` in `playTopElasticStretch`), so the whole content rigidly
+  rides up WITH the top edge and the pill stays glued to it. (Side effect: a small transient gap opens at the
+  BOTTOM as the content rides up; it closes as the bounce settles. If undesired, the alternative is a pill-only
+  rider + planted body.)
+- QUICKER SLIDE: `ENTRANCE_SLIDE_MS` 300 → 240 (snappier); `BOUNCE_OVERLAP_MS` 110 → 90 (keeps the bounce starting
+  in the slide's last ~third). Both are tunable constants.
+
+These are tuning-only (no structural change); the receive sheet is unaffected (it has no bounceContent).
+BUILD SUCCESSFUL. UNVERIFIED on-device — user tests the feel. File: DraggableSheetLayout.kt. APK: super-drop-debug.apk.
+
+NOTE (next, user-deprioritized "look into"): make the entrance START sooner. The user observed the bridge-share app
+draws its sheet ON TOP of the system share sheet while the chooser FADES behind — vs ours, where the chooser plays
+its full slide-DOWN exit first and THEN our window enters (sequential, so there's a wait). So "start sooner" is an
+activity-TRANSITION change (overlap/cross-fade with the chooser), not just shortening our own window fade.
+
 ## [2026-06-11] Send sheet entrance: bounce now OVERLAPS the slide (one continuous motion)
 On-device the slide-up WORKED (the onEnterAnimationComplete timing fix below landed — user-confirmed on the
 OnePlus). But the bounce started only AFTER the slide fully finished (it used `withEndAction`), so it read as

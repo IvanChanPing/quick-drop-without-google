@@ -193,19 +193,22 @@ public class DraggableSheetLayout
             }
 
         /**
-         * Entrance stage 2 — the bounce. Visual model (user-chosen): the sheet's
-         * BOTTOM stays planted; the rounded card BACKGROUND stretches up at the top
-         * by [ENTRANCE_TOP_EXTEND_DP] px and snaps back ([topStretchProfile] — one
-         * smooth hump, no wobble). The whole sheet scales about its bottom (so the
-         * rounded background stretches), and [bounceContent] (every element — the
-         * device pill + the state frame) is counter-scaled by the inverse about its
-         * OWN CENTRE so the elements:
+         * Entrance stage 2 — the bounce. Visual model: the sheet's BOTTOM stays
+         * planted; the rounded card BACKGROUND stretches up at the top by
+         * [ENTRANCE_TOP_EXTEND_DP] px and snaps back ([topStretchProfile] — one smooth
+         * hump, no wobble). The whole sheet scales about its bottom (so the rounded
+         * background stretches), and [bounceContent] (every element — the device pill +
+         * the state frame) is counter-scaled by the inverse about its OWN TOP so the
+         * elements:
          *   - do NOT stretch (the inverse scale cancels the parent stretch), and
-         *   - ride UP a little with the stretch (the centre pivot — not the bottom —
-         *     lets them move instead of staying planted).
-         * Net: only the rounded background stretches; the elements keep their size
-         * and are pinned/ride up. With no [bounceContent] set the whole sheet
-         * (background + content) stretches together. Resets transforms on end.
+         *   - ride UP WITH the stretching top edge (the TOP pivot makes the whole
+         *     content rigidly follow the top, so the device-name PILL stays GLUED to
+         *     the card's top edge as it extends — no gap opens above it).
+         * Net: only the rounded background stretches; the elements keep their size and
+         * the pill tracks the top edge. (A small gap opens transiently at the BOTTOM as
+         * the content rides up; it closes as the bounce settles.) With no [bounceContent]
+         * set the whole sheet (background + content) stretches together. Resets
+         * transforms on end.
          */
         private fun playTopElasticStretch(onComplete: (() -> Unit)? = null) {
             val h = height
@@ -225,12 +228,12 @@ public class DraggableSheetLayout
                     val k = 1f + rise / h // scaleY that lifts the top edge by exactly `rise`
                     scaleY = k
                     content?.let {
-                        // Counter-scale about the content's OWN CENTRE: the inverse
-                        // scale cancels the parent stretch (elements keep their exact
-                        // size) while the centre pivot lets them ride up a little with
-                        // the stretch instead of staying planted — "elements move but
-                        // don't stretch; only the background stretches".
-                        it.pivotY = it.height.toFloat() / 2f
+                        // Counter-scale about the content's OWN TOP: the inverse scale
+                        // cancels the parent stretch (elements keep their exact size)
+                        // while the TOP pivot makes the whole content rigidly RIDE UP
+                        // with the top edge — so the device-name pill stays GLUED to the
+                        // stretching top edge (no gap opens above it).
+                        it.pivotY = 0f
                         it.scaleY = 1f / k
                     }
                 }
@@ -351,13 +354,14 @@ public class DraggableSheetLayout
             // the window open transition (SendActivity.onEnterAnimationComplete) so it
             // is not masked by the window's own animation.
             private const val ENTRANCE_OFFSET_PX = 80
-            private const val ENTRANCE_SLIDE_MS = 300L
+            private const val ENTRANCE_SLIDE_MS = 240L // snappier than the old 300ms
             private const val ENTRANCE_DECEL = 1.4f
 
             // How long BEFORE the slide lands to kick the top-edge bounce so it overlaps
             // the slide's tail and reads as ONE continuous motion (not "slide ends,
-            // pause, bounce"). Bigger = earlier/more overlap. Tunable.
-            private const val BOUNCE_OVERLAP_MS = 110L
+            // pause, bounce"). Bigger = earlier/more overlap. Kept ~37% of the slide so
+            // the bounce starts in the slide's last third regardless of slide speed.
+            private const val BOUNCE_OVERLAP_MS = 90L
 
             // Fallback delay before the bounce on the NO-slide path (receive sheet,
             // which never calls prepareOffscreen): a brief settle so the bounce doesn't
