@@ -1,3 +1,24 @@
+## [2026-06-11] Research/groundwork: Google "Tap to Share" (Gesture Exchange) — docs only, no code
+Reverse-engineered Google's in-progress AirDrop-style "Tap to Share" inside Google Play Services
+(package `com.google.android.gms.gestureexchange`) to assess bringing it into Super Drop, and recorded
+the findings as groundwork (SUPERDROP-CHANGES.txt item #15 + a research doc). NO app code added — this
+is a written head-start, and it explicitly does NOT auto-activate when Google releases.
+- VERIFIED (reading GMS smali, builds 26.18.33 + a freshly pulled 26.22.32 DEV): the tap is a Nearby
+  Connections connection bootstrap (same transport we already mimic), plain framework HCE, and has NO
+  attestation/account/signature wall on the handshake (`InitiatorRequest`/`ResponderRequest`/
+  `GestureMessageParcel` carry no credential fields).
+- BLOCKED: the byte-level spec needed to interop with real Google devices (gesture AID + NDEF handover
+  record + `GestureMessage.Payload` ConnectivityInfo serialization) lives in an on-demand GMS Chimera
+  module NOT shipped in any base APK. Control test: the shipped Nearby AID `F00000FE2C` + its HCE impl
+  ARE in the base, proving shipped features carry their AID/impl in base — gesture's is genuinely not
+  there yet. The base's gesture API/manifest surface is present and growing (26.22.32 added
+  ACCESS_GESTUREEXCHANGE/INJECT_GESTURE_EVENT perms, START_GESTURE_INITIATOR, RemoteGesturesService).
+- Decision recorded: did NOT add inert stubs mirroring Google's package (they'd do nothing and never
+  light up). Our own Super Drop↔Super Drop tap-to-share is feasible (~⅔ reuse of #3 + Nearby/Wi-Fi,
+  ⅓ new) but is a separate future item and must not be labelled "works with Google Tap to Share".
+- Revisit when Google ships to stable AND an NFC device with the feature enabled is available.
+- **Files:** SUPERDROP-CHANGES.txt (new groundwork item #15), docs/research/google-tap-to-share-gesture-exchange.md (new). Docs only; no build impact.
+
 ## [2026-06-11] PR breakdown: refreshed item #1 entrance/animation copy to the final behavior
 The send-sheet entrance went through several refinements (commits 03f8267, e5f0e6c, aa327bc) since the PR
 copy was last touched; updated SUPERDROP-CHANGES.txt item #1 to match what actually ships now:

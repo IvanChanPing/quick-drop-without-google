@@ -215,3 +215,39 @@ GROUNDWORK (started, not finished/turned on yet)
     On an NFC tap, play a glowing reveal as the receive prompt appears over
     whatever's on screen. Separate from the regular tap-to-share (#3); builds on
     the animated overlay groundwork in #11.
+
+15) Groundwork / research for Google's upcoming "Tap to Share"
+    Google is building an AirDrop-style "Tap to Share" into Android (tap two phones
+    to share files/contacts). It isn't released yet. We reverse-engineered the
+    in-progress code inside Google Play Services to see how it works and whether we
+    could match it, and wrote up the findings so we have a head start for when Google
+    ships it. This item is research and a written plan only — there is NO new code
+    wired into the app, and nothing here turns on by itself when Google releases.
+
+    What we found (the short version):
+    - Google's tap is just a connection HANDOFF that then transfers over normal
+      Nearby/Wi-Fi — the SAME transport this app already uses for Quick Share. The
+      NFC side is plain Android Host Card Emulation, and there is NO Google-account /
+      attestation lock on the handshake. So in principle it's a feature we could add.
+    - The catch: the exact over-the-wire bytes (the NFC ID it answers on and the
+      handoff record it sends) live in a part of Google Play Services that Google only
+      ships to phones with the feature switched on. A normal app download — even the
+      newest developer build — doesn't include them. So we can't make it talk to a
+      real Google phone until either Google releases it or we pull that piece off a
+      device that has it enabled.
+
+    Why not just ship "preliminary" stubs now: copying Google's service/permission
+    names into our app would do nothing — those belong to Google Play Services, a
+    third-party app can't host that feature, and Google's release does not look for or
+    light up our stubs. So that would be dead code mislabeled as a feature, which we
+    deliberately did not add.
+
+    What we CAN build without Google (a future item, not done here): our own
+    tap-to-share between two Super Drop phones, reusing the tap + Nearby/Wi-Fi code we
+    already have (#3) plus a small handoff record of our own. That's ~two-thirds reuse,
+    one-third new — but it would be OUR feature, not interop with Google, and must not
+    be labelled "works with Google Tap to Share" until that's actually tested.
+
+    Full write-up: docs/research/google-tap-to-share-gesture-exchange.md
+    Status: research / groundwork only. Revisit when Google ships it to a stable
+    release AND we have an NFC device with the feature enabled.
