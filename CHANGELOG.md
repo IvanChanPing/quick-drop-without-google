@@ -1,3 +1,18 @@
+## [2026-06-11] Updated the PR breakdown (SUPERDROP-CHANGES.txt) for the tap-to-share fixes
+Brought item #3 "Tap to share" in `SUPERDROP-CHANGES.txt` (the "one pull request per thing" text the
+PR descriptions are written from) in line with what was actually built + verified this session, so the
+PR copy is accurate:
+- SEND-by-tap fix REWRITTEN: replaced the stale "re-poll the tap for ~2.5s" description with the actual
+  approach now shipped — a one-shot WAKE that hands off to our existing Wi-Fi discovery/transfer
+  (replicates stock Quick Share). Status upgraded to CONFIRMED WORKING ON DEVICE (user-verified).
+- Honest-status block: SEND-by-tap works; the only remaining difference from stock QS is the receiver
+  Accept prompt (stock's no-prompt is account-bound self-share auto-accept, not forgeable cross-account).
+- Diagnostics bullet: noted the auto-upload is now reliable (queue + flush-when-internet) and the new
+  Settings toggle "Show NFC tap diagnostics".
+- Added a finding: the Bluetooth pairing request seen during a tap is NOT from our connect (all our
+  sockets are insecure / no pairing); source still to be pinned.
+- **Files:** `SUPERDROP-CHANGES.txt`. (Docs only — no code/APK change.)
+
 ## [2026-06-11] Diagnostics now AUTO-UPLOAD reliably (queue + flush when internet is available)
 Root cause of "no logs": during an NFC/Wi-Fi share the phone's default network is the LOCAL share Wi-Fi (no
 internet), so the old `URL.openConnection()` POST routed onto it and silently failed — the device uploads never

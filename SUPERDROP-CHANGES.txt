@@ -65,20 +65,42 @@ FINISHED FEATURES
 
    • SEND from our app to a receiver, by tap, didn't start the transfer.
      Why (verified from a real device log + Google's code): a receiver that's
-     idle answers the first tap empty and only THEN wakes itself into receive and
-     starts advertising — so a single read got nothing. Fix added: our reader now
-     re-polls the tap for ~2.5s (every 250ms) on the same touch until the woken
-     receiver hands over its address, then feeds the existing (working) transfer.
-     (Built; on-device confirmation pending.)
+     idle answers the tap empty and only THEN wakes itself into receive and
+     starts advertising — so the single NFC read got nothing back. Fix added
+     (this is how stock Quick Share itself behaves): the tap is now a one-shot
+     WAKE, not a blocking re-poll. On an empty answer we treat the tap as having
+     woken the receiver, open a short window, and let our existing (working) Wi-Fi
+     discovery find the now-advertising receiver and auto-connect into the normal
+     transfer path. It re-arms on every tap (fixes "the second tap did nothing").
+     CONFIRMED WORKING ON DEVICE — a tap now starts the transfer.
 
    • To see what's happening without a PC: added on-device diagnostics that
-     auto-upload the NFC tap details (see the separate diagnostics item), since
-     the tester has no adb.
+     auto-upload the NFC tap details, since the tester has no adb. They now
+     upload RELIABLY — during a share the phone's only network is the local
+     share Wi-Fi (no internet), so a POST sent mid-share was silently dropped;
+     the uploader now queues each report and sends the whole queue the moment a
+     real-internet network is back (or instantly over cellular). Added a Settings
+     toggle, "Show NFC tap diagnostics" (on by default), to silence the on-screen
+     messages once everything works.
 
-   Honest status: the NFC tap pieces are built and compile; the two fixes above
-   are grounded in Google's actual code + a real device log, but are NOT yet
-   confirmed working on a phone. Full reverse-engineered byte map + root causes
-   live in docs/NFC_INTEROP_BYTEMAP.md; device-test notes in BUGS.md #6.
+   • A Bluetooth pairing request sometimes appeared during the tap.
+     Verified it is NOT coming from our transfer: every socket our connection
+     opens is insecure (no pairing) and our Bluetooth-Classic route is unused.
+     The prompt originates outside our connect path (e.g. an OEM NFC→Bluetooth
+     handover, or the other phone's own bootstrap); exact source not yet pinned
+     (needs: which phone shows it + the device name on the prompt).
+
+   Honest status: SEND-by-tap is CONFIRMED WORKING on a phone — a tap now starts
+   the transfer (one-shot wake → our existing Wi-Fi transfer). The ONE remaining
+   difference from stock Quick Share: the receiver shows an Accept prompt before
+   the transfer starts, whereas Quick-Share-to-Quick-Share starts with no prompt.
+   That "no prompt" is Google's self-share auto-accept, which only fires between
+   two devices on the SAME signed-in Google account — an account-bound trust check
+   we can't forge for a different account, so for now the receiver taps Accept
+   once. The Android-15 RECEIVE fix above (claiming the NFC ID while our sheet is
+   open) is built but still pending on-device confirmation. Full reverse-engineered
+   byte map + root causes live in docs/NFC_INTEROP_BYTEMAP.md; device-test notes
+   in BUGS.md #6.
 
 4) Tap an iPhone to share a link
    Tap your phone with an iPhone (or any phone) and it opens your pairing link in
