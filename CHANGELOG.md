@@ -1,3 +1,12 @@
+## [2026-06-11] Send sheet entrance: REVERTED to the height-only build; reveal kept as an A/B variant
+Per user: reverted the entrance code from the clip REVEAL/UNFOLD (`ccd8f09`) back to the height-only "full width,
+height grows + overshoot" build (`1cbc2d6`) — they chose that as the base (despite its content squish) and want BOTH
+builds kept installable to compare on-device. The reveal build's code is preserved in git history (`ccd8f09`); only
+the working tree returned to height-only (restored `DraggableSheetLayout.kt` from `1cbc2d6`). APKs:
+`apk-variants/super-drop-entrance-A-fullwidth-heightonly.apk` (= the base, mirrored at repo-root
+`super-drop-debug.apk`) and `apk-variants/super-drop-entrance-B-reveal-unfold.apk`; see `apk-variants/README.md`.
+Next: stepping off the entrance — the Bada-recognizes-Bada marker (its own PR) and the bridge "start sooner" entrance.
+
 ## [2026-06-11] Send sheet entrance: REVEAL / UNFOLD (undistorted content, no squish)
 User: height-only scaling squished the content; the "reveal/unfold" is the right way. Switched the send entrance
 from a height SCALE to a clip REVEAL: the card is laid out at full size (content stays crisp) and is progressively
