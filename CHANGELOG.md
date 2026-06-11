@@ -1,3 +1,24 @@
+## [2026-06-11] Send sheet slide: FIXED + EMULATOR-VERIFIED (it now slides from the very bottom)
+Root cause of "it never slid from the very bottom / faded into place", found by actually watching it on the
+redroid emulator (frame-by-frame at slowed animation): the activity's WINDOW open animation was transforming
+the whole window (sliding/shifting it) ON TOP OF the sheet's own slide — a double, competing motion. The
+theme's no-op window animation (`@anim/no_anim`) is NOT honored for every launch path on Android 14+.
+Fix: suppress the window open transition PROGRAMMATICALLY in `SendActivity.onCreate`
+(`overrideActivityTransition(OVERRIDE_TRANSITION_OPEN,0,0)` on API 34+, else `overridePendingTransition(0,0)`),
+and make the slide a single VIEW-level translate in `DraggableSheetLayout.playEntrance` (restored: start below
+the screen via `doOnLayout` + bottom margin, `DecelerateInterpolator`, bounce overlapping the slide tail).
+Also added `res/anim/no_anim.xml` and pointed the theme's window OPEN enter at it (belt-and-suspenders; CLOSE
+keeps slide_down_out).
+- **VERIFIED on emulator** (redroid16 @ 5575, window-anim scale 5x to prove the override): captured frames show
+  the sheet start fully off-screen (mean ~0.01) and rise straight up from the bottom to settled — no horizontal
+  shift, no fade. This is the first genuinely on-screen-verified state of this animation.
+- Emulator test recipe (saved to memory): screen must be awake (`svc power stayon true` + KEYCODE_WAKEUP) or
+  screencap is all black; redroid screencap CANNOT capture window/SurfaceFlinger transitions (only view-level
+  animations), which is exactly why the window-vs-view slide had to be resolved; capture by backgrounding a
+  `screencap` loop BEFORE `am start` so it's already recording when the entrance plays.
+- **Files:** `app/.../send/SendActivity.kt`, `app/.../ui/sheet/DraggableSheetLayout.kt`,
+  `app/.../res/values/themes.xml`, `app/.../res/anim/no_anim.xml`. BUILD SUCCESSFUL; APK refreshed.
+
 ## [2026-06-11] Send sheet bounce: "pill glued to top, body planted, gap stretches" (user-chosen model)
 Implemented the user's chosen bounce model. The bottom stays planted, the card's rounded TOP edge extends up
 by a fixed `ENTRANCE_TOP_EXTEND_DP` (16dp) and snaps back, and:

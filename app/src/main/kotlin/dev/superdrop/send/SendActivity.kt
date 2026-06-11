@@ -215,6 +215,18 @@ public class SendActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Suppress the activity window's OPEN animation so the ONLY entrance motion is
+        // the sheet's own view-level slide + bounce ([DraggableSheetLayout.playEntrance]).
+        // A window-level open transition was sliding/shifting the whole window on top of
+        // the view slide (a double, competing motion that read as "fades into place");
+        // the theme's no-op window animation is not honored for every launch path on
+        // Android 14+, so we override it here. The CLOSE animation is left intact.
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            overrideActivityTransition(android.app.Activity.OVERRIDE_TRANSITION_OPEN, 0, 0)
+        } else {
+            @Suppress("DEPRECATION")
+            overridePendingTransition(0, 0)
+        }
         // Veto receiver-side mDNS publish for the duration of this
         // activity. When Bada concurrently publishes its receiver-side
         // mDNS record AND opens an outbound `OutboundConnection` to the

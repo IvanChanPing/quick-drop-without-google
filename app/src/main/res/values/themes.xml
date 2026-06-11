@@ -296,9 +296,15 @@
       overshoot entrance so the scrim + card rise together.
     -->
     <style name="WindowAnimation.SuperDrop.SendSheet" parent="@android:style/Animation.Activity">
-        <item name="android:activityOpenEnterAnimation">@anim/slide_up_in</item>
+        <!-- OPEN enter = no-op: the slide-up is the inner sheet's own VIEW-level
+             entrance (DraggableSheetLayout.playEntrance), so the window must not
+             also slide (a second, competing slide made the sheet travel a double
+             distance and read as fading into place; and a window transition can't
+             be screen-capture-verified). The 0.2 dim scrim just appears. CLOSE
+             keeps the slide-down so dismissing still animates out. -->
+        <item name="android:activityOpenEnterAnimation">@anim/no_anim</item>
         <item name="android:activityCloseExitAnimation">@anim/slide_down_out</item>
-        <item name="android:taskOpenEnterAnimation">@anim/slide_up_in</item>
+        <item name="android:taskOpenEnterAnimation">@anim/no_anim</item>
         <item name="android:taskCloseExitAnimation">@anim/slide_down_out</item>
     </style>
 

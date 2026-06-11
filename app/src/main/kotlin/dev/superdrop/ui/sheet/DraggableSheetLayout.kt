@@ -14,7 +14,9 @@ import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
+import android.view.ViewGroup
 import android.view.WindowInsets
+import android.view.animation.DecelerateInterpolator
 import android.view.animation.LinearInterpolator
 import android.view.animation.OvershootInterpolator
 import android.widget.LinearLayout
@@ -89,27 +91,36 @@ public class DraggableSheetLayout
         }
 
         /**
-         * Entrance bounce. The SLIDE up from the bottom of the screen is NOT done
-         * here — it is the activity window's own enter animation (anim/slide_up_in,
-         * a full-screen 100%p rise). Doing a second slide here made the sheet travel
-         * a double distance and look like it faded into place, so this method runs
-         * ONLY the bounce: after [BOUNCE_START_DELAY_MS] (tuned to land in the tail
-         * of the window slide so it reads as one continuous motion), the card's
-         * rounded BACKGROUND stretches up at the top and snaps back — one smooth
-         * hump, no wobble. The content rides with it but does not stretch (see
-         * [bounceContent] / [playTopElasticStretch]).
+         * Entrance: ONE view-level motion. (1) The whole sheet slides up from below
+         * the bottom of the screen and lands ([DecelerateInterpolator]); the activity
+         * window's own open animation is a no-op so this is the only slide and it is
+         * actually visible/verifiable. (2) Overlapping the slide's tail
+         * ([BOUNCE_OVERLAP_MS] before it ends, so it flows out of the slide rather
+         * than pausing) the card's rounded BACKGROUND stretches up at the top and
+         * snaps back — one smooth hump, no wobble; the body stays planted and the
+         * pill rides the top edge (see [playTopElasticStretch]).
          */
         public fun playEntrance(onComplete: (() -> Unit)? = null) {
-            // IMPORTANT: the slide-up "from the very bottom of the screen" is the
-            // ACTIVITY WINDOW's own enter animation (anim/slide_up_in, fromYDelta
-            // 100%p — i.e. a full screen below). We must NOT also translate the sheet
-            // here: two simultaneous slides made it travel a double distance very fast
-            // and read as "fades into place from near the top". So this method does
-            // ONLY the bounce, kicked as the window slide is finishing so it flows out
-            // of the slide instead of "slide stops, pause, then bounce".
+            // The slide is a VIEW-level translate (the window's own open animation is
+            // a no-op, see Theme.SuperDrop.SendSheet) so there is ONE slide and it is
+            // actually visible/verifiable. doOnLayout guarantees a real [height] so the
+            // start offset truly puts the sheet below the screen.
             doOnLayout {
+                val marginBottom = (layoutParams as? ViewGroup.MarginLayoutParams)?.bottomMargin ?: 0
+                // Start the whole sheet just below the bottom edge of the screen.
+                translationY = (height + paddingBottom + marginBottom + ENTRANCE_OFFSET_PX).toFloat()
                 scaleY = 1f
-                postDelayed({ playTopElasticStretch(onComplete) }, BOUNCE_START_DELAY_MS)
+                animate()
+                    .translationY(0f)
+                    .setDuration(ENTRANCE_DURATION_MS)
+                    .setInterpolator(DecelerateInterpolator(ENTRANCE_DECEL))
+                    .start()
+                // Kick the bounce just BEFORE the slide lands so it flows out of the
+                // slide's momentum (not "slide stops, pause, then bounce").
+                postDelayed(
+                    { playTopElasticStretch(onComplete) },
+                    (ENTRANCE_DURATION_MS - BOUNCE_OVERLAP_MS).coerceAtLeast(0L),
+                )
             }
         }
 
@@ -256,27 +267,28 @@ public class DraggableSheetLayout
         }
 
         public companion object {
-            // Off-screen offset used by [dismiss] to slide the sheet back down.
             private const val ENTRANCE_OFFSET_PX = 80
 
-            // The slide-up itself is the ACTIVITY WINDOW enter animation
-            // (anim/slide_up_in, 260ms). This in-layout entrance does ONLY the bounce,
-            // started BOUNCE_START_DELAY_MS after layout so it overlaps the tail of
-            // that window slide (continuous, not "slide stops, pause, then bounce").
-            private const val BOUNCE_START_DELAY_MS = 170L
+            // Stage 1 — VIEW-level slide-up from below the screen (the window's open
+            // animation is a no-op, so this is the only slide). Decelerates to a clean
+            // landing. The bounce is kicked BOUNCE_OVERLAP_MS before this ends so it
+            // flows out of the slide (not "slide stops, pause, then bounce").
+            private const val ENTRANCE_DURATION_MS = 300L
+            private const val ENTRANCE_DECEL = 1.6f
+            private const val BOUNCE_OVERLAP_MS = 90L
 
-            // Bottom-anchored stretch of the card's rounded BACKGROUND: the top edge
-            // extends up by ENTRANCE_TOP_EXTEND_DP and snaps back, NO wobble (a single
-            // smooth raised-cosine hump). Body counter-scaled to stay planted; the
-            // pill rides the top edge. A fixed dp (not a % of the tall card) so the
-            // extend is a small, consistent amount. STRETCH_DURATION_MS = its length.
+            // Stage 2 — bottom-anchored stretch of the card's rounded BACKGROUND: the
+            // top edge extends up by ENTRANCE_TOP_EXTEND_DP and snaps back, NO wobble
+            // (a single smooth raised-cosine hump). Body counter-scaled to stay
+            // planted; the pill rides the top edge. A fixed dp (not a % of the tall
+            // card) so the extend is small + consistent. STRETCH_DURATION_MS = length.
             private const val ENTRANCE_TOP_EXTEND_DP = 16f
             private const val STRETCH_DURATION_MS = 260L
 
-            /** Total wall-time of the entrance bounce (delay + stretch). Callers use
-             *  it to time a follow-on reveal (e.g. delaying the peer icons until the
+            /** Total wall-time of the entrance (slide + bounce). Callers use it to
+             *  time a follow-on reveal (e.g. delaying the peer icons until the
              *  entrance has finished). */
-            public const val ENTRANCE_TOTAL_MS: Long = BOUNCE_START_DELAY_MS + STRETCH_DURATION_MS
+            public const val ENTRANCE_TOTAL_MS: Long = ENTRANCE_DURATION_MS + STRETCH_DURATION_MS
 
             private const val GROW_DURATION_MS = 420L
             private const val GROW_TENSION = 1.4f
