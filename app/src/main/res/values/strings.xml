@@ -108,6 +108,8 @@
     <string name="main_always_visible_caption_off">Active only while a nearby device is scanning over Bluetooth.</string>
     <string name="main_bug_report_title">Shake to report a bug</string>
     <string name="main_bug_report_subtitle">When enabled, shaking the phone while Bada is open offers to package recent diagnostics, device state, and a screenshot into a zip that you save yourself. Nothing is uploaded automatically.</string>
+    <string name="settings_nfc_diagnostics_title">Show NFC tap diagnostics</string>
+    <string name="settings_nfc_diagnostics_subtitle">When enabled, each NFC tap-to-share shows on-screen messages (read outcome, wake, which device it connects to, or why it could not). Turn this off for a clean tap once everything works. The detailed log is always kept for bug reports.</string>
 
     <!-- Save location settings (#42). The "current location" line shows
          either the picked folder's display name or "Downloads" as the

@@ -50,6 +50,7 @@ import dev.superdrop.discovery.bootstrap.BluetoothClassicBootstrapClient
 import dev.superdrop.discovery.diagnostics.DiagnosticLog
 import dev.superdrop.discovery.medium.MediumRegistries
 import dev.superdrop.nfc.NfcLinkHolder
+import dev.superdrop.nfc.NfcTapDiagnosticsPreferences
 import dev.superdrop.nfc.SuperDropTapReader
 import dev.superdrop.protocol.connection.CancelCause
 import dev.superdrop.protocol.connection.FileSource
@@ -451,9 +452,14 @@ public class SendActivity : AppCompatActivity() {
 
     /** Long Toast for the NFC-tap debug flow — shown on the send sheet so each tap's
      * outcome is visible (and screenshot-able) with no internet. */
+    /** Gated by the "Show NFC tap diagnostics" setting (default on). The full DiagnosticLog
+     * trace is always recorded; this only suppresses the on-screen Toasts. */
     private fun nfcTapToast(message: String) {
+        if (!nfcTapDiagnosticsPreferences.isEnabled()) return
         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
     }
+
+    private val nfcTapDiagnosticsPreferences by lazy { NfcTapDiagnosticsPreferences.from(this) }
 
     /**
      * Combined discovery-resolved callback wired into [SendPeerPickerController]. Feeds

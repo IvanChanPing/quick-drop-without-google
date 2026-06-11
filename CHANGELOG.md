@@ -1,3 +1,16 @@
+## [2026-06-11] Settings toggle: "Show NFC tap diagnostics" (on by default)
+Per user, the on-screen NFC-tap diagnostics (the Toasts) now have a Settings toggle. Gates ONLY the visible
+Toasts at the single `SendActivity.nfcTapToast` choke point; the silent in-memory `DiagnosticLog` ring keeps
+recording so a shake bug report still has the full trace. Default ON (preserves current behavior); flip OFF
+for a clean tap once everything works.
+- **`NfcTapDiagnosticsPreferences.kt`** (new): SharedPreferences-backed `isEnabled()/setEnabled()`, default true.
+- **`SettingsFragment.kt`** + `fragment_settings.xml` + `strings.xml`: new switch card `settings_nfc_diagnostics_switch`
+  ("Show NFC tap diagnostics"), mirroring the bug-report switch.
+- **`SendActivity.nfcTapToast`**: early-returns when the toggle is off.
+- STATUS: `:app:assembleDebug` SUCCESSFUL; `super-drop-debug.apk` refreshed. Compile-clean; toggle UI device-test = flip it.
+- **Files:** `app/.../nfc/NfcTapDiagnosticsPreferences.kt`, `app/.../ui/SettingsFragment.kt`,
+  `app/.../send/SendActivity.kt`, `res/layout/fragment_settings.xml`, `res/values/strings.xml`, `super-drop-debug.apk`.
+
 ## [2026-06-11] NFC tap fix: one-shot wake → hand off to discovery auto-connect (replicates stock Quick Share)
 Made Super Drop's NFC tap behave like stock Quick Share's: the tap is a NON-BLOCKING one-shot wake, and the
 actual connection rides the already-running Nearby discovery/transfer (which already works) — instead of a

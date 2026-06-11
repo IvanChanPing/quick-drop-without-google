@@ -22,6 +22,7 @@ import dev.superdrop.MainActivity
 import dev.superdrop.R
 import dev.superdrop.battery.BatteryOptimizationOemHelper
 import dev.superdrop.bugreport.BugReportPreferences
+import dev.superdrop.nfc.NfcTapDiagnosticsPreferences
 import dev.superdrop.nfc.NfcTapSharePreferences
 import dev.superdrop.consent.FullScreenIntentPermission
 import dev.superdrop.service.downloads.SaveLocationDisplayName
@@ -132,6 +133,14 @@ internal class SettingsFragment : Fragment(R.layout.fragment_settings) {
         bugReportSwitch.isChecked = bugReportPreferences.isShakeToReportEnabled()
         bugReportSwitch.setOnCheckedChangeListener { _, checked ->
             bugReportPreferences.setShakeToReportEnabled(checked)
+        }
+
+        // "Show NFC tap diagnostics" toggle — gates the on-screen Toasts during a tap.
+        val nfcDiagnosticsSwitch = view.findViewById<SwitchCompat>(R.id.settings_nfc_diagnostics_switch)
+        val nfcDiagnosticsPreferences = NfcTapDiagnosticsPreferences.from(requireContext())
+        nfcDiagnosticsSwitch.isChecked = nfcDiagnosticsPreferences.isEnabled()
+        nfcDiagnosticsSwitch.setOnCheckedChangeListener { _, checked ->
+            nfcDiagnosticsPreferences.setEnabled(checked)
         }
 
         wireNfcTapShareMode(view)
