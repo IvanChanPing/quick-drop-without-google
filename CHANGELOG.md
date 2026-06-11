@@ -1,3 +1,47 @@
+## [2026-06-11] Send sheet entrance: TIMING FIX — trigger the view slide AFTER the window is shown
+Supersedes the "PIVOT to the activity WINDOW slide" entry below. A user screen-recording (MP4) of that build
+proved the real symptom: the sheet did NOT slide at all — it FADED in, then bounced. That also disproved the
+`animator_duration_scale=0` theory the prior fixes were built on (the bounce is a ValueAnimator and it visibly
+animates on the device, so animators are ON). The actual problems: (1) the WINDOW-slide pivot removed the view
+slide and depended on a window `slide_up_in` animation that the OnePlus chooser launch path / translucent window
+does not honor; (2) the EARLIER view slide was triggered in `onCreate`/`doOnLayout`, DURING the activity window's
+own open transition, so it was masked and read as a fade ("appeared already settled").
+
+Root-caused via 3 source-verified research passes (decompiled Material 1.12.0 + AOSP docs): a `BottomSheetDialog`'s
+visible slide is its WINDOW animation (scale-sensitive, suppressed on translucent windows); a `BottomSheetBehavior`
+in a `CoordinatorLayout` slides via `ViewDragHelper`→`OverScroller` (real-time frame clock, scale-independent) but
+only if `setState` is called after layout; and `Activity.onEnterAnimationComplete()` is the documented "window
+entered, safe to draw" hook — a view slide started before it races with the window transition.
+
+**The fix (minimal — keeps the existing DraggableSheetLayout view slide, just fixes WHEN it runs; SEND only,
+receive untouched):**
+- `DraggableSheetLayout`: re-added the view slide. New `prepareOffscreen()` pre-hides the sheet (translationY =
+  screen height) before the first frame so there's no flash at rest. `playEntrance()` now, IF pre-hidden, slides
+  up from `height+padding+margin+ENTRANCE_OFFSET_PX(80)` to 0 over `ENTRANCE_SLIDE_MS(300)` (decelerate) then runs
+  the top bounce; if NOT pre-hidden (the receive sheet) it skips the slide and only bounces (no regression).
+- `SendActivity`: removed the `overrideActivityTransition`/`setWindowAnimations` window-slide hacks. `wireBottomSheet`
+  now calls `prepareOffscreen()` instead of `playEntrance()`. Added `override onEnterAnimationComplete()` →
+  `startSendSheetEntrance()` (once-guarded by `sendSheetEntranceStarted`) → `sendSheet.post { playEntrance { … } }`,
+  so the slide runs AFTER the window's open transition, in the already-visible window — not masked by it. A
+  `ENTRANCE_TRIGGER_FALLBACK_MS(450)` timer kicks the entrance if `onEnterAnimationComplete` never fires on some OEM
+  launch path (so the pre-hidden sheet can't get stuck off-screen).
+- `themes.xml`: `WindowAnimation.SuperDrop.SendSheet` open `slide_up_in` → `popup_fade_in` — a soft FADE (no vertical
+  translate), so the dim fades in without competing with the view slide, AND it's a real ~200ms window animation so
+  `onEnterAnimationComplete` fires after the window has actually painted. (Shared with ReceiveSheet — neutral.)
+- Observability: `DiagnosticLog.e` logs which trigger fired (`via=onEnterAnimationComplete` vs `fallback-timer`) and
+  `playEntrance RUN: doSlide=… curTransY=…`, so an on-device bug report shows whether the slide ran and via which path.
+
+**Verification (HONEST):**
+- BUILD SUCCESSFUL (`:app:assembleDebug`, 36s). Compiles clean; no dangling refs to the removed window-override path.
+- This is a TIMING HYPOTHESIS TEST: research's strongest cause is the onCreate/doOnLayout-vs-window-transition race;
+  this moves the trigger to `onEnterAnimationComplete`. If timing was the cause, the slide is now visible.
+- UNVERIFIED on-device — the user tests on the real OnePlus (no emulator per the user's instruction; redroid can't
+  capture the per-frame slide anyway). If it still doesn't slide, the new diagnostic log shows which trigger fired,
+  and the escalation is `BottomSheetBehavior` (OverScroller, `setState` after layout) per the research.
+- **Files:** app/src/main/kotlin/dev/superdrop/ui/sheet/DraggableSheetLayout.kt,
+  app/src/main/kotlin/dev/superdrop/send/SendActivity.kt, app/src/main/res/values/themes.xml.
+  APK: super-drop-debug.apk (repo root). Revert point: branch `backup/send-sheet-before-rewrite-2026-06-11`.
+
 ## [2026-06-11] Send sheet entrance: PIVOT to the activity WINDOW slide + re-spec'd bounce
 Supersedes the "animation-scale-proof slide (Choreographer)" entry directly below. The user tested that
 build on the real OnePlus and the slide STILL did not show, so the view-level-slide approach (even with

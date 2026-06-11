@@ -290,26 +290,22 @@
     </style>
 
     <!--
-      Window enter/exit animation pair for Theme.SuperDrop.SendSheet:
-      the activity WINDOW slides up from the bottom on open and back down
-      on close. This is the CANONICAL approach — the slide is drawn by the
-      system/OEM window-transition machinery (robust; NOT gated by the
-      app-process `animator_duration_scale` the way a View.animate()/
-      ValueAnimator slide is), and the close is automatically the reverse
-      of the open. The inner DraggableSheetLayout no longer does a
-      view-level slide; it only runs the top-edge bounce AFTER the window
-      slide lands (DraggableSheetLayout.playEntrance -> playTopElasticStretch).
+      Window enter/exit animation pair for Theme.SuperDrop.SendSheet.
+      OPEN = a soft FADE only (popup_fade_in: alpha 0->1 + a tiny scale, 200ms) —
+      deliberately NOT a vertical slide. The slide-up is done as a VIEW-level
+      animation INSIDE the window by DraggableSheetLayout.playEntrance, which
+      SendActivity triggers from onEnterAnimationComplete() — i.e. AFTER this window
+      fade has finished — so the view slide is no longer masked by / racing with the
+      window's own open transition. That race is the timing bug that made the sheet
+      "appear already settled" (fade only, no slide) on OnePlus. A fade here (no
+      translate) lets the 0.2 dim scrim appear smoothly WITHOUT competing with the
+      view slide. CLOSE keeps slide_down_out. (Style is also reused by
+      Theme.SuperDrop.ReceiveSheet.)
     -->
     <style name="WindowAnimation.SuperDrop.SendSheet" parent="@android:style/Animation.Activity">
-        <!-- OPEN enter = slide UP from below the bottom edge (slide_up_in:
-             fromYDelta 100%p -> 0, decelerate, 260ms). The window does the
-             slide; the 0.2 dim scrim fades in alongside it. CLOSE exit = the
-             REVERSE: slide DOWN off the bottom edge (slide_down_out: 0 ->
-             100%p, accelerate, 200ms), so dismissing/finishing animates out
-             as the mirror of the entrance. -->
-        <item name="android:activityOpenEnterAnimation">@anim/slide_up_in</item>
+        <item name="android:activityOpenEnterAnimation">@anim/popup_fade_in</item>
         <item name="android:activityCloseExitAnimation">@anim/slide_down_out</item>
-        <item name="android:taskOpenEnterAnimation">@anim/slide_up_in</item>
+        <item name="android:taskOpenEnterAnimation">@anim/popup_fade_in</item>
         <item name="android:taskCloseExitAnimation">@anim/slide_down_out</item>
     </style>
 

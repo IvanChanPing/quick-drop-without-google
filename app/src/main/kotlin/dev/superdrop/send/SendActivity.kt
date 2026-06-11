@@ -213,37 +213,29 @@ public class SendActivity : AppCompatActivity() {
      */
     private var sentImagePreviewUri: Uri? = null
 
+    /**
+     * Guard so the sheet slide-up entrance ([startSendSheetEntrance]) runs exactly
+     * once, whether it is triggered by [onEnterAnimationComplete] (primary) or the
+     * wireBottomSheet fallback timer.
+     */
+    private var sendSheetEntranceStarted: Boolean = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Entrance motion = the activity WINDOW slide-up (Theme.SuperDrop.SendSheet ->
-        // WindowAnimation.SuperDrop.SendSheet `slide_up_in`), NOT a view-level slide.
-        // The window slide is drawn by the system/OEM window-transition machinery, so —
-        // unlike a View.animate()/ValueAnimator slide — it is immune to the app-process
-        // `animator_duration_scale`, which collapsed the OLD view slide to an instant
-        // snap on OnePlus/OxygenOS with "Remove animations" enabled (#15 OnePlus slide
-        // gap). FORCE the open slide via overrideActivityTransition on API 34+:
-        // SendActivity is launched from the system share-sheet/chooser, and on some OEM
-        // ROMs (observed: OxygenOS) the chooser applies its OWN window-open animation,
-        // so we explicitly set slide_up_in as this activity's open ENTER animation
-        // (second arg); 0 = no animation for the app/launcher behind (third arg). The
-        // inner DraggableSheetLayout.playEntrance then runs ONLY the top-edge bounce
-        // once the window slide settles (it no longer slides the view itself).
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            overrideActivityTransition(
-                android.app.Activity.OVERRIDE_TRANSITION_OPEN,
-                R.anim.slide_up_in,
-                0,
-            )
-        }
-        // Re-point the window animation set at our style so the CLOSE exit is the
-        // slide_down_out reverse on every launch path / API level, AND the open
-        // slide_up_in applies on API < 34 (where overrideActivityTransition is
-        // unavailable). Using the style (not 0) keeps the close slide intact —
-        // setWindowAnimations(0) would also kill the dismiss animation.
-        window.setWindowAnimations(R.style.WindowAnimation_SuperDrop_SendSheet)
+        // Entrance = a VIEW-level slide-up of the sheet (DraggableSheetLayout
+        // .playEntrance), triggered from onEnterAnimationComplete() — i.e. AFTER the
+        // activity window's own OPEN transition finishes — so the slide is NOT masked
+        // by / racing with the window animation. That race is the timing bug that made
+        // the sheet "appear already settled" (fade only, no slide) on OnePlus. The
+        // window OPEN animation is a soft FADE only (Theme.SuperDrop.SendSheet ->
+        // WindowAnimation.SuperDrop.SendSheet `popup_fade_in`, no vertical translate),
+        // so the 0.2 dim fades in without competing with the view slide. We do NOT
+        // override the window transition here (overrideActivityTransition was not
+        // honored on the OnePlus chooser launch path anyway) — the theme carries the
+        // fade, and the visible slide is the view animation.
         DiagnosticLog.e(
             OUTBOUND_TAG,
-            "SendActivity.onCreate: window slide_up_in entrance (style applied); " +
+            "SendActivity.onCreate: view-slide entrance (fires at onEnterAnimationComplete); " +
                 "sdk=${Build.VERSION.SDK_INT}",
         )
         // Veto receiver-side mDNS publish for the duration of this
@@ -1379,17 +1371,60 @@ public class SendActivity : AppCompatActivity() {
         // background stretches around them. send_device_pill is a CHILD of
         // send_sheet_content, so this single wrapper covers it — no separate top-rider.
         binding.sendSheet.setBounceContent(binding.sendSheetContent)
+        // Pre-hide the sheet fully below the screen NOW (before the window is shown) so
+        // there is no flash of it at rest. The actual slide-up is kicked LATER from
+        // onEnterAnimationComplete() (see [startSendSheetEntrance]) — AFTER the window's
+        // own open transition — so it isn't masked by the window animation.
+        binding.sendSheet.prepareOffscreen()
         // Hold the device-icon row hidden during the entrance so a fast-found
         // device does not appear mid-slide. Discovery keeps running; only the
         // icons' APPEARANCE is delayed (alpha gate, revealed on completion).
         binding.sendPeerList.alpha = 0f
-        binding.sendSheet.playEntrance { revealPeerIcons() }
-        // Safety net: guarantee the icons are revealed even if the entrance
-        // animation is cut short (so they can never stay invisible).
+        // Fallback: if onEnterAnimationComplete() never fires (some OEM launch paths),
+        // still kick the entrance after a short delay so the pre-hidden sheet can't get
+        // stuck off-screen. Idempotent with onEnterAnimationComplete via the guard.
+        binding.sendSheet.postDelayed(
+            { startSendSheetEntrance("fallback-timer") },
+            ENTRANCE_TRIGGER_FALLBACK_MS,
+        )
+        // Safety net: reveal the icons even if the entrance never runs / is cut short.
+        // The entrance only STARTS at onEnterAnimationComplete (or the fallback timer),
+        // so allow for that trigger delay PLUS the entrance length.
         binding.root.postDelayed(
             { revealPeerIcons() },
-            DraggableSheetLayout.ENTRANCE_TOTAL_MS + PEER_ICON_REVEAL_FALLBACK_BUFFER_MS,
+            ENTRANCE_TRIGGER_FALLBACK_MS + DraggableSheetLayout.ENTRANCE_TOTAL_MS +
+                PEER_ICON_REVEAL_FALLBACK_BUFFER_MS,
         )
+    }
+
+    /**
+     * Trigger the sheet's slide-up entrance. The framework calls this when the
+     * activity's window OPEN transition has finished — the documented "safe to draw"
+     * point — so the VIEW slide runs in the already-visible window instead of being
+     * masked by the window's own open animation (the OnePlus "appears already settled,
+     * fade only" bug). Defers to [startSendSheetEntrance], which guards against running
+     * twice (it is also reachable from the wireBottomSheet fallback timer).
+     */
+    override fun onEnterAnimationComplete() {
+        super.onEnterAnimationComplete()
+        startSendSheetEntrance("onEnterAnimationComplete")
+    }
+
+    /**
+     * Run the sheet entrance exactly ONCE: [DraggableSheetLayout.playEntrance] slides
+     * the pre-hidden sheet up from below the screen, then plays the top-edge bounce,
+     * then reveals the peer icons. Reached from BOTH [onEnterAnimationComplete]
+     * (primary, after the window is shown) and the wireBottomSheet fallback timer (in
+     * case onEnterAnimationComplete never fires on some OEM launch path); the
+     * [sendSheetEntranceStarted] guard makes whichever fires first win. A single
+     * [android.view.View.post] defers one more frame so the window has actually
+     * painted before the slide starts.
+     */
+    private fun startSendSheetEntrance(via: String) {
+        if (sendSheetEntranceStarted) return
+        sendSheetEntranceStarted = true
+        DiagnosticLog.e(OUTBOUND_TAG, "SendActivity: start sheet entrance via=$via")
+        binding.sendSheet.post { binding.sendSheet.playEntrance { revealPeerIcons() } }
     }
 
     /**
@@ -2076,6 +2111,12 @@ public class SendActivity : AppCompatActivity() {
 
         private const val OUTBOUND_TAG: String = "BadaOutbound"
         private const val PERCENT_SCALE = 100
+
+        /** Fallback delay (from wireBottomSheet) to kick the sheet entrance if
+         *  [onEnterAnimationComplete] never fires on some OEM launch path, so the
+         *  pre-hidden sheet can't get stuck off-screen. Long enough that
+         *  onEnterAnimationComplete (after the ~200ms window fade) normally wins. */
+        private const val ENTRANCE_TRIGGER_FALLBACK_MS: Long = 450L
 
         /** Fade-in duration for the device-icon row once the sheet entrance
          *  animation finishes ([revealPeerIcons]). */

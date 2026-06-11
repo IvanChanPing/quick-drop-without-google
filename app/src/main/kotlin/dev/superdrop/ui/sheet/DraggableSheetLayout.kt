@@ -15,7 +15,9 @@ import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
+import android.view.ViewGroup
 import android.view.WindowInsets
+import android.view.animation.DecelerateInterpolator
 import android.view.animation.LinearInterpolator
 import android.view.animation.OvershootInterpolator
 import android.widget.LinearLayout
@@ -27,11 +29,11 @@ import dev.superdrop.discovery.diagnostics.DiagnosticLog
  * shareit-bridge `com.bridge.share.ui.DraggableSheetLayout`). A
  * bottom-anchored card that:
  *
- *  - rises into place on entrance via the activity WINDOW slide
- *    (Theme.SuperDrop.SendSheet `slide_up_in`), then its TOP edge
- *    elastically stretches up and settles with the bottom planted
- *    (see [playEntrance] / [playTopElasticStretch]); the elements ride
- *    up a little but do NOT stretch — only the rounded background does,
+ *  - slides up from below the bottom edge on entrance (a VIEW-level slide in
+ *    [playEntrance], pre-hidden via [prepareOffscreen] and triggered by the host
+ *    AFTER the window is shown), then its TOP edge elastically stretches up and
+ *    settles with the bottom planted (see [playTopElasticStretch]); the elements
+ *    ride up a little but do NOT stretch — only the rounded background does,
  *  - is draggable downward and dismisses on a sufficient swipe-down,
  *  - snaps back with a bounce otherwise.
  *
@@ -82,43 +84,68 @@ public class DraggableSheetLayout
         }
 
         /**
-         * Entrance — the bounce only. Stage 1 (the slide-up from below the bottom of
-         * the screen) is now the activity WINDOW open animation
-         * ([R.style.WindowAnimation_SuperDrop_SendSheet] `slide_up_in`), drawn by the
-         * system/OEM window-transition machinery. That window slide — unlike a
-         * [android.view.ViewPropertyAnimator] / [ValueAnimator] slide — is NOT gated
-         * by the app-process `animator_duration_scale`; that gating was exactly why
-         * the old view-level slide collapsed to an instant snap on OnePlus/OxygenOS
-         * with "Remove animations" (animator scale 0) enabled. So this method no
-         * longer slides the view at all; it waits [WINDOW_SETTLE_MS] for the window
-         * slide to land, then runs the top-edge elastic stretch
-         * ([playTopElasticStretch]) so the two read as one continuous motion.
+         * Pre-hide the sheet fully BELOW the screen, immediately, BEFORE the first
+         * frame is drawn — so it is invisible until [playEntrance] slides it up (no
+         * flash of the sheet at its resting position). The host calls this during view
+         * setup (SendActivity.wireBottomSheet) BEFORE the window becomes visible. A
+         * full screen-height translate guarantees off-screen without needing the
+         * not-yet-measured sheet height; [playEntrance] then refines to a precise
+         * just-below-the-edge start. ONLY the send sheet pre-hides; a caller that does
+         * NOT call this (e.g. the receive sheet) leaves the sheet at rest and
+         * [playEntrance] skips the slide (bounce only).
+         */
+        public fun prepareOffscreen() {
+            translationY = resources.displayMetrics.heightPixels.toFloat()
+            scaleY = 1f
+        }
+
+        /**
+         * Entrance: a VIEW-level slide-up from just below the bottom edge, then the
+         * top-edge bounce ([playTopElasticStretch]).
+         *
+         * CRITICAL TIMING: the host MUST call this AFTER the activity window has
+         * finished its OPEN transition — SendActivity calls it from
+         * `onEnterAnimationComplete()`. Triggering the slide earlier (in onCreate /
+         * the first `doOnLayout`, while the window is still running its own open
+         * animation) is what made the slide invisible on OnePlus: the view slid while
+         * the window was still composing, so by the time the window was on screen the
+         * sheet had already arrived — it "appeared already settled" with only a fade.
+         * Run in the already-visible window, the slide is plainly visible. (The slide
+         * is a [android.view.ViewPropertyAnimator]; the device's animators are ON —
+         * the bounce visibly animates — so duration is not collapsed.)
+         *
+         * If the sheet was not pre-hidden ([prepareOffscreen] not called — e.g. the
+         * receive sheet), `translationY` is 0, the slide is skipped, and only the
+         * bounce runs (preserving that caller's prior behavior).
          */
         public fun playEntrance(onComplete: (() -> Unit)? = null) {
             doOnLayout {
-                // Start from a clean transform (no residual offset/scale from a
-                // prior run); the window animation owns the slide now.
-                translationY = 0f
                 scaleY = 1f
-
-                // OBSERVABILITY (#15 OnePlus slide gap): the slide is the WINDOW
-                // animation now (not capturable in-process), so record geometry +
-                // the global animation scale. An on-device bug report then shows the
-                // entrance ran and whether the bounce — a ValueAnimator, which IS
-                // gated by animator_duration_scale — was zeroed by the user's
-                // animation setting. Routed through DiagnosticLog.e so it survives
-                // OxygenOS/Funtouch Log filtering and lands in the on-disk ring.
+                val marginBottom = (layoutParams as? ViewGroup.MarginLayoutParams)?.bottomMargin ?: 0
+                val doSlide = translationY != 0f // pre-hidden by prepareOffscreen()
+                // OBSERVABILITY: records whether the slide ran, the geometry, and the
+                // device animation scale, so an on-device bug report explains a missing
+                // slide. Routed through DiagnosticLog.e so it survives OEM Log filtering.
                 DiagnosticLog.e(
                     DIAG_TAG,
-                    "playEntrance RUN (window-slide model): height=$height " +
-                        "padBottom=$paddingBottom animDurScale=${currentAnimatorDurationScale()} " +
-                        "animatorsEnabled=${animatorsEnabled()}",
+                    "playEntrance RUN: doSlide=$doSlide height=$height curTransY=$translationY " +
+                        "animDurScale=${currentAnimatorDurationScale()} animatorsEnabled=${animatorsEnabled()}",
                 )
-
-                // Let the window slide_up_in land, THEN kick the top-edge bounce so
-                // it flows out of the slide (slide settles -> top stretches/snaps),
-                // not "slide stops, pause, then bounce".
-                postDelayed({ playTopElasticStretch(onComplete) }, WINDOW_SETTLE_MS)
+                if (doSlide) {
+                    // Snap to a PRECISE just-below-the-edge start (replacing the coarse
+                    // full-screen offset from prepareOffscreen — both off-screen, so no
+                    // visible jump), then slide up to rest and decelerate into place.
+                    translationY = (height + paddingBottom + marginBottom + ENTRANCE_OFFSET_PX).toFloat()
+                    animate()
+                        .translationY(0f)
+                        .setDuration(ENTRANCE_SLIDE_MS)
+                        .setInterpolator(DecelerateInterpolator(ENTRANCE_DECEL))
+                        .withEndAction { playTopElasticStretch(onComplete) }
+                        .start()
+                } else {
+                    // Not pre-hidden (receive sheet): no slide, just the bounce.
+                    postDelayed({ playTopElasticStretch(onComplete) }, WINDOW_SETTLE_MS)
+                }
             }
         }
 
@@ -306,11 +333,18 @@ public class DraggableSheetLayout
              *  entrance ran, its geometry, and the device animation scale. */
             private const val DIAG_TAG = "SendSheetEntrance"
 
-            // Stage 1 — the slide-up is the activity WINDOW open animation
-            // (Theme.SuperDrop.SendSheet -> WindowAnimation.SuperDrop.SendSheet
-            // `slide_up_in`, 260ms decelerate). This is how long playEntrance waits
-            // for that window slide to land before kicking the top-edge bounce, so
-            // the two read as one continuous motion. Keep in sync with slide_up_in.xml.
+            // Stage 1 — the VIEW-level slide-up (playEntrance, when pre-hidden via
+            // prepareOffscreen). Starts ENTRANCE_OFFSET_PX below the bottom edge and
+            // decelerates into rest over ENTRANCE_SLIDE_MS. Triggered by the host AFTER
+            // the window open transition (SendActivity.onEnterAnimationComplete) so it
+            // is not masked by the window's own animation.
+            private const val ENTRANCE_OFFSET_PX = 80
+            private const val ENTRANCE_SLIDE_MS = 300L
+            private const val ENTRANCE_DECEL = 1.4f
+
+            // Fallback delay before the bounce on the NO-slide path (receive sheet,
+            // which never calls prepareOffscreen): a brief settle so the bounce doesn't
+            // fire the instant the window appears.
             private const val WINDOW_SETTLE_MS = 260L
 
             // Stage 2 — bottom-anchored stretch of the card's rounded BACKGROUND: the
@@ -321,10 +355,11 @@ public class DraggableSheetLayout
             private const val ENTRANCE_TOP_EXTEND_DP = 16f
             private const val STRETCH_DURATION_MS = 260L
 
-            /** Total wall-time of the entrance (window-slide settle + bounce). Callers
-             *  use it to time a follow-on reveal (e.g. delaying the peer icons until
-             *  the entrance has finished). */
-            public const val ENTRANCE_TOTAL_MS: Long = WINDOW_SETTLE_MS + STRETCH_DURATION_MS
+            /** Total wall-time of the entrance (slide + bounce). Callers use it to time
+             *  a follow-on reveal (e.g. delaying the peer icons until the entrance has
+             *  finished). Measured from when playEntrance is triggered, NOT from
+             *  onCreate (the host adds its own pre-entrance delay). */
+            public const val ENTRANCE_TOTAL_MS: Long = ENTRANCE_SLIDE_MS + STRETCH_DURATION_MS
 
             private const val GROW_DURATION_MS = 420L
             private const val GROW_TENSION = 1.4f
