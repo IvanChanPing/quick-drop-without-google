@@ -3,43 +3,37 @@
 > **THIS FILE IS THE TASK JOURNAL** (per the task-journal rule). Update the block below after every
 > turn; append a dated entry on every discovery. A fresh session should resume from here + the memory index.
 
-## CURRENT STATE / NEXT STEP   (updated 2026-06-10 15:1x)
-- **⛔ SCOPE CORRECTION (user, 2026-06-10, emphatic):** the Super Drop app ALREADY worked perfectly with
-  Quick Share — DO NOT rewrite it or change what it did. The ONLY broken thing is **the NFC tap initiating a
-  share**, and that is the ONLY thing to fix. FORBIDDEN: building new behaviors (e.g. a BLE FastInitiation
-  advertiser while the share sheet is open — REJECTED), and analyzing Super Drop / bada to engineer the fix.
-  ALLOWED: analyze **Quick Share only** to learn how its NFC tap initiates a share, then make our tap do that.
-- **GOAL (user, 2026-06-10, FINAL):** find out exactly what the ORIGINAL Google Quick Share does for its
-  NFC-tap-to-share, and make our tap do THAT. Map the COMPLETE ORDERED flow from GMS first (no piecemeal),
-  then replicate. Mapping in progress via parallel GMS decompile readers; see §COMPLETE FLOW MAP (building).
-- **DONE (verified this session):**
-  - Round-2 device trace captured (`/root/nfc-diag/collector.log`): SELECT=`9000` OK, ADVERTISEMENT=`0000`
-    on all 11 re-poll attempts + later taps. Re-poll hypothesis OVERTURNED; not a byte bug, not timing.
-  - Full registration map proven from baksmali of all 15 GMS 26.18.33 dexes (`/root/nfc-diag/gms-smali`):
-    a QS phone returns a real NFC tag ONLY while running **NFC-enabled startDiscovery** (the QS *send*
-    sheet open). Idle/receiving phone → `djvf.g==null` → HCE returns `0000`. Wake (`djvf.f`) is a no-op
-    unless FastInit scanning registered a wake PI (screen unlocked + QS enabled). See the dated entry below.
-  - Reader instrumentation (hex SELECT/ADV bytes + tag-loss timing) already shipped in `super-drop-debug.apk`.
-  - Collector revived + `COLLECTOR_URL` re-baked to live tunnel (for any follow-up trace).
-- **OPEN DECISION FORK (needs user):** (A) use the tap only as a trigger and connect to the QS phone over
-  mDNS/Wi-Fi-LAN (`192.168.1.139:53601`, already resolved in-trace) with NO tag — verify stock QS accepts
-  an inbound Nearby connection while idle/visible; (B) require the receiver to be on the QS *send* sheet for
-  the tag path; (C) accept tap-to-a-QS-*receiver* as a QS design limitation.
-  - **Fork (A) sender side ALREADY EXISTS in the shipped APK (code-proven this session):** the QS mDNS
-    device reaches our picker as a `NearbyPeerEvent.Resolved` (the trace's `discovery: resolved peer=endpoint:L6DT`
-    line is emitted by `SendPeerPickerController.onDiscoveryEvent`); the picker filters ONLY on
-    `SendBootstrapPlan.resolve(peer).isConnectable`, NOT on `hidden`; a WIFI_LAN peer with a primary address +
-    port (`192.168.1.139:53601`) yields a `NearbyPeerRoute.Lan` → `isConnectable=true` → it renders as a
-    selectable chip "Quick Share device (L6DT)". Tapping that chip → `onPeerSelected` → the same Wi-Fi-LAN
-    connect loop the NFC tap uses (`SendActivity onNfcPeerTapped→onPeerSelected→604→671`). So NO NFC tag and NO
-    new build are needed to ATTEMPT a Wi-Fi-LAN send to a visible QS phone.
-- **NEXT STEP (no build needed — device test of fork A):** on the sender, open Super Drop's send sheet, pick a
-  file, set the OTHER phone's Quick Share to visible/"Everyone", wait for the **"Quick Share device (XXXX)"**
-  chip to appear in the picker, and TAP THE CHIP (not the NFC tap). Observe: does our app connect over Wi-Fi-LAN
-  and does the QS phone show an incoming-transfer prompt? PROVEN-from-code = the chip appears + we dial the LAN
-  endpoint; UNVERIFIED = whether stock QS ACCEPTS our inbound Nearby Connections handshake (the make-or-break
-  unknown). If it connects → tap was never needed. If it fails at the handshake → map our outbound Nearby
-  connection vs what stock QS's WIFI_LAN listener expects.
+## CURRENT STATE / NEXT STEP   (updated 2026-06-11)
+- **⛔ SCOPE (unchanged, user, emphatic):** the Super Drop app ALREADY worked perfectly with Quick Share —
+  DO NOT rewrite it or change the working transfer. The ONLY thing in scope was **the NFC tap initiating a
+  share**; on a tap the NFC layer feeds the target INTO the existing working send flow, never changes it.
+- **✅ SOLVED + USER-VERIFIED ON DEVICE:** the NFC tap now initiates the Quick Share transfer. Fix shipped =
+  the tap is a **one-shot WAKE** (not a 2.5s blocking re-poll): SELECT + one ADVERTISEMENT; an empty `0000`
+  answer is treated as "the idle receiver was woken", which opens a short window and hands off to the
+  already-running Wi-Fi discovery → auto-connect into the normal transfer (`SuperDropTapReader.TapResult`
+  → `SendActivity.onNfcTapWake`/`onNfcTapWakePeersResolved`). Re-arms each tap (fixed "second tap did
+  nothing"). Commits `175ca2e` (fix) … `fc224f8`; replicates stock QS, whose reader `djkb.c` sends ADV once
+  and relies on discovery, and whose wake `djvf.f` only opens the receiver.
+- **VERDICT — receiver Accept dialog is a stock-QS ceiling (user chose to leave it):** QS-to-QS starts with
+  NO prompt only via **self-share auto-accept** = both devices on the SAME signed-in Google account
+  (account-bound trust check; not forgeable cross-account). For a different account the receiver taps Accept
+  once. Not a bug in our tap.
+- **Diagnostics (shipped this session):** auto-upload made RELIABLE — the share Wi-Fi has no internet, so the
+  POST is QUEUED and flushed when a validated-internet network returns / over cellular
+  (`DiagnosticUploader` queue + `registerNetworkCallback`). Settings toggle "Show NFC tap diagnostics" (default
+  on) gates the on-screen Toasts. `SendActivity.onPause` ships `reason=send-leave` so a tap that never read
+  still uploads its ring.
+- **Bluetooth pair request during a tap — NOT from our connect (verified):** every socket our connection opens
+  is insecure (no pairing); BluetoothClassic route is unused. Source is outside our path (OEM NFC→BT handover /
+  the other phone's bootstrap / a QS phone). UNPINNED — to pin, need: which phone shows it + the device name.
+- **PR breakdown updated (2026-06-11, commit `b14103c`):** `SUPERDROP-CHANGES.txt` item #3 "Tap to share"
+  now matches the above (was describing the old re-poll fix + "not confirmed"). This IS the "text file of
+  pull requests" the user keeps PR copy in (one PR per item). CHANGELOG entry added.
+- **NEXT STEP (open, low-priority):** (1) the tap fix worked but was reported intermittent once — if it
+  recurs, read the auto-uploaded trace (`reason=nfc-send-tap`/`send-leave`) to see which step stalls (SELECT /
+  ADV / discovery / connect). (2) Pin the BT-pair-request source when the user can say which phone + name.
+  (3) Outward-facing: there is NO GitHub PR/fork yet (gh=IvanChanPing, 0 repos; only remote `upstream`=
+  kyujin-cho/Bada). Awaiting the user's chosen push target before any push.
 - **KEY PATHS:** journal=this file · trace=`/root/nfc-diag/collector.log` · GMS smali=`/root/nfc-diag/gms-smali`
   · djvf=`/root/nfc-diag/gms-smali/classes/djvf.smali` · reader=`app/.../nfc/SuperDropTapReader.kt`
   · collector=`/root/nfc-diag/collector.py` (127.0.0.1:7911) · app=`/root/agent-work/projects/bada-fork`.
