@@ -755,3 +755,17 @@ known reliability risk, not a regression. NEXT (need data, no code guess): user 
 on-screen Toasts (ON by default) — distinguishes WOKE+no-receiver (discovery/visibility/timing) vs connect-fail
 vs no-tap-read. Then harden the SPECIFIC failing step (candidate: widen/repeat discovery re-check across the
 window instead of only on discovery events; relax/verify isLikelyQuickShareReceiver; extend window).
+
+## 2026-06-11 — tap-share WORKS (user); separate issue: a Bluetooth PAIR request appears during the tap
+VERIFIED (our code): Super Drop initiates NO Bluetooth pairing — every BT socket is INSECURE:
+`BluetoothClassicBootstrapClient/Server` = `createInsecureRfcommSocketToServiceRecord` /
+`listenUsingInsecureRfcommWithServiceRecord`; `BluetoothL2capIo` = `createInsecureL2capChannel` /
+`listenUsingInsecureL2capChannel`; no encrypted GATT chars; `SendBootstrapPlan` marks `BluetoothClassic` an
+"Unsupported route". Insecure sockets don't pair. Nearby/Quick Share itself is pairing-free. ⇒ the pair prompt
+is NOT from our connect.
+LIKELY SOURCES (unverified — do NOT guess/change code yet): (a) an OEM NFC→Bluetooth handover / "tap to pair"
+feature reacting to the NFC tap; (b) Google Fast Pair (NFC/BLE-triggered); (c) Google Quick Share on one of the
+phones reacting to the tap; (d) the QS receiver's own Nearby bootstrap. BT pairing is mutual so the prompt can
+appear on EITHER phone.
+TO PIN IT — need from user: (1) WHICH phone shows the pair request (the Super Drop sender, or the QS receiver?),
+(2) what DEVICE NAME the pair request names. Plus the auto-uploaded trace (shows the connect medium used).
