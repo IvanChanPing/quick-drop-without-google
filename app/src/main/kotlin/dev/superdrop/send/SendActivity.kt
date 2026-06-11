@@ -215,34 +215,35 @@ public class SendActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Suppress the activity window's OPEN animation so the ONLY entrance motion is
-        // the sheet's own view-level slide + bounce ([DraggableSheetLayout.playEntrance]).
-        // A window-level open transition was sliding/shifting the whole window on top of
-        // the view slide (a double, competing motion that read as "fades into place");
-        // the theme's no-op window animation is not honored for every launch path on
-        // Android 14+, so we override it here. The CLOSE animation is left intact.
+        // Entrance motion = the activity WINDOW slide-up (Theme.SuperDrop.SendSheet ->
+        // WindowAnimation.SuperDrop.SendSheet `slide_up_in`), NOT a view-level slide.
+        // The window slide is drawn by the system/OEM window-transition machinery, so —
+        // unlike a View.animate()/ValueAnimator slide — it is immune to the app-process
+        // `animator_duration_scale`, which collapsed the OLD view slide to an instant
+        // snap on OnePlus/OxygenOS with "Remove animations" enabled (#15 OnePlus slide
+        // gap). FORCE the open slide via overrideActivityTransition on API 34+:
+        // SendActivity is launched from the system share-sheet/chooser, and on some OEM
+        // ROMs (observed: OxygenOS) the chooser applies its OWN window-open animation,
+        // so we explicitly set slide_up_in as this activity's open ENTER animation
+        // (second arg); 0 = no animation for the app/launcher behind (third arg). The
+        // inner DraggableSheetLayout.playEntrance then runs ONLY the top-edge bounce
+        // once the window slide settles (it no longer slides the view itself).
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-            overrideActivityTransition(android.app.Activity.OVERRIDE_TRANSITION_OPEN, 0, 0)
-        } else {
-            @Suppress("DEPRECATION")
-            overridePendingTransition(0, 0)
+            overrideActivityTransition(
+                android.app.Activity.OVERRIDE_TRANSITION_OPEN,
+                R.anim.slide_up_in,
+                0,
+            )
         }
-        // Belt-and-suspenders for OEM window-open animations (#15 OnePlus slide gap):
-        // on some OEM ROMs (observed: OnePlus / OxygenOS) the theme's no-op
-        // activityOpenEnterAnimation AND overrideActivityTransition are not always
-        // honored for every launch path (e.g. when the system share-sheet/chooser is
-        // the caller), and the ROM applies its own window-OPEN animation on top of the
-        // sheet's view-level slide — a second, competing motion that makes the slide
-        // read as "fades into place". Re-point the window animation set at our
-        // WindowAnimation.SuperDrop.SendSheet style (OPEN enter = no_anim, CLOSE exit =
-        // slide_down_out) directly on the window so the ONLY entrance motion is the
-        // inner sheet's own view-level slide ([DraggableSheetLayout.playEntrance]),
-        // while the slide-DOWN dismiss is preserved. Using the style (not 0) keeps the
-        // close slide intact — setWindowAnimations(0) would also kill the dismiss.
+        // Re-point the window animation set at our style so the CLOSE exit is the
+        // slide_down_out reverse on every launch path / API level, AND the open
+        // slide_up_in applies on API < 34 (where overrideActivityTransition is
+        // unavailable). Using the style (not 0) keeps the close slide intact —
+        // setWindowAnimations(0) would also kill the dismiss animation.
         window.setWindowAnimations(R.style.WindowAnimation_SuperDrop_SendSheet)
         DiagnosticLog.e(
             OUTBOUND_TAG,
-            "SendActivity.onCreate: window open-anim suppressed (style reapplied); " +
+            "SendActivity.onCreate: window slide_up_in entrance (style applied); " +
                 "sdk=${Build.VERSION.SDK_INT}",
         )
         // Veto receiver-side mDNS publish for the duration of this
@@ -1372,11 +1373,12 @@ public class SendActivity : AppCompatActivity() {
             binding.sendSheet,
             resources.getDimensionPixelSize(R.dimen.send_sheet_base_bottom_padding),
         )
-        // Bounce only the card surface: the body (content wrapper) stays planted
-        // (counter-scaled) while the rounded background stretches, and the device
-        // pill rides up glued to the stretching top edge.
+        // Bounce only the card BACKGROUND: the content wrapper (every element — the
+        // device pill + the 480dp state frame) is counter-scaled about its centre so
+        // the elements keep their size and just ride up a little while the rounded
+        // background stretches around them. send_device_pill is a CHILD of
+        // send_sheet_content, so this single wrapper covers it — no separate top-rider.
         binding.sendSheet.setBounceContent(binding.sendSheetContent)
-        binding.sendSheet.setBounceTopRider(binding.sendDevicePill)
         // Hold the device-icon row hidden during the entrance so a fast-found
         // device does not appear mid-slide. Discovery keeps running; only the
         // icons' APPEARANCE is delayed (alpha gate, revealed on completion).

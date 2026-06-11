@@ -1,3 +1,52 @@
+## [2026-06-11] Send sheet entrance: PIVOT to the activity WINDOW slide + re-spec'd bounce
+Supersedes the "animation-scale-proof slide (Choreographer)" entry directly below. The user tested that
+build on the real OnePlus and the slide STILL did not show, so the view-level-slide approach (even with
+the Choreographer fallback) is abandoned. The slide is now the ACTIVITY WINDOW open animation — drawn by
+the system/OEM window-transition machinery, which is NOT gated by the app-process `animator_duration_scale`
+that was collapsing the view slide to a snap on OnePlus/OxygenOS with "Remove animations" on.
+
+**What changed:**
+- `themes.xml` `WindowAnimation.SuperDrop.SendSheet`: OPEN enter `no_anim` -> `slide_up_in` (260ms
+  decelerate, fromYDelta 100%p -> 0); CLOSE exit stays `slide_down_out` (the reverse). This style is wired
+  via `android:windowAnimationStyle` on Theme.SuperDrop.SendSheet AND reused by Theme.SuperDrop.ReceiveSheet,
+  so the receive sheet (ConsentTrampolineActivity) gets the same window slide — symmetric, no double-slide.
+- `SendActivity.onCreate`: REMOVED the `overrideActivityTransition(OVERRIDE_TRANSITION_OPEN, 0, 0)` /
+  `overridePendingTransition(0, 0)` that was SUPPRESSING the window open animation. Instead, on API 34+
+  FORCE the open slide with `overrideActivityTransition(OVERRIDE_TRANSITION_OPEN, R.anim.slide_up_in, 0)`
+  (SendActivity launches from the system share-sheet/chooser, which on some OEM ROMs applies its own open
+  anim; forcing it overrides that). Kept `window.setWindowAnimations(style)` for CLOSE + API<34 open.
+- `DraggableSheetLayout.playEntrance`: REMOVED the view-level translationY slide AND the
+  `slideWithChoreographer` fallback (both deleted). playEntrance now only waits `WINDOW_SETTLE_MS=260` for
+  the window slide to land, then runs the top-edge bounce. The window animation IS the entrance slide.
+- `DraggableSheetLayout.dismiss()`: simplified to just `onDismiss()` — the slide-DOWN exit is the window
+  `slide_down_out` (the reverse of the entrance), so the view no longer also translates down.
+- BOUNCE re-spec'd (user changed the model): the rounded card BACKGROUND stretches (whole sheet scaleY
+  about the bottom; top edge extends `ENTRANCE_TOP_EXTEND_DP=16dp` and snaps back — one raised-cosine hump,
+  no wobble). The CONTENT wrapper (`send_sheet_content` = the device pill + the 480dp state frame) is
+  counter-scaled by the inverse about its OWN CENTRE, so the elements KEEP their size (do NOT stretch) and
+  merely RIDE up a little with the stretch. Removed the old "pill glued to top / body planted" model:
+  `bounceTopRider` field + `setBounceTopRider` + the SendActivity call are deleted (the pill is a child of
+  `send_sheet_content`, so the single content counter-scale already covers it).
+- Constants/imports cleaned: removed ENTRANCE_DURATION_MS / ENTRANCE_DECEL / BOUNCE_OVERLAP_MS /
+  ENTRANCE_OFFSET_PX / DISMISS_DURATION_MS and the Choreographer / DecelerateInterpolator / ViewGroup
+  imports; added WINDOW_SETTLE_MS; `ENTRANCE_TOTAL_MS = WINDOW_SETTLE_MS + STRETCH_DURATION_MS`.
+
+**Verification (HONEST — emulator confirms the code PATH, not the on-device visual):**
+- BUILD SUCCESSFUL (`:app:assembleDebug`, 55s). Compiles clean — the deleted symbols are referenced
+  nowhere (grep-confirmed across app/src/main).
+- Emulator (redroid, API 36): the on-disk `bada-diagnostics.log` CONFIRMS the new path runs —
+  `SendActivity.onCreate: window slide_up_in entrance (style applied)`, `playEntrance RUN (window-slide
+  model)`, and `playTopElasticStretch RUN`. So onCreate no longer suppresses the window anim, playEntrance
+  no longer slides the view, and the bounce code executes.
+- UNVERIFIED — user to test on the OnePlus: the WINDOW slide is drawn by SurfaceFlinger and redroid
+  `screencap` cannot capture window/activity transitions (only view-level anims), so the visible slide-up
+  could NOT be confirmed in the emulator — by design this is the device-only test. The bounce VISUAL was
+  also not conclusively captured (the frame grabs did not clearly cover the 260ms-delayed bounce window).
+  The bounce reuses the SAME sheet-scaleY-about-bottom mechanism that was emulator-proven before; only the
+  content-ride pivot (bottom -> centre) and the topRider removal changed.
+- **Files:** app/src/main/res/values/themes.xml, app/src/main/kotlin/dev/superdrop/send/SendActivity.kt,
+  app/src/main/kotlin/dev/superdrop/ui/sheet/DraggableSheetLayout.kt. APK: super-drop-debug.apk (repo root).
+
 ## [2026-06-11] Send sheet slide: OnePlus/OxygenOS robustness — animation-scale-proof slide + observability
 The send-sheet slide fix (aa327bc) was EMULATOR-VERIFIED but the user reports it still does not look fixed
 on their real OnePlus (OxygenOS, Android 14/15 = API 34/35), even though the delivered APK provably contains

@@ -12,13 +12,10 @@ import android.content.Context
 import android.os.Build
 import android.provider.Settings
 import android.util.AttributeSet
-import android.view.Choreographer
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
-import android.view.ViewGroup
 import android.view.WindowInsets
-import android.view.animation.DecelerateInterpolator
 import android.view.animation.LinearInterpolator
 import android.view.animation.OvershootInterpolator
 import android.widget.LinearLayout
@@ -30,8 +27,11 @@ import dev.superdrop.discovery.diagnostics.DiagnosticLog
  * shareit-bridge `com.bridge.share.ui.DraggableSheetLayout`). A
  * bottom-anchored card that:
  *
- *  - slides up on entrance and lands clean, then its TOP edge elastically
- *    stretches up and settles with the bottom planted (no fade),
+ *  - rises into place on entrance via the activity WINDOW slide
+ *    (Theme.SuperDrop.SendSheet `slide_up_in`), then its TOP edge
+ *    elastically stretches up and settles with the bottom planted
+ *    (see [playEntrance] / [playTopElasticStretch]); the elements ride
+ *    up a little but do NOT stretch — only the rounded background does,
  *  - is draggable downward and dismisses on a sufficient swipe-down,
  *  - snaps back with a bounce otherwise.
  *
@@ -52,19 +52,15 @@ public class DraggableSheetLayout
         private var onDismiss: (() -> Unit)? = null
 
         /**
-         * Optional body view that is counter-scaled about its BOTTOM during the
-         * entrance bounce so it stays perfectly planted and does NOT stretch while
-         * the rounded background stretches around it. Null (default) = the whole
-         * sheet (background + content) scales together. Set via [setBounceContent].
+         * Optional content wrapper (every visible element — the device-name pill +
+         * the state frame) that is counter-scaled by the inverse of the sheet's
+         * entrance-bounce stretch, about its OWN CENTRE, so the elements keep their
+         * exact size (do NOT stretch) and merely ride up a little with the stretch
+         * while the rounded background stretches around them. Null (default) = the
+         * whole sheet (background + content) stretches together. Set via
+         * [setBounceContent].
          */
         private var bounceContent: View? = null
-
-        /**
-         * Optional view pinned to the TOP of the card (the device-name pill) that
-         * is translated up during the bounce so it stays glued to the stretching
-         * top edge instead of being left behind. Set via [setBounceTopRider].
-         */
-        private var bounceTopRider: View? = null
 
         init {
             orientation = VERTICAL
@@ -76,148 +72,63 @@ public class DraggableSheetLayout
         }
 
         /**
-         * Provide the content wrapper to counter-scale during the entrance bounce
-         * so only the sheet's rounded background stretches (the icons/text stay
-         * put). Pass null to bounce the whole sheet (background + content).
+         * Provide the content wrapper to counter-scale during the entrance bounce so
+         * only the sheet's rounded background stretches — the elements keep their
+         * size and just ride up (see [bounceContent]). Pass null to stretch the whole
+         * sheet (background + content).
          */
         public fun setBounceContent(view: View?) {
             this.bounceContent = view
         }
 
         /**
-         * Provide the top-pinned view (the device-name pill) that should ride up
-         * with the stretching top edge during the entrance bounce so it stays glued
-         * to the top of the card. Pass null to leave it where it is.
-         */
-        public fun setBounceTopRider(view: View?) {
-            this.bounceTopRider = view
-        }
-
-        /**
-         * Entrance: ONE view-level motion. (1) The whole sheet slides up from below
-         * the bottom of the screen and lands ([DecelerateInterpolator]); the activity
-         * window's own open animation is a no-op so this is the only slide and it is
-         * actually visible/verifiable. (2) Overlapping the slide's tail
-         * ([BOUNCE_OVERLAP_MS] before it ends, so it flows out of the slide rather
-         * than pausing) the card's rounded BACKGROUND stretches up at the top and
-         * snaps back — one smooth hump, no wobble; the body stays planted and the
-         * pill rides the top edge (see [playTopElasticStretch]).
+         * Entrance — the bounce only. Stage 1 (the slide-up from below the bottom of
+         * the screen) is now the activity WINDOW open animation
+         * ([R.style.WindowAnimation_SuperDrop_SendSheet] `slide_up_in`), drawn by the
+         * system/OEM window-transition machinery. That window slide — unlike a
+         * [android.view.ViewPropertyAnimator] / [ValueAnimator] slide — is NOT gated
+         * by the app-process `animator_duration_scale`; that gating was exactly why
+         * the old view-level slide collapsed to an instant snap on OnePlus/OxygenOS
+         * with "Remove animations" (animator scale 0) enabled. So this method no
+         * longer slides the view at all; it waits [WINDOW_SETTLE_MS] for the window
+         * slide to land, then runs the top-edge elastic stretch
+         * ([playTopElasticStretch]) so the two read as one continuous motion.
          */
         public fun playEntrance(onComplete: (() -> Unit)? = null) {
-            // The slide is a VIEW-level translate (the window's own open animation is
-            // a no-op, see Theme.SuperDrop.SendSheet) so there is ONE slide and it is
-            // actually visible/verifiable. doOnLayout guarantees a real [height] so the
-            // start offset truly puts the sheet below the screen.
             doOnLayout {
-                val marginBottom = (layoutParams as? ViewGroup.MarginLayoutParams)?.bottomMargin ?: 0
-                // Start the whole sheet just below the bottom edge of the screen.
-                val startTransY = (height + paddingBottom + marginBottom + ENTRANCE_OFFSET_PX).toFloat()
-                translationY = startTransY
+                // Start from a clean transform (no residual offset/scale from a
+                // prior run); the window animation owns the slide now.
+                translationY = 0f
                 scaleY = 1f
 
-                // OBSERVABILITY (#15 OnePlus slide gap): record the exact geometry +
-                // the global animation scale so an on-device bug report reveals whether
-                // the view slide actually ran, what distance it travelled, and whether
-                // the OEM/dev-option "remove animations" setting collapsed it. Without
-                // this the OnePlus failure ("fix is in the APK but slide not visible")
-                // is invisible in logs. Routed through DiagnosticLog.e so it survives
-                // OxygenOS/Funtouch's Log.i filtering and lands in the on-disk ring.
-                val animScale = currentAnimatorDurationScale()
-                val animatorsOff = !animatorsEnabled()
+                // OBSERVABILITY (#15 OnePlus slide gap): the slide is the WINDOW
+                // animation now (not capturable in-process), so record geometry +
+                // the global animation scale. An on-device bug report then shows the
+                // entrance ran and whether the bounce — a ValueAnimator, which IS
+                // gated by animator_duration_scale — was zeroed by the user's
+                // animation setting. Routed through DiagnosticLog.e so it survives
+                // OxygenOS/Funtouch Log filtering and lands in the on-disk ring.
                 DiagnosticLog.e(
                     DIAG_TAG,
-                    "playEntrance RUN: height=$height padBottom=$paddingBottom " +
-                        "marginBottom=$marginBottom startTransY=$startTransY " +
-                        "animDurScale=$animScale animatorsEnabled=${!animatorsOff}",
+                    "playEntrance RUN (window-slide model): height=$height " +
+                        "padBottom=$paddingBottom animDurScale=${currentAnimatorDurationScale()} " +
+                        "animatorsEnabled=${animatorsEnabled()}",
                 )
 
-                if (animatorsOff || animScale <= 0f) {
-                    // The user has animations disabled (OnePlus "Remove animations" /
-                    // developer-option animator_duration_scale = 0 / reduced-motion).
-                    // ViewPropertyAnimator AND ValueAnimator are BOTH multiplied by that
-                    // scale, so animate().setDuration(300) would collapse to an instant
-                    // jump and the slide would NOT be visible — which is the exact
-                    // OnePlus symptom (fix present, slide invisible). Drive the slide off
-                    // the Choreographer frame clock instead, which is NOT subject to
-                    // animator_duration_scale, so the slide ALWAYS plays. The bounce is
-                    // skipped here (it is a scale animator and would also be zeroed; the
-                    // slide is the important, requested motion).
-                    DiagnosticLog.e(
-                        DIAG_TAG,
-                        "playEntrance: animators disabled -> Choreographer slide fallback",
-                    )
-                    slideWithChoreographer(startTransY) {
-                        // Land clean, then reveal — no bounce when motion is disabled.
-                        translationY = 0f
-                        onComplete?.invoke()
-                    }
-                    return@doOnLayout
-                }
-
-                animate()
-                    .translationY(0f)
-                    .setDuration(ENTRANCE_DURATION_MS)
-                    .setInterpolator(DecelerateInterpolator(ENTRANCE_DECEL))
-                    .start()
-                // Kick the bounce just BEFORE the slide lands so it flows out of the
-                // slide's momentum (not "slide stops, pause, then bounce").
-                postDelayed(
-                    { playTopElasticStretch(onComplete) },
-                    (ENTRANCE_DURATION_MS - BOUNCE_OVERLAP_MS).coerceAtLeast(0L),
-                )
+                // Let the window slide_up_in land, THEN kick the top-edge bounce so
+                // it flows out of the slide (slide settles -> top stretches/snaps),
+                // not "slide stops, pause, then bounce".
+                postDelayed({ playTopElasticStretch(onComplete) }, WINDOW_SETTLE_MS)
             }
-        }
-
-        /**
-         * Animation-scale-proof slide used by [playEntrance] when the device has
-         * animations disabled (OnePlus "Remove animations" / developer-option
-         * `animator_duration_scale` = 0 / reduced-motion). Both
-         * [android.view.ViewPropertyAnimator] and [ValueAnimator] are multiplied by
-         * that global scale by the platform, so they would collapse to an instant
-         * jump and the entrance slide would never be visible. The [Choreographer]
-         * vsync frame clock is NOT scaled, so interpolating [translationY] off the
-         * raw frame timestamps guarantees the slide actually plays over
-         * [ENTRANCE_DURATION_MS] regardless of the user's animation setting. Bails
-         * cleanly (snaps to 0 + invokes [onEnd]) if the view detaches mid-slide so
-         * no frame callback fires against a dead view.
-         */
-        private fun slideWithChoreographer(
-            startTransY: Float,
-            onEnd: () -> Unit,
-        ) {
-            val interpolator = DecelerateInterpolator(ENTRANCE_DECEL)
-            val durationNanos = ENTRANCE_DURATION_MS * 1_000_000.0
-            val startNanos = System.nanoTime()
-            val choreographer = Choreographer.getInstance()
-            val callback =
-                object : Choreographer.FrameCallback {
-                    override fun doFrame(frameTimeNanos: Long) {
-                        if (!isAttachedToWindow) {
-                            translationY = 0f
-                            onEnd()
-                            return
-                        }
-                        val raw = ((frameTimeNanos - startNanos) / durationNanos).toFloat()
-                        val t = raw.coerceIn(0f, 1f)
-                        val eased = interpolator.getInterpolation(t)
-                        translationY = startTransY * (1f - eased)
-                        if (t >= 1f) {
-                            translationY = 0f
-                            onEnd()
-                        } else {
-                            choreographer.postFrameCallback(this)
-                        }
-                    }
-                }
-            choreographer.postFrameCallback(callback)
         }
 
         /**
          * The device-global `animator_duration_scale` (1.0 = normal, 0 = animations
          * off). Read from [Settings.Global]; defaults to 1 if unreadable. A value of
          * 0 means [android.view.ViewPropertyAnimator] / [ValueAnimator] durations are
-         * zeroed by the platform — the trigger for the [slideWithChoreographer]
-         * fallback in [playEntrance].
+         * zeroed by the platform — so the entrance bounce (a [ValueAnimator]) would
+         * collapse to an instant snap. Logged by [playEntrance] for on-device
+         * diagnostics; the slide itself is the window animation and is immune.
          */
         private fun currentAnimatorDurationScale(): Float =
             runCatching {
@@ -232,7 +143,8 @@ public class DraggableSheetLayout
          * Whether the platform currently runs animators at all. On API 26+ this is the
          * authoritative [ValueAnimator.areAnimatorsEnabled] (false when the global
          * scale is 0 OR battery-saver/reduced-motion has disabled animations); below
-         * 26 we fall back to the [currentAnimatorDurationScale] check.
+         * 26 we fall back to the [currentAnimatorDurationScale] check. Logged by
+         * [playEntrance] so a missing bounce is explainable from a bug report.
          */
         private fun animatorsEnabled(): Boolean =
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
@@ -242,19 +154,19 @@ public class DraggableSheetLayout
             }
 
         /**
-         * Stage 2 of the entrance — the bounce. Visual model (user-chosen): the
-         * BOTTOM stays planted, the card's rounded TOP edge extends up by a fixed
-         * [ENTRANCE_TOP_EXTEND_DP] pixels and snaps back ([topStretchProfile] — one
-         * smooth hump, no wobble), and:
-         *   - the rounded BACKGROUND does that stretch (sheet [scaleY] about the
-         *     bottom, so the top rises by exactly `rise` px and the bottom holds);
-         *   - [bounceContent] (the body) is counter-scaled about its BOTTOM so it
-         *     stays planted and does NOT stretch;
-         *   - [bounceTopRider] (the device pill) is translated up by `rise` so it
-         *     stays GLUED to the top edge.
-         * Net: only the empty card area between the pill and the body stretches;
-         * nothing distorts. Kicked overlapping the window slide so it feels
-         * continuous. Resets all transforms on end.
+         * Entrance stage 2 — the bounce. Visual model (user-chosen): the sheet's
+         * BOTTOM stays planted; the rounded card BACKGROUND stretches up at the top
+         * by [ENTRANCE_TOP_EXTEND_DP] px and snaps back ([topStretchProfile] — one
+         * smooth hump, no wobble). The whole sheet scales about its bottom (so the
+         * rounded background stretches), and [bounceContent] (every element — the
+         * device pill + the state frame) is counter-scaled by the inverse about its
+         * OWN CENTRE so the elements:
+         *   - do NOT stretch (the inverse scale cancels the parent stretch), and
+         *   - ride UP a little with the stretch (the centre pivot — not the bottom —
+         *     lets them move instead of staying planted).
+         * Net: only the rounded background stretches; the elements keep their size
+         * and are pinned/ride up. With no [bounceContent] set the whole sheet
+         * (background + content) stretches together. Resets transforms on end.
          */
         private fun playTopElasticStretch(onComplete: (() -> Unit)? = null) {
             val h = height
@@ -265,7 +177,6 @@ public class DraggableSheetLayout
             }
             pivotY = h.toFloat() // bottom edge = anchor; the TOP is free to stretch up
             val content = bounceContent
-            val topRider = bounceTopRider
             val extendPx = ENTRANCE_TOP_EXTEND_DP * resources.displayMetrics.density
             ValueAnimator.ofFloat(0f, 1f).apply {
                 duration = STRETCH_DURATION_MS
@@ -275,12 +186,14 @@ public class DraggableSheetLayout
                     val k = 1f + rise / h // scaleY that lifts the top edge by exactly `rise`
                     scaleY = k
                     content?.let {
-                        // Counter-scale about the sheet's bottom (content-local: its
-                        // own height + the sheet's bottom padding) => body stays put.
-                        it.pivotY = it.height.toFloat() + paddingBottom
+                        // Counter-scale about the content's OWN CENTRE: the inverse
+                        // scale cancels the parent stretch (elements keep their exact
+                        // size) while the centre pivot lets them ride up a little with
+                        // the stretch instead of staying planted — "elements move but
+                        // don't stretch; only the background stretches".
+                        it.pivotY = it.height.toFloat() / 2f
                         it.scaleY = 1f / k
                     }
-                    topRider?.translationY = -rise // pill follows the top edge up
                 }
                 addListener(
                     object : AnimatorListenerAdapter() {
@@ -289,7 +202,6 @@ public class DraggableSheetLayout
                         override fun onAnimationEnd(animation: Animator) {
                             scaleY = 1f
                             content?.scaleY = 1f
-                            topRider?.translationY = 0f
                             onComplete?.invoke()
                         }
                     },
@@ -376,49 +288,48 @@ public class DraggableSheetLayout
             return super.onTouchEvent(e)
         }
 
+        /**
+         * Dismiss the sheet. The slide-DOWN exit is the activity WINDOW close
+         * animation ([R.style.WindowAnimation_SuperDrop_SendSheet] `slide_down_out`,
+         * the reverse of the `slide_up_in` entrance), played automatically when the
+         * host [finish]es from [onDismiss]. This view does NOT also translate — a
+         * second, competing view slide would double the travel — it just notifies the
+         * host to finish so the window close animation is the only exit motion.
+         */
         public fun dismiss() {
-            animate()
-                .translationY((height + paddingBottom + ENTRANCE_OFFSET_PX).toFloat())
-                .setDuration(DISMISS_DURATION_MS)
-                .withEndAction { onDismiss?.invoke() }
-                .start()
+            onDismiss?.invoke()
         }
 
         public companion object {
-            /** DiagnosticLog tag for the entrance-slide observability lines (#15
-             *  OnePlus slide gap). grep `SendSheetEntrance` in a bug report to see
-             *  whether the view slide ran, its geometry, and the device animation
-             *  scale. */
+            /** DiagnosticLog tag for the entrance observability lines (#15 OnePlus
+             *  slide gap). grep `SendSheetEntrance` in a bug report to see that the
+             *  entrance ran, its geometry, and the device animation scale. */
             private const val DIAG_TAG = "SendSheetEntrance"
 
-            private const val ENTRANCE_OFFSET_PX = 80
-
-            // Stage 1 — VIEW-level slide-up from below the screen (the window's open
-            // animation is a no-op, so this is the only slide). Decelerates to a clean
-            // landing. The bounce is kicked BOUNCE_OVERLAP_MS before this ends so it
-            // flows out of the slide (not "slide stops, pause, then bounce").
-            private const val ENTRANCE_DURATION_MS = 300L
-            private const val ENTRANCE_DECEL = 1.6f
-            private const val BOUNCE_OVERLAP_MS = 90L
+            // Stage 1 — the slide-up is the activity WINDOW open animation
+            // (Theme.SuperDrop.SendSheet -> WindowAnimation.SuperDrop.SendSheet
+            // `slide_up_in`, 260ms decelerate). This is how long playEntrance waits
+            // for that window slide to land before kicking the top-edge bounce, so
+            // the two read as one continuous motion. Keep in sync with slide_up_in.xml.
+            private const val WINDOW_SETTLE_MS = 260L
 
             // Stage 2 — bottom-anchored stretch of the card's rounded BACKGROUND: the
             // top edge extends up by ENTRANCE_TOP_EXTEND_DP and snaps back, NO wobble
-            // (a single smooth raised-cosine hump). Body counter-scaled to stay
-            // planted; the pill rides the top edge. A fixed dp (not a % of the tall
-            // card) so the extend is small + consistent. STRETCH_DURATION_MS = length.
+            // (a single smooth raised-cosine hump). The elements are counter-scaled to
+            // keep their size and just ride up. A fixed dp (not a % of the tall card)
+            // so the extend is small + consistent. STRETCH_DURATION_MS = its length.
             private const val ENTRANCE_TOP_EXTEND_DP = 16f
             private const val STRETCH_DURATION_MS = 260L
 
-            /** Total wall-time of the entrance (slide + bounce). Callers use it to
-             *  time a follow-on reveal (e.g. delaying the peer icons until the
-             *  entrance has finished). */
-            public const val ENTRANCE_TOTAL_MS: Long = ENTRANCE_DURATION_MS + STRETCH_DURATION_MS
+            /** Total wall-time of the entrance (window-slide settle + bounce). Callers
+             *  use it to time a follow-on reveal (e.g. delaying the peer icons until
+             *  the entrance has finished). */
+            public const val ENTRANCE_TOTAL_MS: Long = WINDOW_SETTLE_MS + STRETCH_DURATION_MS
 
             private const val GROW_DURATION_MS = 420L
             private const val GROW_TENSION = 1.4f
             private const val SNAP_DURATION_MS = 220L
             private const val SNAP_TENSION = 1.0f
-            private const val DISMISS_DURATION_MS = 200L
             private const val DISMISS_FRACTION = 0.28f
 
             /**
