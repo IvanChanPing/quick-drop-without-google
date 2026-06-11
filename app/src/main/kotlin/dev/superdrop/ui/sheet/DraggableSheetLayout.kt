@@ -158,9 +158,9 @@ public class DraggableSheetLayout
                     // momentum, sails slightly PAST full, then settles. The overshoot past
                     // 1.0 IS the bounce; because the curve passes THROUGH full size without
                     // stopping (continuous velocity), the expand and the bounce blend into
-                    // one motion instead of running back-to-back. scaleX grows to full but is
-                    // clamped at 1.0 (no horizontal overshoot) so the overshoot is a vertical
-                    // top-edge stretch; the slide finishes exactly as the card reaches full
+                    // one motion instead of running back-to-back. The card stays FULL WIDTH the
+                    // whole way (scaleX fixed at 1); only the HEIGHT scales (scaleY), so it
+                    // expands and overshoots VERTICALLY only; the slide finishes as the card reaches full
                     // size; content is counter-scaled and the bottom action row planted ONLY
                     // while past full size (so the pill rides the stretching top edge and the
                     // bottom stays put). Tune the bounce magnitude with ENTRANCE_OVERSHOOT_TENSION.
@@ -174,7 +174,7 @@ public class DraggableSheetLayout
                     // Pre-set the start state (off-screen + half size) so the first drawn
                     // frame is already correct; it's off-screen so invisible regardless.
                     translationY = startTransY
-                    scaleX = ENTRANCE_START_SCALE
+                    scaleX = 1f // full width the whole way; only the HEIGHT expands
                     scaleY = ENTRANCE_START_SCALE
                     DiagnosticLog.e(DIAG_TAG, "entrance(overshoot) RUN: height=$height")
                     ValueAnimator.ofFloat(0f, 1f).apply {
@@ -184,8 +184,7 @@ public class DraggableSheetLayout
                             // o: 0 -> rises -> overshoots above 1 -> settles to 1 (one motion).
                             val o = overshoot.getInterpolation(va.animatedFraction)
                             val sy = ENTRANCE_START_SCALE + (1f - ENTRANCE_START_SCALE) * o
-                            scaleY = sy
-                            scaleX = minOf(1f, sy) // grow to full, but don't overshoot horizontally
+                            scaleY = sy // height only; scaleX stays 1f (full width) all the way
                             // The slide finishes exactly as the card first reaches full size.
                             val slideProg =
                                 ((sy - ENTRANCE_START_SCALE) / (1f - ENTRANCE_START_SCALE)).coerceIn(0f, 1f)
@@ -444,10 +443,10 @@ public class DraggableSheetLayout
             // subtle vertical top-edge pop). Tunable.
             private const val ENTRANCE_OVERSHOOT_TENSION = 1.0f
 
-            // The card grows from this fraction of its size up to full during the
-            // entrance (slide + expand), anchored at the bottom-centre so it "comes up"
-            // out of the bottom as it expands. 0.5 = starts at half size; 1.0 = no grow
-            // (pure slide). Tunable.
+            // The card starts at this fraction of its HEIGHT and grows to full height
+            // during the entrance (scaleY only — it stays FULL WIDTH the whole way),
+            // anchored at the bottom so it "comes up" out of the bottom as it expands.
+            // 0.5 = starts at half height; 1.0 = no grow (pure slide). Tunable.
             private const val ENTRANCE_START_SCALE = 0.5f
 
             // Fallback delay before the bounce on the NO-slide path (receive sheet,

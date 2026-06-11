@@ -1,3 +1,14 @@
+## [2026-06-11] Send sheet entrance: expand HEIGHT only (full width the whole way)
+User: the overshoot entrance looked good, but the expand grew both up AND side-to-side — they want the card at
+FULL WIDTH throughout and only the HEIGHT expanding. Fix: `scaleX` is now fixed at `1f` (pre-set + never animated +
+reset to 1); only `scaleY` runs the `ENTRANCE_START_SCALE`→overshoot→1.0 curve about the bottom pivot. So the card
+is full width and grows/overshoots vertically only (`ENTRANCE_START_SCALE` is now a height fraction). Removed the
+per-frame `scaleX = min(1, scaleY)`. One-line behaviour change; everything else (overshoot blend, content
+counter-scale, planted bottom row) unchanged. BUILD SUCCESSFUL; feel UNVERIFIED on-device. NOTE: height-only
+scaling vertically SQUISHES the content during the expand (full width, half height) until it grows out — if that
+distortion reads badly, the alternative is a clip/reveal (card height grows, content undistorted). File:
+DraggableSheetLayout.kt.
+
 ## [2026-06-11] Send sheet entrance: blend expand+bounce into ONE overshoot curve (no sequential beat)
 The previous one-animator version still had TWO sequential phases (expand to full, THEN bounce) — the user said it
 "still [wasn't] smooth... one had to finish before the other started." Root cause: the curve decelerated to rest at
