@@ -66,7 +66,7 @@ public class DraggableSheetLayout
          *     feel where the bottom stays planted and only the top extends.
          *     See [playTopElasticStretch].
          */
-        public fun playEntrance() {
+        public fun playEntrance(onComplete: (() -> Unit)? = null) {
             post {
                 translationY = (height + paddingBottom + ENTRANCE_OFFSET_PX).toFloat()
                 scaleY = 1f
@@ -74,32 +74,35 @@ public class DraggableSheetLayout
                     .translationY(0f)
                     .setDuration(ENTRANCE_DURATION_MS)
                     .setInterpolator(DecelerateInterpolator(ENTRANCE_DECEL))
-                    .withEndAction { playTopElasticStretch() }
+                    .withEndAction { playTopElasticStretch(onComplete) }
                     .start()
             }
         }
 
         /**
-         * Stage 2 of the entrance: a bottom-anchored elastic stretch of the
-         * TOP edge. [pivotY] is set to the sheet's bottom so scaling Y leaves
-         * the bottom planted and lets the top extend up, then rubber-band back
-         * via [elasticImpulse] (a decaying-sine "elastic", not a stiff spring).
-         * Tune the feel with [ENTRANCE_STRETCH] (how far the top extends),
-         * [ELASTIC_FREQ] (how many wobbles) and [ELASTIC_DECAY] (how fast they
-         * fade). Resets [scaleY] to 1 on completion.
+         * Stage 2 of the entrance: a bottom-anchored stretch of the TOP edge.
+         * [pivotY] is set to the sheet's bottom so scaling Y leaves the bottom
+         * planted and lets the top extend up, then snap straight back to rest
+         * via [topStretchProfile] — a SINGLE smooth hump (extend + snap back),
+         * NO wobble / no bounce. Tune with [ENTRANCE_STRETCH] (how far the top
+         * extends) and [STRETCH_DURATION_MS] (shorter = snappier). Resets
+         * [scaleY] to 1 on completion.
          */
-        private fun playTopElasticStretch() {
+        private fun playTopElasticStretch(onComplete: (() -> Unit)? = null) {
             pivotY = height.toFloat() // bottom edge = anchor; top is free to stretch
             ValueAnimator.ofFloat(0f, 1f).apply {
-                duration = ELASTIC_DURATION_MS
-                interpolator = LinearInterpolator() // the impulse shape drives the motion
+                duration = STRETCH_DURATION_MS
+                interpolator = LinearInterpolator() // the hump shape drives the motion
                 addUpdateListener { a ->
-                    scaleY = 1f + ENTRANCE_STRETCH * elasticImpulse(a.animatedFraction)
+                    scaleY = 1f + ENTRANCE_STRETCH * topStretchProfile(a.animatedFraction)
                 }
                 addListener(
                     object : AnimatorListenerAdapter() {
+                        // Fires on natural end AND on cancel, so [onComplete] (e.g.
+                        // revealing delayed peer icons) can never be skipped.
                         override fun onAnimationEnd(animation: Animator) {
                             scaleY = 1f
+                            onComplete?.invoke()
                         }
                     },
                 )
@@ -108,15 +111,13 @@ public class DraggableSheetLayout
         }
 
         /**
-         * Damped-sine impulse used by [playTopElasticStretch]: 0 at t=0, a quick
-         * stretch up to a first peak, then decaying oscillations settling back to
-         * ~0 at t=1. Starting at 0 (not at full stretch) avoids a visible "snap"
-         * at the hand-off from the slide. Returns the stretch amount multiplied
-         * into [scaleY] by [ENTRANCE_STRETCH].
+         * Single-hump stretch profile used by [playTopElasticStretch]: a half-sine
+         * that is 0 at t=0, rises to a single peak of 1 at t=0.5, and returns to 0
+         * at t=1 — staying >= 0 the whole way, so the top extends up once and snaps
+         * back to rest with NO wobble and NO dip below rest (not a bounce/spring).
          */
-        private fun elasticImpulse(t: Float): Float {
-            val angle = t.toDouble() * Math.PI * ELASTIC_FREQ
-            return (Math.sin(angle) * Math.exp(-ELASTIC_DECAY * t.toDouble())).toFloat()
+        private fun topStretchProfile(t: Float): Float {
+            return Math.sin(t.toDouble() * Math.PI).toFloat()
         }
 
         /**
@@ -201,15 +202,18 @@ public class DraggableSheetLayout
             private const val ENTRANCE_DURATION_MS = 300L
             private const val ENTRANCE_DECEL = 1.6f
 
-            // Stage 2 — bottom-anchored elastic stretch of the TOP edge.
-            // ENTRANCE_STRETCH = scaleY delta multiplier (~6% top stretch at the
-            // first peak); ELASTIC_FREQ ≈ number of half-oscillations; ELASTIC_DECAY
-            // = how quickly the wobble fades. Bigger STRETCH = more dramatic; bigger
-            // DECAY = settles faster with fewer wobbles.
-            private const val ENTRANCE_STRETCH = 0.12f
-            private const val ELASTIC_DURATION_MS = 460L
-            private const val ELASTIC_FREQ = 2.5
-            private const val ELASTIC_DECAY = 4.0
+            // Stage 2 — bottom-anchored stretch of the TOP edge: it extends up
+            // ONCE and snaps back to rest, NO wobble / no bounce (a single smooth
+            // hump that never dips below rest). ENTRANCE_STRETCH = peak scaleY delta
+            // (~4.5% top stretch); raise for a bigger extend. STRETCH_DURATION_MS =
+            // how long the extend+snap takes (shorter = snappier).
+            private const val ENTRANCE_STRETCH = 0.045f
+            private const val STRETCH_DURATION_MS = 360L
+
+            /** Total wall-time of the entrance (slide + top stretch). Callers use
+             *  it to time a follow-on reveal (e.g. delaying the peer icons until the
+             *  entrance has finished). */
+            public const val ENTRANCE_TOTAL_MS: Long = ENTRANCE_DURATION_MS + STRETCH_DURATION_MS
 
             private const val GROW_DURATION_MS = 420L
             private const val GROW_TENSION = 1.4f

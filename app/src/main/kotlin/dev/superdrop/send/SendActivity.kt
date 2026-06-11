@@ -1324,7 +1324,11 @@ public class SendActivity : AppCompatActivity() {
      *  - tapping the empty scrim area outside the card dismisses the
      *    activity (slide-down via the window exit animation),
      *  - a sufficient drag-down on the card dismisses it,
-     *  - the card slides up with an overshoot bounce on entrance,
+     *  - the card slides up and its top edge stretches/snaps back on
+     *    entrance (see [DraggableSheetLayout.playEntrance]),
+     *  - the discovered-device icons are held hidden until that entrance
+     *    finishes, then faded in (see [revealPeerIcons]), so a quickly-found
+     *    device does not pop in mid-animation,
      *  - the card's bottom padding tracks the navigation-bar inset.
      *
      * None of the discovery / OutboundConnection / QR logic is touched —
@@ -1338,7 +1342,30 @@ public class SendActivity : AppCompatActivity() {
             binding.sendSheet,
             resources.getDimensionPixelSize(R.dimen.send_sheet_base_bottom_padding),
         )
-        binding.sendSheet.playEntrance()
+        // Hold the device-icon row hidden during the entrance so a fast-found
+        // device does not appear mid-slide. Discovery keeps running; only the
+        // icons' APPEARANCE is delayed (alpha gate, revealed on completion).
+        binding.sendPeerList.alpha = 0f
+        binding.sendSheet.playEntrance { revealPeerIcons() }
+        // Safety net: guarantee the icons are revealed even if the entrance
+        // animation is cut short (so they can never stay invisible).
+        binding.root.postDelayed(
+            { revealPeerIcons() },
+            DraggableSheetLayout.ENTRANCE_TOTAL_MS + PEER_ICON_REVEAL_FALLBACK_BUFFER_MS,
+        )
+    }
+
+    /**
+     * Fade the discovered-device icon row ([R.id.send_peer_list]) in once, after
+     * the sheet's entrance animation. The alpha gate set in [wireBottomSheet]
+     * holds the icons hidden during the slide + top-stretch so a fast-found
+     * device does not appear mid-animation; this reveals them. Idempotent — both
+     * the entrance-completion callback and the safety-net timer call it.
+     */
+    private fun revealPeerIcons() {
+        val list = binding.sendPeerList
+        if (list.alpha >= 1f) return
+        list.animate().alpha(1f).setDuration(PEER_ICON_REVEAL_MS).start()
     }
 
     private fun showHelpSheet() {
@@ -2012,6 +2039,15 @@ public class SendActivity : AppCompatActivity() {
 
         private const val OUTBOUND_TAG: String = "BadaOutbound"
         private const val PERCENT_SCALE = 100
+
+        /** Fade-in duration for the device-icon row once the sheet entrance
+         *  animation finishes ([revealPeerIcons]). */
+        private const val PEER_ICON_REVEAL_MS: Long = 180L
+
+        /** Extra margin past [DraggableSheetLayout.ENTRANCE_TOTAL_MS] for the
+         *  safety-net reveal, so the icons are shown even if the entrance
+         *  animation callback is skipped (e.g. entrance cut short). */
+        private const val PEER_ICON_REVEAL_FALLBACK_BUFFER_MS: Long = 150L
 
         /**
          * How long to wait for a QR-matched peer's Wi-Fi LAN route to

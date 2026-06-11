@@ -1,3 +1,20 @@
+## [2026-06-11] Send sheet: tune entrance to extend+snap (no wobble) and delay device icons until after it
+Per user feedback on the previous build:
+1. **Entrance top-stretch reworked from elastic to a single extend+snap** (`DraggableSheetLayout`): the
+   whole sheet still slides up and lands first, but the top-edge motion is now a SINGLE smooth hump
+   (`topStretchProfile` = half-sine: 0 → peak → 0, never dips below rest) instead of the decaying-sine
+   that wobbled/bounced. ZERO wobbles. Stretch reduced (`ENTRANCE_STRETCH` 0.12f → 0.045f ≈ 4.5%) and
+   snappier (`STRETCH_DURATION_MS` 460 → 360). Dropped the now-unused ELASTIC_FREQ/ELASTIC_DECAY.
+2. **Device icons delayed until the entrance finishes** (`SendActivity.wireBottomSheet` +
+   `revealPeerIcons`): discovery can surface a device in well under the ~660 ms entrance, which made an
+   icon pop in mid-slide. The peer-icon row (`send_peer_list`) is now held at `alpha=0` during the
+   entrance and faded in on completion via a new `playEntrance { … }` callback, with a postDelayed
+   safety-net (`DraggableSheetLayout.ENTRANCE_TOTAL_MS` + buffer) so icons can never stay hidden if the
+   entrance is cut short. Discovery / OutboundConnection logic untouched — only the icons' APPEARANCE is
+   delayed.
+- **Files:** `app/.../ui/sheet/DraggableSheetLayout.kt`, `app/.../send/SendActivity.kt`. Compile-checked
+  pending build; on-device feel UNVERIFIED (no display here) — user click-tests + can tune the constants.
+
 ## [2026-06-11] Send sheet: elastic top-stretch entrance + "tap an iPhone" hint on the QR panel
 Two UI tweaks to the send bottom sheet, per user.
 1. **Entrance animation reworked** (`DraggableSheetLayout.playEntrance`): was an `OvershootInterpolator`
