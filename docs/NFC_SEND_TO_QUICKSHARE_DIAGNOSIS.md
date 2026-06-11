@@ -728,3 +728,18 @@ REMAINING DIFFERENCE (user): stock Quick Share QS↔QS "just started" with NO ac
 That = the SELF-SHARE behavior — QS↔QS on the SAME Google account auto-accepts (no dialog). Super Drop is not a
 same-account device, so stock QS shows a confirm (expected). NEXT: verify from QS code whether the no-dialog is
 reachable for our sender (self-share cert / isIncomingConnection / QR-handshake) before promising it.
+
+## VERDICT 2026-06-11 — the receiver accept DIALOG is a ceiling (no-dialog NOT achievable for a non-account tap)
+Chased the no-dialog (`skipLocal`) gating (user OK'd chasing; decided to leave it):
+- `drbk` skipLocal=true iff: (1) self-share (`Ldqtt.e`), OR (2) `drbk.i`, OR (3) QR-handshake (`drcs.h`+`dqwb.b`).
+- (2) `drbk.i` ← `dqud.d` ← `Ldelj.e`. `dqud.toString` = `Connected(endpointInfo, rawAuthenticationToken,
+  authenticationDigits, isConnectionVerified)` ⇒ `drbk.i` = **isConnectionVerified** (a Nearby Connections flag).
+- ⇒ all three are OUT-OF-BAND AUTH: self-share = same-account cert (NOT forgeable by a 3rd-party app);
+  isConnectionVerified = the connection's auth token confirmed (our post-wake connect is Wi-Fi-LAN, not a
+  trusted OOB channel, so not verified); QR-handshake = a QR pairing, not a tap.
+- CONFIDENCE: skipLocal←isConnectionVerified←delj.e VERIFIED from smali; what sets `delj.e` deep in the
+  Connections engine (classes13) NOT fully traced = strong inference. TENTATIVE dead-end: skipping the dialog
+  for a non-account tap is almost certainly NOT achievable; the dialog is stock QS security. User decision: LEAVE IT.
+
+## ✅ DONE — NFC tap initiates Quick Share transfer (user-verified on device). Remaining diff = receiver confirm
+dialog = stock QS behavior for a non-same-account sender (ceiling above). Feature complete for the goal.
