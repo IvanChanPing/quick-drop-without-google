@@ -1,3 +1,11 @@
+## [2026-06-11] PR breakdown: added a real-device send-sheet screenshot to item #1
+Added `docs/pr-images/send-sheet-device.jpg` — a real-device capture (OnePlus Nord N30 5G / CPH2515,
+Android 14) of the send bottom sheet: header pill with the device name, "1 file 240.5 KB", "Tap a device
+to send", a circular "Mike's phone" peer icon, the QR button (item #4) top-right, and "Can't find the
+device?". Referenced it in item #1 as the primary PR image; the prior emulator shot
+`send-bottom-sheet.png` kept as an alt.
+- **Files:** `SUPERDROP-CHANGES.txt`, `docs/pr-images/send-sheet-device.jpg` (new image). Docs only.
+
 ## [2026-06-11] PR breakdown: new finished item #9 "Cleaner device names in the send picker"; groundwork renumbered
 Per user, the peer-name-not-IP fix becomes its own small PR item. Added FINISHED item #9: nameless/hidden
 peers (stock Quick Share) now show a "Quick Share device" label in the send picker instead of a raw IP

@@ -17,7 +17,10 @@ FINISHED FEATURES
    more being forced all the way into the app just to send or receive something —
    just like the old Quick Share. A much better improvement.
 
-   Image for the PR: docs/pr-images/send-bottom-sheet.png
+   Image for the PR: docs/pr-images/send-sheet-device.jpg (real device — OnePlus
+   Nord N30 5G: header pill with your phone name, "1 file 240.5 KB", "Tap a device
+   to send", a circular peer icon "Mike's phone", the QR button top-right, and
+   "Can't find the device?"). Alt/emulator shot: docs/pr-images/send-bottom-sheet.png
 
 2) Quick tile that opens a bottom sheet to receive
    A Quick Settings tile that opens the receive sheet and makes you visible to
