@@ -720,3 +720,11 @@ tap path, NO silent failure paths:
   no-tap-Toast=reader didn't fire; FAILED=not the QS HCE; WOKE+no-receiver=woken phone never appeared in our
   discovery; connecting+status-panel-fail=connect-level. Full trace also in DiagnosticLog ring (shake bug report).
 - STATUS: build SUCCESSFUL, `super-drop-debug.apk` refreshed. Instrumentation; behavior of the fix unchanged.
+
+## 🎉 WORKS ON DEVICE (user-verified 2026-06-11) — tap initiates the Quick Share transfer
+USER confirmed on real phones: the NFC tap now wakes the receiver AND the share starts/transfers. The one-shot
+wake → hand-off-to-discovery auto-connect fix is correct end-to-end (user drove the real UI; I could not).
+REMAINING DIFFERENCE (user): stock Quick Share QS↔QS "just started" with NO accept dialog; ours shows a confirm.
+That = the SELF-SHARE behavior — QS↔QS on the SAME Google account auto-accepts (no dialog). Super Drop is not a
+same-account device, so stock QS shows a confirm (expected). NEXT: verify from QS code whether the no-dialog is
+reachable for our sender (self-share cert / isIncomingConnection / QR-handshake) before promising it.
