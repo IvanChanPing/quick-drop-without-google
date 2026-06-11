@@ -10,7 +10,9 @@ import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
 import android.content.Context
 import android.os.Build
+import android.provider.Settings
 import android.util.AttributeSet
+import android.view.Choreographer
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
@@ -21,6 +23,7 @@ import android.view.animation.LinearInterpolator
 import android.view.animation.OvershootInterpolator
 import android.widget.LinearLayout
 import androidx.core.view.doOnLayout
+import dev.superdrop.discovery.diagnostics.DiagnosticLog
 
 /**
  * Kotlin port of the OShare bottom-sheet card container (see
@@ -108,8 +111,49 @@ public class DraggableSheetLayout
             doOnLayout {
                 val marginBottom = (layoutParams as? ViewGroup.MarginLayoutParams)?.bottomMargin ?: 0
                 // Start the whole sheet just below the bottom edge of the screen.
-                translationY = (height + paddingBottom + marginBottom + ENTRANCE_OFFSET_PX).toFloat()
+                val startTransY = (height + paddingBottom + marginBottom + ENTRANCE_OFFSET_PX).toFloat()
+                translationY = startTransY
                 scaleY = 1f
+
+                // OBSERVABILITY (#15 OnePlus slide gap): record the exact geometry +
+                // the global animation scale so an on-device bug report reveals whether
+                // the view slide actually ran, what distance it travelled, and whether
+                // the OEM/dev-option "remove animations" setting collapsed it. Without
+                // this the OnePlus failure ("fix is in the APK but slide not visible")
+                // is invisible in logs. Routed through DiagnosticLog.e so it survives
+                // OxygenOS/Funtouch's Log.i filtering and lands in the on-disk ring.
+                val animScale = currentAnimatorDurationScale()
+                val animatorsOff = !animatorsEnabled()
+                DiagnosticLog.e(
+                    DIAG_TAG,
+                    "playEntrance RUN: height=$height padBottom=$paddingBottom " +
+                        "marginBottom=$marginBottom startTransY=$startTransY " +
+                        "animDurScale=$animScale animatorsEnabled=${!animatorsOff}",
+                )
+
+                if (animatorsOff || animScale <= 0f) {
+                    // The user has animations disabled (OnePlus "Remove animations" /
+                    // developer-option animator_duration_scale = 0 / reduced-motion).
+                    // ViewPropertyAnimator AND ValueAnimator are BOTH multiplied by that
+                    // scale, so animate().setDuration(300) would collapse to an instant
+                    // jump and the slide would NOT be visible — which is the exact
+                    // OnePlus symptom (fix present, slide invisible). Drive the slide off
+                    // the Choreographer frame clock instead, which is NOT subject to
+                    // animator_duration_scale, so the slide ALWAYS plays. The bounce is
+                    // skipped here (it is a scale animator and would also be zeroed; the
+                    // slide is the important, requested motion).
+                    DiagnosticLog.e(
+                        DIAG_TAG,
+                        "playEntrance: animators disabled -> Choreographer slide fallback",
+                    )
+                    slideWithChoreographer(startTransY) {
+                        // Land clean, then reveal — no bounce when motion is disabled.
+                        translationY = 0f
+                        onComplete?.invoke()
+                    }
+                    return@doOnLayout
+                }
+
                 animate()
                     .translationY(0f)
                     .setDuration(ENTRANCE_DURATION_MS)
@@ -123,6 +167,79 @@ public class DraggableSheetLayout
                 )
             }
         }
+
+        /**
+         * Animation-scale-proof slide used by [playEntrance] when the device has
+         * animations disabled (OnePlus "Remove animations" / developer-option
+         * `animator_duration_scale` = 0 / reduced-motion). Both
+         * [android.view.ViewPropertyAnimator] and [ValueAnimator] are multiplied by
+         * that global scale by the platform, so they would collapse to an instant
+         * jump and the entrance slide would never be visible. The [Choreographer]
+         * vsync frame clock is NOT scaled, so interpolating [translationY] off the
+         * raw frame timestamps guarantees the slide actually plays over
+         * [ENTRANCE_DURATION_MS] regardless of the user's animation setting. Bails
+         * cleanly (snaps to 0 + invokes [onEnd]) if the view detaches mid-slide so
+         * no frame callback fires against a dead view.
+         */
+        private fun slideWithChoreographer(
+            startTransY: Float,
+            onEnd: () -> Unit,
+        ) {
+            val interpolator = DecelerateInterpolator(ENTRANCE_DECEL)
+            val durationNanos = ENTRANCE_DURATION_MS * 1_000_000.0
+            val startNanos = System.nanoTime()
+            val choreographer = Choreographer.getInstance()
+            val callback =
+                object : Choreographer.FrameCallback {
+                    override fun doFrame(frameTimeNanos: Long) {
+                        if (!isAttachedToWindow) {
+                            translationY = 0f
+                            onEnd()
+                            return
+                        }
+                        val raw = ((frameTimeNanos - startNanos) / durationNanos).toFloat()
+                        val t = raw.coerceIn(0f, 1f)
+                        val eased = interpolator.getInterpolation(t)
+                        translationY = startTransY * (1f - eased)
+                        if (t >= 1f) {
+                            translationY = 0f
+                            onEnd()
+                        } else {
+                            choreographer.postFrameCallback(this)
+                        }
+                    }
+                }
+            choreographer.postFrameCallback(callback)
+        }
+
+        /**
+         * The device-global `animator_duration_scale` (1.0 = normal, 0 = animations
+         * off). Read from [Settings.Global]; defaults to 1 if unreadable. A value of
+         * 0 means [android.view.ViewPropertyAnimator] / [ValueAnimator] durations are
+         * zeroed by the platform — the trigger for the [slideWithChoreographer]
+         * fallback in [playEntrance].
+         */
+        private fun currentAnimatorDurationScale(): Float =
+            runCatching {
+                Settings.Global.getFloat(
+                    context.contentResolver,
+                    Settings.Global.ANIMATOR_DURATION_SCALE,
+                    1f,
+                )
+            }.getOrDefault(1f)
+
+        /**
+         * Whether the platform currently runs animators at all. On API 26+ this is the
+         * authoritative [ValueAnimator.areAnimatorsEnabled] (false when the global
+         * scale is 0 OR battery-saver/reduced-motion has disabled animations); below
+         * 26 we fall back to the [currentAnimatorDurationScale] check.
+         */
+        private fun animatorsEnabled(): Boolean =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                ValueAnimator.areAnimatorsEnabled()
+            } else {
+                currentAnimatorDurationScale() > 0f
+            }
 
         /**
          * Stage 2 of the entrance — the bounce. Visual model (user-chosen): the
@@ -141,6 +258,7 @@ public class DraggableSheetLayout
          */
         private fun playTopElasticStretch(onComplete: (() -> Unit)? = null) {
             val h = height
+            DiagnosticLog.e(DIAG_TAG, "playTopElasticStretch RUN: height=$h")
             if (h <= 0) { // not laid out / zero height — nothing to scale about
                 onComplete?.invoke()
                 return
@@ -267,6 +385,12 @@ public class DraggableSheetLayout
         }
 
         public companion object {
+            /** DiagnosticLog tag for the entrance-slide observability lines (#15
+             *  OnePlus slide gap). grep `SendSheetEntrance` in a bug report to see
+             *  whether the view slide ran, its geometry, and the device animation
+             *  scale. */
+            private const val DIAG_TAG = "SendSheetEntrance"
+
             private const val ENTRANCE_OFFSET_PX = 80
 
             // Stage 1 — VIEW-level slide-up from below the screen (the window's open

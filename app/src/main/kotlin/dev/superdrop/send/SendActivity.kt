@@ -227,6 +227,24 @@ public class SendActivity : AppCompatActivity() {
             @Suppress("DEPRECATION")
             overridePendingTransition(0, 0)
         }
+        // Belt-and-suspenders for OEM window-open animations (#15 OnePlus slide gap):
+        // on some OEM ROMs (observed: OnePlus / OxygenOS) the theme's no-op
+        // activityOpenEnterAnimation AND overrideActivityTransition are not always
+        // honored for every launch path (e.g. when the system share-sheet/chooser is
+        // the caller), and the ROM applies its own window-OPEN animation on top of the
+        // sheet's view-level slide — a second, competing motion that makes the slide
+        // read as "fades into place". Re-point the window animation set at our
+        // WindowAnimation.SuperDrop.SendSheet style (OPEN enter = no_anim, CLOSE exit =
+        // slide_down_out) directly on the window so the ONLY entrance motion is the
+        // inner sheet's own view-level slide ([DraggableSheetLayout.playEntrance]),
+        // while the slide-DOWN dismiss is preserved. Using the style (not 0) keeps the
+        // close slide intact — setWindowAnimations(0) would also kill the dismiss.
+        window.setWindowAnimations(R.style.WindowAnimation_SuperDrop_SendSheet)
+        DiagnosticLog.e(
+            OUTBOUND_TAG,
+            "SendActivity.onCreate: window open-anim suppressed (style reapplied); " +
+                "sdk=${Build.VERSION.SDK_INT}",
+        )
         // Veto receiver-side mDNS publish for the duration of this
         // activity. When Bada concurrently publishes its receiver-side
         // mDNS record AND opens an outbound `OutboundConnection` to the

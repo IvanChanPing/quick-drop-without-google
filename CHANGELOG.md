@@ -1,3 +1,59 @@
+## [2026-06-11] Send sheet slide: OnePlus/OxygenOS robustness — animation-scale-proof slide + observability
+The send-sheet slide fix (aa327bc) was EMULATOR-VERIFIED but the user reports it still does not look fixed
+on their real OnePlus (OxygenOS, Android 14/15 = API 34/35), even though the delivered APK provably contains
+the fix. Diagnosed the gap and hardened the entrance so the NEXT on-device test is conclusive.
+
+**Diagnosis (VERIFIED from code vs HYPOTHESIS):**
+- VERIFIED: the entrance slide is driven by `View.animate()` (ViewPropertyAnimator) in
+  `DraggableSheetLayout.playEntrance`. ViewPropertyAnimator AND ValueAnimator durations are BOTH multiplied
+  by the device-global `animator_duration_scale`. If that scale is 0 — OnePlus "Remove animations" / the
+  developer-option animation-scale = 0 / a reduced-motion/battery state — `animate().setDuration(300)`
+  collapses to an INSTANT jump and the slide is never visible. This exactly matches "fix is in the APK but
+  the slide still doesn't show," and is the STRONGEST candidate.
+- VERIFIED: there was NO logging in `playEntrance`/`playTopElasticStretch`, so a device bug report revealed
+  nothing about whether the view slide ran. Now fixed (see Observability).
+- HYPOTHESIS (device-only, unprovable in the build env): OxygenOS may also run its own window-OPEN animation
+  on some launch paths (e.g. when the system share-sheet/chooser is the caller) despite the theme's no-op
+  open anim AND `overrideActivityTransition`. Addressed belt-and-suspenders below.
+
+**Changes:**
+- `DraggableSheetLayout.playEntrance`: now reads `animator_duration_scale` (`Settings.Global`) +
+  `ValueAnimator.areAnimatorsEnabled()` (API 26+, else scale check). When animations are DISABLED it drives
+  the slide off the **Choreographer** vsync frame clock (`slideWithChoreographer`) — which is NOT subject to
+  `animator_duration_scale` — so the slide ALWAYS plays over its 300ms even with the OEM "remove animations"
+  setting on. The normal animated path (slide + top-stretch bounce: pill glued to top, body planted) is
+  unchanged when animations are enabled. The fallback bails cleanly (snaps to 0) if the view detaches mid-slide.
+- `SendActivity.onCreate`: in addition to the existing `overrideActivityTransition(OVERRIDE_TRANSITION_OPEN,0,0)`,
+  re-applies `window.setWindowAnimations(R.style.WindowAnimation_SuperDrop_SendSheet)` directly on the window
+  to suppress any OEM window-OPEN animation that ignored the theme. Uses the STYLE (open=no_anim,
+  close=slide_down_out), NOT `0`, so the slide-DOWN dismiss is preserved.
+- **Observability (new):** at entrance start, `DiagnosticLog.e("SendSheetEntrance", …)` logs the measured
+  sheet height, computed start translationY, `animator_duration_scale`, and `animatorsEnabled`; a marker
+  fires when the Choreographer fallback path is taken; `playTopElasticStretch` logs a RUN marker; and
+  `SendActivity` logs that the window open-anim was suppressed. Routed through `DiagnosticLog.e` so it
+  survives OxygenOS/Funtouch's Log.i filtering and lands in the on-disk `bada-diagnostics.log` ring — so a
+  device bug-report reveals whether the slide executed and what the device animation scale was.
+
+**Verification (HONEST — emulator != the OnePlus):**
+- BUILD SUCCESSFUL; the APK contains `no_anim.xml`, `overrideActivityTransition`, the new `SendSheetEntrance`
+  diagnostics, the Choreographer fallback, and the window-open-anim suppression (string-grepped the dex).
+- redroid (Android 16, API 36): the on-disk diagnostic log PROVES `playEntrance` runs
+  (`height=1543 startTransY=1802.0 animDurScale=1.0 animatorsEnabled=true`), the bounce runs, AND with
+  `animator_duration_scale=0` the log shows `animatorsEnabled=false -> Choreographer slide fallback` — the
+  fallback fires instead of collapsing. The settled sheet renders correctly in the fallback path (screenshot).
+- UNPROVEN: redroid `screencap` cannot capture the per-frame INTERMEDIATE slide positions (cadence > the
+  300ms slide; the instant 0.2 dim scrim dominates brightness) — so frame-by-frame rising motion was not
+  re-captured this session. The OnePlus-specific window-animation behavior is a device-only unknown; the new
+  log is what makes the next on-device test conclusive.
+- **On-device test for the user:** trigger a share to Super Drop on the OnePlus, then pull a bug report and
+  grep `SendSheetEntrance` in `bada-diagnostics.log`. `animDurScale=0.0` + `Choreographer slide fallback`
+  ⇒ animations were off and the new fallback now drives the slide (should be visible). `animDurScale=1.0`
+  + still no visible slide ⇒ the cause is an OEM WINDOW animation, not the view slide — escalate to the
+  window-suppression path. Either way the log distinguishes the two root causes.
+- **Files:** app/src/main/kotlin/dev/superdrop/ui/sheet/DraggableSheetLayout.kt,
+  app/src/main/kotlin/dev/superdrop/send/SendActivity.kt. Also benefits ConsentTrampolineActivity (receive
+  sheet) which shares `playEntrance`. Builds; on-device OnePlus slide still UNVERIFIED (instrumented for it).
+
 ## [2026-06-11] Research/groundwork: Google "Tap to Share" (Gesture Exchange) — docs only, no code
 Reverse-engineered Google's in-progress AirDrop-style "Tap to Share" inside Google Play Services
 (package `com.google.android.gms.gestureexchange`) to assess bringing it into Super Drop, and recorded
