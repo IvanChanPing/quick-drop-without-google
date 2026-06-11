@@ -41,6 +41,9 @@
   send picker"); groundwork renumbered 9–13 → 10–14 (finished #1–#8 unchanged). Debug diagnostics
   (auto-upload + toggle) kept OUT of the PR copy (debug-only, per user). SUPERDROP-CHANGES.txt = 14 items,
   all synced to verified code.
+- **PR image added (2026-06-11, commit `6650e2e`):** real-device send-sheet screenshot
+  `docs/pr-images/send-sheet-device.jpg` (OnePlus Nord N30 5G / CPH2515, Android 14) referenced as item
+  #1's primary image; prior emulator `send-bottom-sheet.png` kept as alt.
 - **NEXT STEP (open, low-priority):** (1) the tap fix worked but was reported intermittent once — if it
   recurs, read the auto-uploaded trace (`reason=nfc-send-tap`/`send-leave`) to see which step stalls (SELECT /
   ADV / discovery / connect). (2) Pin the BT-pair-request source when the user can say which phone + name.
