@@ -743,3 +743,15 @@ Chased the no-dialog (`skipLocal`) gating (user OK'd chasing; decided to leave i
 
 ## ✅ DONE — NFC tap initiates Quick Share transfer (user-verified on device). Remaining diff = receiver confirm
 dialog = stock QS behavior for a non-same-account sender (ceiling above). Feature complete for the goal.
+
+## 2026-06-11 — toggle did NOT break sending (proven by diff); fix is INTERMITTENT, need a failing-tap trace
+User: "it was sending before" then broke after the toggle build. VERIFIED via `git diff d47fd44(obs,worked)
+80f0e6b(toggle)`: the ONLY send-path change is 4 lines in SendActivity (import + `if(!isEnabled())return` Toast
+gate + lazy field); `SuperDropTapReader` + `SendPeerPickerController` are byte-identical; toggle defaults ON so
+Toast behavior is unchanged too. ⇒ the toggle is functionally INERT for sending — it cannot have broken it.
+⇒ Real cause = the fix is INTERMITTENT (worked the once the receiver was already discovered → instant connect;
+a colder run can miss the 15s window / the woken receiver may not surface in our discovery). This is the
+known reliability risk, not a regression. NEXT (need data, no code guess): user taps once more, screenshots the
+on-screen Toasts (ON by default) — distinguishes WOKE+no-receiver (discovery/visibility/timing) vs connect-fail
+vs no-tap-read. Then harden the SPECIFIC failing step (candidate: widen/repeat discovery re-check across the
+window instead of only on discovery events; relax/verify isLikelyQuickShareReceiver; extend window).
