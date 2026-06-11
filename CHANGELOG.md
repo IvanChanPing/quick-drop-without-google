@@ -1,3 +1,18 @@
+## [2026-06-11] Send sheet entrance: REVEAL / UNFOLD (undistorted content, no squish)
+User: height-only scaling squished the content; the "reveal/unfold" is the right way. Switched the send entrance
+from a height SCALE to a clip REVEAL: the card is laid out at full size (content stays crisp) and is progressively
+revealed from the bottom up by an animated `clipBounds` rect (top rises `REVEAL_START_FRACTION`→full over
+`ENTRANCE_SLIDE_MS`, `DecelerateInterpolator(REVEAL_DECEL)`). Nothing scales or moves — only the visible amount
+grows — so the content is undistorted the whole way. Full width throughout. The clip is cleared on end.
+ENGINEERING TRADE-OFF (flagged to user): a clip reveal and a SCALE top-edge bounce can't blend into one motion, so
+the separate bounce is OMITTED here (the unfold is the whole motion); to get both we'd split the card background
+into its own layer. Also: because the clip is a rect, the rounded TOP corners only appear as the unfold completes
+(bottom corners always rounded) — if that reads badly, switch to a layout-height reveal (rounded throughout).
+Removed the scale/overshoot path (`ENTRANCE_START_SCALE`/`ENTRANCE_OVERSHOOT_TENSION`/`ENTRANCE_OFFSET_PX` +
+ViewGroup import); added `Rect`/`DecelerateInterpolator` imports + `REVEAL_START_FRACTION`/`REVEAL_DECEL`. Receive
+sheet unchanged (still `playTopElasticStretch`). BUILD SUCCESSFUL; feel UNVERIFIED on-device. File:
+DraggableSheetLayout.kt.
+
 ## [2026-06-11] Send sheet entrance: expand HEIGHT only (full width the whole way)
 User: the overshoot entrance looked good, but the expand grew both up AND side-to-side — they want the card at
 FULL WIDTH throughout and only the HEIGHT expanding. Fix: `scaleX` is now fixed at `1f` (pre-set + never animated +

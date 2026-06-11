@@ -9,14 +9,15 @@ import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.ValueAnimator
 import android.content.Context
+import android.graphics.Rect
 import android.os.Build
 import android.provider.Settings
 import android.util.AttributeSet
 import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
-import android.view.ViewGroup
 import android.view.WindowInsets
+import android.view.animation.DecelerateInterpolator
 import android.view.animation.LinearInterpolator
 import android.view.animation.OvershootInterpolator
 import android.widget.LinearLayout
@@ -141,7 +142,6 @@ public class DraggableSheetLayout
         public fun playEntrance(onComplete: (() -> Unit)? = null) {
             doOnLayout {
                 scaleY = 1f
-                val marginBottom = (layoutParams as? ViewGroup.MarginLayoutParams)?.bottomMargin ?: 0
                 val doSlide = translationY != 0f // pre-hidden by prepareOffscreen()
                 // OBSERVABILITY: records whether the slide ran, the geometry, and the
                 // device animation scale, so an on-device bug report explains a missing
@@ -152,66 +152,41 @@ public class DraggableSheetLayout
                         "animDurScale=${currentAnimatorDurationScale()} animatorsEnabled=${animatorsEnabled()}",
                 )
                 if (doSlide) {
-                    // SEAMLESS expand+bounce as ONE continuous motion — no "expand finishes,
-                    // THEN the bounce starts" beat. scaleY follows a single OVERSHOOT curve
-                    // from ENTRANCE_START_SCALE: it grows toward full size and, carrying its
-                    // momentum, sails slightly PAST full, then settles. The overshoot past
-                    // 1.0 IS the bounce; because the curve passes THROUGH full size without
-                    // stopping (continuous velocity), the expand and the bounce blend into
-                    // one motion instead of running back-to-back. The card stays FULL WIDTH the
-                    // whole way (scaleX fixed at 1); only the HEIGHT scales (scaleY), so it
-                    // expands and overshoots VERTICALLY only; the slide finishes as the card reaches full
-                    // size; content is counter-scaled and the bottom action row planted ONLY
-                    // while past full size (so the pill rides the stretching top edge and the
-                    // bottom stays put). Tune the bounce magnitude with ENTRANCE_OVERSHOOT_TENSION.
-                    val startTransY = (height + paddingBottom + marginBottom + ENTRANCE_OFFSET_PX).toFloat()
-                    val content = bounceContent
-                    val anchors = bounceBottomAnchors
-                    val h = height.toFloat()
-                    val overshoot = OvershootInterpolator(ENTRANCE_OVERSHOOT_TENSION)
-                    pivotX = width / 2f
-                    pivotY = h
-                    // Pre-set the start state (off-screen + half size) so the first drawn
-                    // frame is already correct; it's off-screen so invisible regardless.
-                    translationY = startTransY
-                    scaleX = 1f // full width the whole way; only the HEIGHT expands
-                    scaleY = ENTRANCE_START_SCALE
-                    DiagnosticLog.e(DIAG_TAG, "entrance(overshoot) RUN: height=$height")
-                    ValueAnimator.ofFloat(0f, 1f).apply {
-                        duration = ENTRANCE_SLIDE_MS + STRETCH_DURATION_MS
-                        interpolator = LinearInterpolator() // the overshoot curve is applied below
+                    // REVEAL / UNFOLD entrance: the card is laid out at FULL size (so the
+                    // content stays crisp — undistorted) and is progressively REVEALED from the
+                    // bottom up by an animated CLIP. It starts showing only the bottom
+                    // REVEAL_START_FRACTION of the card and "unfolds" upward to full. This avoids
+                    // the vertical SQUISH a height-SCALE causes: nothing moves or scales, only the
+                    // visible AMOUNT grows, so the content is sharp the whole way. Full width
+                    // throughout. (A top-edge bounce is a SCALE and cannot blend into a clip
+                    // reveal without a sequential beat, so it is intentionally omitted here — the
+                    // unfold is the whole motion. The clip is a rect, so the rounded TOP corners
+                    // appear only as the unfold completes; the bottom corners are always rounded.)
+                    translationY = 0f // bring on-screen (prepareOffscreen parked it off-screen)
+                    scaleX = 1f
+                    scaleY = 1f
+                    bounceContent?.scaleY = 1f
+                    bounceBottomAnchors.forEach { it.translationY = 0f }
+                    val w = width
+                    val hPx = height
+                    // Clip top starts low (only the bottom fraction visible) and rises to 0 (full).
+                    val startTop = (hPx * (1f - REVEAL_START_FRACTION)).toInt()
+                    val clip = Rect(0, startTop, w, hPx) // reused each frame (setClipBounds copies it)
+                    clipBounds = clip
+                    DiagnosticLog.e(DIAG_TAG, "entrance(reveal) RUN: height=$hPx startTop=$startTop")
+                    ValueAnimator.ofInt(startTop, 0).apply {
+                        duration = ENTRANCE_SLIDE_MS
+                        interpolator = DecelerateInterpolator(REVEAL_DECEL)
                         addUpdateListener { va ->
-                            // o: 0 -> rises -> overshoots above 1 -> settles to 1 (one motion).
-                            val o = overshoot.getInterpolation(va.animatedFraction)
-                            val sy = ENTRANCE_START_SCALE + (1f - ENTRANCE_START_SCALE) * o
-                            scaleY = sy // height only; scaleX stays 1f (full width) all the way
-                            // The slide finishes exactly as the card first reaches full size.
-                            val slideProg =
-                                ((sy - ENTRANCE_START_SCALE) / (1f - ENTRANCE_START_SCALE)).coerceIn(0f, 1f)
-                            translationY = startTransY * (1f - slideProg)
-                            if (sy > 1f) {
-                                // Past full size = the bounce: keep elements their size (pill
-                                // rides the stretching top edge), plant the bottom action row.
-                                content?.let {
-                                    it.pivotY = 0f
-                                    it.scaleY = 1f / sy
-                                }
-                                anchors.forEach { it.translationY = (sy - 1f) * h }
-                            } else {
-                                content?.scaleY = 1f
-                                anchors.forEach { it.translationY = 0f }
-                            }
+                            clip.top = va.animatedValue as Int
+                            clipBounds = clip
                         }
                         addListener(
                             object : AnimatorListenerAdapter() {
-                                // Fires on natural end AND cancel, so the reset + onComplete
-                                // (revealing the peer icons) can never be skipped.
+                                // Fires on natural end AND cancel, so the clip is always cleared
+                                // and onComplete (revealing the peer icons) can never be skipped.
                                 override fun onAnimationEnd(animation: Animator) {
-                                    scaleX = 1f
-                                    scaleY = 1f
-                                    translationY = 0f
-                                    content?.scaleY = 1f
-                                    anchors.forEach { it.translationY = 0f }
+                                    clipBounds = null
                                     onComplete?.invoke()
                                 }
                             },
@@ -428,26 +403,19 @@ public class DraggableSheetLayout
              *  entrance ran, its geometry, and the device animation scale. */
             private const val DIAG_TAG = "SendSheetEntrance"
 
-            // Stage 1 — the VIEW-level slide-up (playEntrance, when pre-hidden via
-            // prepareOffscreen). Starts ENTRANCE_OFFSET_PX below the bottom edge and
-            // decelerates into rest over ENTRANCE_SLIDE_MS. Triggered by the host AFTER
-            // the window open transition (SendActivity.onEnterAnimationComplete) so it
-            // is not masked by the window's own animation.
-            private const val ENTRANCE_OFFSET_PX = 80
-            private const val ENTRANCE_SLIDE_MS = 240L // snappier than the old 300ms
+            // The send entrance is a clip REVEAL / UNFOLD (playEntrance, when pre-hidden via
+            // prepareOffscreen): the card is laid out at full size and progressively revealed
+            // from the bottom up over ENTRANCE_SLIDE_MS, decelerating into place. Triggered by
+            // the host AFTER the window open transition (SendActivity.onEnterAnimationComplete).
+            private const val ENTRANCE_SLIDE_MS = 240L
 
-            // Overshoot tension for the entrance: how far the card sails PAST full size
-            // before settling (that overshoot IS the bounce). The card scales
-            // ENTRANCE_START_SCALE -> 1.0 via OvershootInterpolator(this) as ONE motion;
-            // higher = bigger overshoot/bounce. ~1.0 gives a small ~2-3% overshoot (a
-            // subtle vertical top-edge pop). Tunable.
-            private const val ENTRANCE_OVERSHOOT_TENSION = 1.0f
+            // Fraction of the card VISIBLE when the unfold STARTS (the bottom slice). 0.5 =
+            // starts at half revealed; lower = unfolds from a thinner sliver. Tunable.
+            private const val REVEAL_START_FRACTION = 0.5f
 
-            // The card starts at this fraction of its HEIGHT and grows to full height
-            // during the entrance (scaleY only — it stays FULL WIDTH the whole way),
-            // anchored at the bottom so it "comes up" out of the bottom as it expands.
-            // 0.5 = starts at half height; 1.0 = no grow (pure slide). Tunable.
-            private const val ENTRANCE_START_SCALE = 0.5f
+            // Decelerate factor for the unfold (DecelerateInterpolator): higher = a more
+            // pronounced ease-out (fast start, gentle landing). Tunable.
+            private const val REVEAL_DECEL = 1.6f
 
             // Fallback delay before the bounce on the NO-slide path (receive sheet,
             // which never calls prepareOffscreen): a brief settle so the bounce doesn't
