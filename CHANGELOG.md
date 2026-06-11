@@ -1,3 +1,19 @@
+## [2026-06-11] Send sheet: fix the slide origin (window owned a SECOND slide); bounce model still open
+The "still not sliding from the very bottom / fades into place" was a DOUBLE animation: the activity window
+already has its own enter animation (`anim/slide_up_in`, `fromYDelta=100%p` — a full screen below), and our
+`DraggableSheetLayout.playEntrance` was ALSO translating the sheet up. Two simultaneous slides made it travel
+a double distance very fast and read as a fade-into-place. Fix: `playEntrance` no longer slides — it runs
+ONLY the bounce, `BOUNCE_START_DELAY_MS` (170ms) after layout so it overlaps the tail of the window slide
+(continuous). Removed the in-layout translationY slide + its constants/imports
+(ENTRANCE_DURATION_MS/ENTRANCE_DECEL/BOUNCE_OVERLAP_MS, DecelerateInterpolator, ViewGroup); `ENTRANCE_TOTAL_MS`
+now = BOUNCE_START_DELAY_MS + STRETCH_DURATION_MS. The window's purpose-built 100%p slide now owns the
+"from the very bottom" motion. Same for the consent/receive sheet (reuses the same window animation).
+- STILL OPEN (asked the user): the device-name PILL looks detached from the card top during the bounce, and
+  the "bottom planted + top extends + pill glued to top + nothing stretches" constraints conflict — needs a
+  decision on the bounce model before another change.
+- **Files:** `app/.../ui/sheet/DraggableSheetLayout.kt`. `:app:assembleDebug` BUILD SUCCESSFUL; APK refreshed.
+  Compile-clean; on-device feel UNVERIFIED.
+
 ## [2026-06-11] Send sheet entrance: fix off-screen start, ride-not-stretch content, continuous timing; QR text trimmed
 Round of corrections per user:
 1. **Actually slides from off-screen** — the start offset was computed in a `post{}` that could run while
