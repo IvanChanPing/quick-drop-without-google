@@ -26,9 +26,12 @@
 - **Bluetooth pair request during a tap — NOT from our connect (verified):** every socket our connection opens
   is insecure (no pairing); BluetoothClassic route is unused. Source is outside our path (OEM NFC→BT handover /
   the other phone's bootstrap / a QS phone). UNPINNED — to pin, need: which phone shows it + the device name.
-- **PR breakdown updated (2026-06-11, commit `b14103c`):** `SUPERDROP-CHANGES.txt` item #3 "Tap to share"
-  now matches the above (was describing the old re-poll fix + "not confirmed"). This IS the "text file of
-  pull requests" the user keeps PR copy in (one PR per item). CHANGELOG entry added.
+- **PR breakdown updated (2026-06-11, commits `b14103c` → `6d2bbc8`):** `SUPERDROP-CHANGES.txt` item #3
+  "Tap to share" rewritten to describe ONLY the finished working feature (user: don't show the
+  non-working version + a fix on top). Correct mechanisms folded into Technical as plain design; the
+  broken→fixed findings + the diagnostics-collector + Bluetooth-pair-request bullets were DROPPED from
+  the PR copy (they live here + in BUGS.md). This file IS the "text file of pull requests" the user keeps
+  PR copy in (one PR per item). CHANGELOG entries added.
 - **NEXT STEP (open, low-priority):** (1) the tap fix worked but was reported intermittent once — if it
   recurs, read the auto-uploaded trace (`reason=nfc-send-tap`/`send-leave`) to see which step stalls (SELECT /
   ADV / discovery / connect). (2) Pin the BT-pair-request source when the user can say which phone + name.
