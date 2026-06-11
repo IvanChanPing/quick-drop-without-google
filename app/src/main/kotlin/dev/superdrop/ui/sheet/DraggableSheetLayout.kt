@@ -140,8 +140,20 @@ public class DraggableSheetLayout
                         .translationY(0f)
                         .setDuration(ENTRANCE_SLIDE_MS)
                         .setInterpolator(DecelerateInterpolator(ENTRANCE_DECEL))
-                        .withEndAction { playTopElasticStretch(onComplete) }
                         .start()
+                    // Kick the top-edge bounce BEFORE the slide fully lands so it flows
+                    // OUT of the slide's momentum as ONE continuous motion — not "slide
+                    // finishes, pause, then a separate bounce" (which read as weird). The
+                    // slide is decelerating (slowing into rest) and the raised-cosine
+                    // bounce ramps up from zero, so the two slow phases overlap and blend;
+                    // the bounce's peak lands just after the sheet settles. Tune the feel
+                    // with BOUNCE_OVERLAP_MS (bigger = bounce starts earlier / more
+                    // overlap). Both the slide animator and this postDelayed run on the
+                    // real-time clock, so the overlap is stable.
+                    postDelayed(
+                        { playTopElasticStretch(onComplete) },
+                        (ENTRANCE_SLIDE_MS - BOUNCE_OVERLAP_MS).coerceAtLeast(0L),
+                    )
                 } else {
                     // Not pre-hidden (receive sheet): no slide, just the bounce.
                     postDelayed({ playTopElasticStretch(onComplete) }, WINDOW_SETTLE_MS)
@@ -341,6 +353,11 @@ public class DraggableSheetLayout
             private const val ENTRANCE_OFFSET_PX = 80
             private const val ENTRANCE_SLIDE_MS = 300L
             private const val ENTRANCE_DECEL = 1.4f
+
+            // How long BEFORE the slide lands to kick the top-edge bounce so it overlaps
+            // the slide's tail and reads as ONE continuous motion (not "slide ends,
+            // pause, bounce"). Bigger = earlier/more overlap. Tunable.
+            private const val BOUNCE_OVERLAP_MS = 110L
 
             // Fallback delay before the bounce on the NO-slide path (receive sheet,
             // which never calls prepareOffscreen): a brief settle so the bounce doesn't

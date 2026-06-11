@@ -18,19 +18,26 @@ FINISHED FEATURES
    just like the old Quick Share. A much better improvement.
 
    Optional polish (can be kept or left out): the sheet has an entrance — it slides
-   up from the bottom of the screen and, as it lands, the rounded card's top edge
-   gives one small "extend and snap back". The device-name pill stays attached to
-   the top as it flexes, the rest of the sheet stays put, and nothing stretches or
-   distorts. And if you want, the discovered-device icons can be held back until the
-   entrance finishes, so none pop in mid-slide. Both the bounce and the icon delay
-   are self-contained and don't touch discovery — each can be kept or dropped
-   independently of the bottom-sheet change.
+   up from below the bottom of the screen and, as it lands, the rounded card's top
+   edge gives one small "extend and snap back". The bounce flows straight out of the
+   slide as one continuous motion (not a separate beat afterwards). Only the rounded
+   card background stretches; the contents — the device-name pill, text, and icons —
+   keep their exact size and just ride up a little with it, so nothing distorts. And
+   if you want, the discovered-device icons can be held back until the entrance
+   finishes, so none pop in mid-slide. Both the bounce and the icon delay are self-
+   contained and don't touch discovery — each can be kept or dropped independently of
+   the bottom-sheet change.
 
-   Technical: the slide is a view-level translate; the activity's own window open
-   animation is suppressed (overrideActivityTransition) so it doesn't fight the
+   Technical: the slide is a view-level translate, kicked from
+   Activity.onEnterAnimationComplete() — i.e. AFTER the activity window has finished
+   its own open transition — so it runs in the already-visible window and isn't
+   masked by the window animation (starting it earlier, in onCreate, is what made the
+   sheet "appear already settled" with only a fade on OnePlus). The window's own open
+   animation is a soft fade with no vertical translate, so it doesn't compete with the
    slide. The bounce stretches only the card background (sheet scaleY about the
-   bottom); the body is counter-scaled to stay planted and the pill is translated
-   to ride the top edge, so only the empty card area between them flexes.
+   bottom) while the content wrapper is counter-scaled about its centre so the
+   elements keep their size and ride up slightly; it is kicked just before the slide
+   lands so the slide and bounce read as one motion.
 
    Image for the PR: docs/pr-images/send-sheet-device.jpg (real device — OnePlus
    Nord N30 5G: header pill with your phone name, "1 file 240.5 KB", "Tap a device

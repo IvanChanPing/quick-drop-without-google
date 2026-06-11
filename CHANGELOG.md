@@ -1,3 +1,17 @@
+## [2026-06-11] Send sheet entrance: bounce now OVERLAPS the slide (one continuous motion)
+On-device the slide-up WORKED (the onEnterAnimationComplete timing fix below landed — user-confirmed on the
+OnePlus). But the bounce started only AFTER the slide fully finished (it used `withEndAction`), so it read as
+"slide ends, pause, then a separate bounce" — looked weird. Restored the overlap: the top-edge bounce is now
+kicked `BOUNCE_OVERLAP_MS` (110ms) BEFORE the slide lands (via `postDelayed`, not `withEndAction`), so the
+decelerating slide and the raised-cosine bounce — which ramps up from zero — blend into one motion, with the
+bounce's peak landing just after the sheet settles. `BOUNCE_OVERLAP_MS` is a single tunable constant (bigger =
+more overlap). Also updated SUPERDROP-CHANGES.txt item #1 to describe the current entrance (view slide triggered
+at onEnterAnimationComplete, fade window animation, elements ride up without distorting).
+
+**Verification:** BUILD SUCCESSFUL (`:app:assembleDebug`). The slide-up is user-confirmed working on the OnePlus;
+this overlap tweak itself is UNVERIFIED on-device (the user saw the non-overlapped version) — user re-tests. File:
+app/src/main/kotlin/dev/superdrop/ui/sheet/DraggableSheetLayout.kt. APK: super-drop-debug.apk (repo root).
+
 ## [2026-06-11] Send sheet entrance: TIMING FIX — trigger the view slide AFTER the window is shown
 Supersedes the "PIVOT to the activity WINDOW slide" entry below. A user screen-recording (MP4) of that build
 proved the real symptom: the sheet did NOT slide at all — it FADED in, then bounced. That also disproved the
