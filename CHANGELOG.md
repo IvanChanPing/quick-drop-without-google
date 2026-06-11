@@ -1,3 +1,19 @@
+## [2026-06-11] Send sheet bounce: "pill glued to top, body planted, gap stretches" (user-chosen model)
+Implemented the user's chosen bounce model. The bottom stays planted, the card's rounded TOP edge extends up
+by a fixed `ENTRANCE_TOP_EXTEND_DP` (16dp) and snaps back, and:
+- the rounded BACKGROUND stretches (sheet `scaleY` about the bottom; `k = 1 + rise/height`, so the top lifts
+  by exactly `rise` px and the bottom holds);
+- the body (`bounceContent` = `send_sheet_content`) is counter-scaled about its BOTTOM → stays planted, no
+  stretch;
+- the device pill (`bounceTopRider` = `send_device_pill`, new `setBounceTopRider`) is translated up by `rise`
+  → stays glued to the top edge.
+Only the empty card area between the pill and the body stretches; nothing distorts. Switched the stretch
+amount from a % of the (tall) card to a fixed dp so "the top extends a little" is a small, consistent ~16dp.
+Guard added for height<=0. `ENTRANCE_STRETCH` removed.
+- **Files:** `app/.../ui/sheet/DraggableSheetLayout.kt`, `app/.../send/SendActivity.kt`. BUILD SUCCESSFUL;
+  APK refreshed. Compile-clean; on-device feel UNVERIFIED (no display) — user click-tests; tune
+  `ENTRANCE_TOP_EXTEND_DP` (16) / `STRETCH_DURATION_MS` (260).
+
 ## [2026-06-11] Send sheet: fix the slide origin (window owned a SECOND slide); bounce model still open
 The "still not sliding from the very bottom / fades into place" was a DOUBLE animation: the activity window
 already has its own enter animation (`anim/slide_up_in`, `fromYDelta=100%p` — a full screen below), and our

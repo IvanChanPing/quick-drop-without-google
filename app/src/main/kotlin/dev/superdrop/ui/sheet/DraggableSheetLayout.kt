@@ -47,13 +47,19 @@ public class DraggableSheetLayout
         private var onDismiss: (() -> Unit)? = null
 
         /**
-         * Optional content view that is counter-scaled (about its own centre)
-         * during the entrance bounce so it does NOT stretch but still RIDES with
-         * the card; the rounded background does the visible stretching. Null
-         * (default) = the whole sheet (background + content) scales together.
-         * Set via [setBounceContent].
+         * Optional body view that is counter-scaled about its BOTTOM during the
+         * entrance bounce so it stays perfectly planted and does NOT stretch while
+         * the rounded background stretches around it. Null (default) = the whole
+         * sheet (background + content) scales together. Set via [setBounceContent].
          */
         private var bounceContent: View? = null
+
+        /**
+         * Optional view pinned to the TOP of the card (the device-name pill) that
+         * is translated up during the bounce so it stays glued to the stretching
+         * top edge instead of being left behind. Set via [setBounceTopRider].
+         */
+        private var bounceTopRider: View? = null
 
         init {
             orientation = VERTICAL
@@ -71,6 +77,15 @@ public class DraggableSheetLayout
          */
         public fun setBounceContent(view: View?) {
             this.bounceContent = view
+        }
+
+        /**
+         * Provide the top-pinned view (the device-name pill) that should ride up
+         * with the stretching top edge during the entrance bounce so it stays glued
+         * to the top of the card. Pass null to leave it where it is.
+         */
+        public fun setBounceTopRider(view: View?) {
+            this.bounceTopRider = view
         }
 
         /**
@@ -99,33 +114,44 @@ public class DraggableSheetLayout
         }
 
         /**
-         * Stage 2 of the entrance: a bottom-anchored stretch of the card's rounded
-         * BACKGROUND. [pivotY] is the sheet's bottom so the bottom stays planted and
-         * the TOP extends up, then returns via [topStretchProfile] — a SINGLE smooth
-         * hump (extend + snap back, NO wobble), started overlapping the slide so it
-         * feels continuous. When [bounceContent] is set it is counter-scaled by the
-         * inverse about its OWN CENTRE: that cancels the STRETCH (content keeps its
-         * size, doesn't distort) while still letting the content RIDE up/down with
-         * the bounce (it stays "attached" to the card). Tune with [ENTRANCE_STRETCH]
-         * and [STRETCH_DURATION_MS]. Resets scales on end.
+         * Stage 2 of the entrance — the bounce. Visual model (user-chosen): the
+         * BOTTOM stays planted, the card's rounded TOP edge extends up by a fixed
+         * [ENTRANCE_TOP_EXTEND_DP] pixels and snaps back ([topStretchProfile] — one
+         * smooth hump, no wobble), and:
+         *   - the rounded BACKGROUND does that stretch (sheet [scaleY] about the
+         *     bottom, so the top rises by exactly `rise` px and the bottom holds);
+         *   - [bounceContent] (the body) is counter-scaled about its BOTTOM so it
+         *     stays planted and does NOT stretch;
+         *   - [bounceTopRider] (the device pill) is translated up by `rise` so it
+         *     stays GLUED to the top edge.
+         * Net: only the empty card area between the pill and the body stretches;
+         * nothing distorts. Kicked overlapping the window slide so it feels
+         * continuous. Resets all transforms on end.
          */
         private fun playTopElasticStretch(onComplete: (() -> Unit)? = null) {
-            pivotY = height.toFloat() // bottom edge = anchor; top is free to stretch
+            val h = height
+            if (h <= 0) { // not laid out / zero height — nothing to scale about
+                onComplete?.invoke()
+                return
+            }
+            pivotY = h.toFloat() // bottom edge = anchor; the TOP is free to stretch up
             val content = bounceContent
+            val topRider = bounceTopRider
+            val extendPx = ENTRANCE_TOP_EXTEND_DP * resources.displayMetrics.density
             ValueAnimator.ofFloat(0f, 1f).apply {
                 duration = STRETCH_DURATION_MS
                 interpolator = LinearInterpolator() // the hump shape drives the motion
                 addUpdateListener { a ->
-                    val k = 1f + ENTRANCE_STRETCH * topStretchProfile(a.animatedFraction)
+                    val rise = extendPx * topStretchProfile(a.animatedFraction) // px the top extends
+                    val k = 1f + rise / h // scaleY that lifts the top edge by exactly `rise`
                     scaleY = k
-                    // Inverse-scale about the content's own centre: removes the
-                    // vertical stretch (no distortion) but, because the parent scale
-                    // still moves the content's position, it rides up/down with the
-                    // bounce — "moves with it but doesn't stretch".
                     content?.let {
-                        it.pivotY = it.height.toFloat() / 2f
+                        // Counter-scale about the sheet's bottom (content-local: its
+                        // own height + the sheet's bottom padding) => body stays put.
+                        it.pivotY = it.height.toFloat() + paddingBottom
                         it.scaleY = 1f / k
                     }
+                    topRider?.translationY = -rise // pill follows the top edge up
                 }
                 addListener(
                     object : AnimatorListenerAdapter() {
@@ -134,6 +160,7 @@ public class DraggableSheetLayout
                         override fun onAnimationEnd(animation: Animator) {
                             scaleY = 1f
                             content?.scaleY = 1f
+                            topRider?.translationY = 0f
                             onComplete?.invoke()
                         }
                     },
@@ -238,12 +265,12 @@ public class DraggableSheetLayout
             // that window slide (continuous, not "slide stops, pause, then bounce").
             private const val BOUNCE_START_DELAY_MS = 170L
 
-            // Bottom-anchored stretch of the card's rounded BACKGROUND: the top
-            // extends up ONCE and snaps back, NO wobble (a single smooth raised-cosine
-            // hump). The content is counter-scaled about its own centre so it RIDES
-            // with the bounce but does NOT stretch. ENTRANCE_STRETCH = peak scaleY
-            // delta (~4.5%); STRETCH_DURATION_MS = how long the extend+snap takes.
-            private const val ENTRANCE_STRETCH = 0.045f
+            // Bottom-anchored stretch of the card's rounded BACKGROUND: the top edge
+            // extends up by ENTRANCE_TOP_EXTEND_DP and snaps back, NO wobble (a single
+            // smooth raised-cosine hump). Body counter-scaled to stay planted; the
+            // pill rides the top edge. A fixed dp (not a % of the tall card) so the
+            // extend is a small, consistent amount. STRETCH_DURATION_MS = its length.
+            private const val ENTRANCE_TOP_EXTEND_DP = 16f
             private const val STRETCH_DURATION_MS = 260L
 
             /** Total wall-time of the entrance bounce (delay + stretch). Callers use
