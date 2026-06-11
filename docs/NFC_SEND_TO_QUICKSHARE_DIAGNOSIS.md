@@ -678,3 +678,18 @@ User challenged: is FastInit related to NFC, or just the original BLE→P2P shar
 ⇒ For the NFC-tap fix, FastInit is a RED HERRING. The earlier "build a FastInit emitter" detour + the FastInit
 frame map were chasing the BLE path, not NFC. NFC-tap fix = tag exchange + wake + hand off to the (already-working)
 connection. Do NOT drag FastInit into the NFC fix.
+
+## ✅ IMPLEMENTED (2026-06-11) — NFC tap = one-shot wake → hand off to discovery auto-connect (compile-clean)
+Built `:app:assembleDebug` SUCCESSFUL; `super-drop-debug.apk` refreshed. Matches stock Quick Share's tap mechanic.
+- `SuperDropTapReader.kt`: tap is now ONE-SHOT (SELECT + ONE ADVERTISEMENT, no 2.5s re-poll loop — matches QS
+  `djkb.c`). New result type `TapResult{Resolved|Woke|Failed}`. Real tag → `onPeerTapped` (unchanged). SELECT-ok
+  but empty ADVERTISEMENT (`0000`) → `Woke` → new `onTapWake()` callback. SELECT-fail/IO → `Failed`. Removed the
+  binder-thread `Thread.sleep` (less ANR risk).
+- `SendActivity.kt`: `onNfcTapWake()` opens a 15s single-shot window (`TAP_WAKE_WINDOW_MS`); the discovery stream
+  (`onSendPeersResolved` now feeds BOTH the QR path and the tap-wake path) auto-connects to the first hidden/
+  nameless (Quick-Share-like) peer, Wi-Fi-LAN preferred, via the SAME `onPeerSelected` the picker/QR use — the
+  transfer path that already works (NOT touched). Re-arms on every tap (fixes "second tap did nothing").
+  `SendPeerPickerController.resolvedPeers()` added so a peer discovered BEFORE the tap is also considered.
+- STATUS: **compile-clean; DEVICE-UNVERIFIED.** The make-or-break (does the woken stock QS advertise reachably +
+  accept our inbound connect, expecting a confirm for non-self-share) is the on-device tap test. Deferred refinements:
+  ADVERTISEMENT Le 0x00→0xFF + hhww localEndpointId/endpointInfo (only matter for the already-advertising case).

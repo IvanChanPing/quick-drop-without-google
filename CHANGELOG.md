@@ -1,3 +1,24 @@
+## [2026-06-11] NFC tap fix: one-shot wake → hand off to discovery auto-connect (replicates stock Quick Share)
+Made Super Drop's NFC tap behave like stock Quick Share's: the tap is a NON-BLOCKING one-shot wake, and the
+actual connection rides the already-running Nearby discovery/transfer (which already works) — instead of a
+2.5s blocking re-poll that gave up on the `0000` wake. Verified from the GMS decompile that QS's reader
+(`djkb.c`) sends the ADVERTISEMENT exactly ONCE and relies on discovery; the wake (`djvf.f`) only opens the
+receiver's Quick Share. NFC↔FastInit confirmed INDEPENDENT (NFC HCE has 0 FastInit refs) — FastInit is the
+separate BLE path, not the NFC mechanism.
+- **`SuperDropTapReader.kt`:** one-shot SELECT + ONE ADVERTISEMENT (removed the re-poll loop + `Thread.sleep`).
+  New `TapResult{Resolved|Woke|Failed}`; real tag → `onPeerTapped` (unchanged); empty `0000` after an accepted
+  SELECT → new `onTapWake()` (receiver was idle, its HCE woke it).
+- **`SendActivity.kt`:** `onNfcTapWake()` opens a 15s single-shot window; `onSendPeersResolved` feeds BOTH the
+  QR auto-connect and the new tap-wake auto-connect; `onNfcTapWakePeersResolved` connects to the first
+  Quick-Share-like (hidden/nameless) discovered peer (Wi-Fi-LAN preferred) via the existing `onPeerSelected`
+  transfer path (NOT modified). Re-arms each tap → fixes "second tap did nothing". `TAP_WAKE_WINDOW_MS=15s`.
+- **`SendPeerPickerController.kt`:** added `resolvedPeers()` snapshot accessor.
+- STATUS: `:app:assembleDebug` SUCCESSFUL; `super-drop-debug.apk` refreshed. **Compile-clean, DEVICE-UNVERIFIED** —
+  the on-device tap test (does the woken stock QS accept our inbound connect, with a confirm for non-self-share)
+  is the make-or-break. Deferred: ADVERTISEMENT Le `0xFF` + hhww localEndpointId/endpointInfo (already-advertising case only).
+- **Files:** `app/.../nfc/SuperDropTapReader.kt`, `app/.../send/SendActivity.kt`,
+  `app/.../send/SendPeerPickerController.kt`, `super-drop-debug.apk`, `docs/NFC_SEND_TO_QUICKSHARE_DIAGNOSIS.md`.
+
 ## [2026-06-10] Round-2 trace is DECISIVE — overturns the re-poll hypothesis; collector revived for follow-up
 Resumed the session that hit its limit mid-investigation. The Round-2 device trace was already captured
 (`/root/nfc-diag/collector.log`, sender = CPH2515 / Android 14, receiver = real Quick Share, rotating hidden

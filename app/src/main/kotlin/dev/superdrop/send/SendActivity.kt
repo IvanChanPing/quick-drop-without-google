@@ -181,6 +181,13 @@ public class SendActivity : AppCompatActivity() {
     private var qrSigningKey: PrivateKey? = null
     private var qrMatchConnectStarted: Boolean = false
 
+    // NFC tap-wake auto-connect state. A tap on an IDLE Quick Share receiver makes its
+    // HCE fire the wake (Quick Share opens) and returns no endpoint over NFC. Mirroring
+    // stock Quick Share, we then let the already-running discovery surface the now-waking
+    // receiver and auto-connect to it within [TAP_WAKE_WINDOW_MS]. Single-shot.
+    private var tapWakeWindowUntilMs: Long = 0L
+    private var tapWakeConnectStarted: Boolean = false
+
     /**
      * `SystemClock.elapsedRealtime()` of the first QR match seen with only
      * a BLE route (no Wi-Fi LAN yet), or 0 if none. Used by [chooseQrMatch]
@@ -242,7 +249,7 @@ public class SendActivity : AppCompatActivity() {
                 lifecycle = lifecycle,
                 scope = lifecycleScope,
                 onPeerSelected = ::onPeerSelected,
-                onPeersResolved = ::onQrPeersResolved,
+                onPeersResolved = ::onSendPeersResolved,
                 logDiagnostic = ::logOutboundDiagnostic,
                 senderEndpointId = senderEndpointId,
             )
@@ -251,7 +258,7 @@ public class SendActivity : AppCompatActivity() {
         // onResume/onPause + the QR open/close handlers so it is active
         // only while the send sheet is up and the iPhone-link QR panel
         // (which uses the NDEF HCE) is closed.
-        tapReader = SuperDropTapReader(this, ::onNfcPeerTapped)
+        tapReader = SuperDropTapReader(this, ::onNfcPeerTapped, ::onNfcTapWake)
 
         binding.sendCancelButton.setOnClickListener { onCancelClicked() }
         binding.sendDoneButton.setOnClickListener { finish() }
@@ -426,6 +433,72 @@ public class SendActivity : AppCompatActivity() {
                 )
             onPeerSelected(peer)
         }
+    }
+
+    /**
+     * Combined discovery-resolved callback wired into [SendPeerPickerController]. Feeds
+     * BOTH the QR-link auto-connect ([onQrPeersResolved]) and the NFC tap-wake
+     * auto-connect ([onNfcTapWakePeersResolved]) off the single discovery stream, so
+     * neither path needs its own discovery subscription.
+     */
+    private fun onSendPeersResolved(resolved: List<NearbyPeer>) {
+        onQrPeersResolved(resolved)
+        onNfcTapWakePeersResolved(resolved)
+    }
+
+    /**
+     * NFC tap-wake callback (from [SuperDropTapReader.onTapWake]). A tap on an IDLE Quick
+     * Share receiver makes its HCE fire the wake — Quick Share opens on the receiver but
+     * returns no endpoint over NFC (`0000`). Exactly as stock Quick Share does, we do NOT
+     * re-poll the NFC; we open a short window during which the already-running discovery's
+     * first matching Quick Share receiver is auto-connected (see [onNfcTapWakePeersResolved]).
+     * Marshalled onto the UI thread because the reader callback runs on a binder thread.
+     */
+    private fun onNfcTapWake() {
+        runOnUiThread {
+            if (isFinishing || isDestroyed) return@runOnUiThread
+            tapWakeWindowUntilMs = SystemClock.elapsedRealtime() + TAP_WAKE_WINDOW_MS
+            tapWakeConnectStarted = false
+            logOutboundDiagnostic(
+                "nfc tap-wake: receiver woken; watching discovery for it (${TAP_WAKE_WINDOW_MS}ms)",
+            )
+            // A matching receiver may have already been discovered before the tap (no new
+            // discovery event would fire), so re-check the current snapshot immediately.
+            onNfcTapWakePeersResolved(peerPickerController.resolvedPeers())
+        }
+    }
+
+    /**
+     * While a tap-wake window is open, auto-connect to the first discovered Quick Share
+     * receiver via the SAME [onPeerSelected] path the picker/QR use — preferring a
+     * Wi-Fi-LAN route (the reliable one). Single-shot ([tapWakeConnectStarted]) and
+     * time-bounded so a stale/unrelated peer is never grabbed.
+     */
+    private fun onNfcTapWakePeersResolved(resolved: List<NearbyPeer>) {
+        if (tapWakeConnectStarted || SystemClock.elapsedRealtime() > tapWakeWindowUntilMs) return
+        val candidate =
+            resolved.firstOrNull { it.lanEndpoint != null && isLikelyQuickShareReceiver(it) }
+                ?: resolved.firstOrNull { isLikelyQuickShareReceiver(it) }
+                ?: return
+        tapWakeConnectStarted = true
+        // A tap commits us to a peer; stop reader-mode so a second tag cannot race the
+        // connection that is now starting (mirrors onNfcPeerTapped).
+        tapReader?.disable()
+        logOutboundDiagnostic(
+            "nfc tap-wake: auto-connecting to woken receiver ${candidate.stableId} " +
+                "route=${if (candidate.lanEndpoint != null) "wifi-lan" else "ble"}",
+        )
+        onPeerSelected(candidate)
+    }
+
+    /**
+     * Heuristic for "this discovered peer is the Quick Share receiver we just woke":
+     * stock Quick Share receivers advertise as hidden with no device name (rendered as
+     * "Quick Share device (XXXX)"). Used only to choose the tap-wake auto-connect target.
+     */
+    private fun isLikelyQuickShareReceiver(peer: NearbyPeer): Boolean {
+        val info = peer.endpointInfo ?: return false
+        return info.hidden || info.deviceName.isNullOrBlank()
     }
 
     @Suppress("ReturnCount")
@@ -1907,6 +1980,14 @@ public class SendActivity : AppCompatActivity() {
 
         /** Pause between LAN dial retries inside the [NFC_TAP_LAN_GRACE_MS] window. */
         private const val NFC_TAP_LAN_RETRY_DELAY_MS: Long = 700L
+
+        /**
+         * How long after an NFC tap WOKE an idle Quick Share receiver we keep watching
+         * discovery to auto-connect to it ([onNfcTapWakePeersResolved]). Covers the
+         * receiver's cold app launch + becoming discoverable. Single-shot; closes as soon
+         * as we start a connect.
+         */
+        private const val TAP_WAKE_WINDOW_MS: Long = 15_000L
 
         // In-card QR panel animation tunables. Entry uses an
         // overshoot easing so the panel briefly scales past 1.0 before

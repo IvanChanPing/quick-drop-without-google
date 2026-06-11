@@ -9,7 +9,6 @@ import android.app.Activity
 import android.nfc.NfcAdapter
 import android.nfc.Tag
 import android.nfc.tech.IsoDep
-import android.os.SystemClock
 import dev.superdrop.diag.DiagnosticUploader
 import dev.superdrop.discovery.diagnostics.DiagnosticLog
 import dev.superdrop.protocol.endpoint.EndpointInfo
@@ -40,6 +39,7 @@ import java.net.InetAddress
 public class SuperDropTapReader(
     private val activity: Activity,
     private val onPeerTapped: (TappedPeer) -> Unit,
+    private val onTapWake: () -> Unit = {},
 ) {
     /**
      * A peer discovered via an NFC tap, ready to be injected into the send
@@ -91,13 +91,13 @@ public class SuperDropTapReader(
      */
     private fun onTag(tag: Tag) {
         val isoDep = IsoDep.get(tag) ?: return
-        val tapped =
+        val result =
             try {
                 isoDep.connect()
                 exchange(isoDep)
             } catch (e: IOException) {
                 DiagnosticLog.w(TAG, "tap exchange failed: ${e.message}")
-                null
+                TapResult.Failed
             } finally {
                 runCatching { isoDep.close() }
             }
@@ -105,110 +105,93 @@ public class SuperDropTapReader(
         // failed send-tap is debuggable without adb. Runs on this binder thread's
         // caller via a background thread inside the uploader. Best-effort.
         DiagnosticUploader.upload(activity, reason = "nfc-send-tap")
-        if (tapped != null) {
-            onPeerTapped(tapped)
+        when (result) {
+            // The HCE returned a real Quick Share advertisement tag (the receiver was
+            // already advertising) -> connect to its Wi-Fi-LAN endpoint directly.
+            is TapResult.Resolved -> onPeerTapped(result.peer)
+            // SELECT was accepted (it IS a Quick Share receiver) but the ADVERTISEMENT
+            // came back empty -> the receiver was idle and its HCE just fired the wake
+            // (djvf.f opens Quick Share). Exactly as stock Quick Share's reader does, we
+            // do NOT re-poll the NFC; we hand off to the already-running discovery so the
+            // now-waking receiver is found and connected over the normal Nearby channel.
+            TapResult.Woke -> {
+                DiagnosticLog.w(TAG, "tap: receiver idle, HCE woke it -> handing off to discovery")
+                onTapWake()
+            }
+            // SELECT failed / link error: not a Quick Share receiver, or the tag left the
+            // field. Nothing to do; reader stays armed for the next tap.
+            TapResult.Failed -> Unit
         }
     }
 
+    /**
+     * Outcome of one NFC tap exchange, mirroring stock Quick Share's one-shot read.
+     *
+     * @property Resolved the HCE returned a usable advertisement tag (receiver was
+     *   already advertising) -> connect to it.
+     * @property Woke SELECT succeeded but ADVERTISEMENT was empty -> the receiver was
+     *   idle and its HCE fired the wake; hand off to discovery (matches Quick Share).
+     * @property Failed SELECT rejected (not a QS receiver) or an IsoDep I/O error.
+     */
+    private sealed interface TapResult {
+        data class Resolved(val peer: TappedPeer) : TapResult
+
+        object Woke : TapResult
+
+        object Failed : TapResult
+    }
+
+    /**
+     * One-shot tap exchange, matching stock Quick Share's reader (`djkb.c`): SELECT,
+     * then ONE ADVERTISEMENT — NO re-poll loop. Quick Share verified (GMS 26.18.33)
+     * sends the ADVERTISEMENT exactly once per tag and relies on its concurrent Nearby
+     * discovery to finish the connection; re-polling the same IsoDep is unlike the
+     * original and just races the receiver's NFC reset on wake ("Tag was lost").
+     *
+     * - SELECT rejected -> [TapResult.Failed] (not a Quick Share HCE).
+     * - ADVERTISEMENT returns a usable tag (receiver already advertising) -> [TapResult.Resolved].
+     * - ADVERTISEMENT empty / `0000` (receiver idle; its HCE fired the wake) -> [TapResult.Woke].
+     */
     @Suppress("ReturnCount")
-    private fun exchange(isoDep: IsoDep): TappedPeer? {
+    private fun exchange(isoDep: IsoDep): TapResult {
         // 1. SELECT the Quick Share advertising application.
         val selectApdu = buildSelectApdu()
         val selectResp = isoDep.transceive(selectApdu)
-        // DIAG (instrumentation-only, Round-2): log the exact SELECT bytes both ways
-        // so we can see the real HCE's verdict (90 00 vs error SW) — readAdvertisement
-        // previously logged only response SIZE, which could not distinguish an
-        // accepted-but-empty `djvb.a()` from a rejection. No behavior change.
         DiagnosticLog.w(TAG, "SELECT apdu=${hex(selectApdu)} resp=${hex(selectResp)}")
         if (!endsWithOk(selectResp)) {
-            DiagnosticLog.w(TAG, "SELECT not OK (${selectResp.size}B)")
-            return null
+            DiagnosticLog.w(TAG, "SELECT not OK (${selectResp.size}B) — not a Quick Share HCE")
+            return TapResult.Failed
         }
 
-        // 2. ADVERTISEMENT — RE-POLLED over a short window. A COLD receiver
-        // (idle / not yet advertising) answers the first ADVERTISEMENT with an
-        // empty tag AND wakes itself into receive (verified in GMS:
-        // NfcAdvertisingChimeraService not-advertising branch -> djvf.f ->
-        // PendingIntent.send launches the receive flow). Once it is advertising,
-        // its HCE returns a real tag — so we re-send the ADVERTISEMENT on the
-        // same (sustained-tap) IsoDep connection until we get a usable tag or the
-        // window expires. This is what lets us send to a cold native/Super Drop
-        // receiver by tap (mirrors native↔native). onTag runs on a binder thread
-        // (off the main thread), so the loop + sleep cannot ANR; if the tag
-        // leaves the field, transceive throws IOException which ends the loop via
-        // the caller's catch.
+        // 2. ADVERTISEMENT — sent ONCE (Quick Share does not re-poll). If the HCE
+        // returns a real tag the receiver was already advertising; if it returns the
+        // empty `djvb.a()` (`0000`) the receiver was idle and its HCE just fired the
+        // wake (djvf.f -> opens Quick Share). SELECT having succeeded means this IS a
+        // Quick Share receiver, so an empty ADVERTISEMENT means "woke it" -> hand off
+        // to discovery rather than re-polling the NFC link.
         val hhww =
             QuickShareNfcCodec.encodeHhwwRequest(
                 QuickShareNfcCodec.HhwwRequest(serviceId = NearbyServiceId.VALUE),
             )
         val advApdu = buildAdvertisementApdu(hhww)
-        DiagnosticLog.w(TAG, "ADV apdu=${hex(advApdu)}")
-        val startMs = SystemClock.elapsedRealtime()
-        val deadline = startMs + TAP_RETRY_WINDOW_MS
-        var attempt = 0
-        while (true) {
-            attempt++
-            // DIAG: log the exact attempt + elapsed at which the tag is lost, so we
-            // can see WHEN (relative to firing the wake on attempt 1) the receiver's
-            // ISO-DEP link drops vs the re-poll window. Rethrow so onTag's existing
-            // catch path is unchanged (instrumentation-only).
-            try {
-                readAdvertisement(isoDep, advApdu, attempt, startMs)?.let { return it }
-            } catch (e: IOException) {
-                DiagnosticLog.w(
-                    TAG,
-                    "ADVERTISEMENT tag lost on attempt $attempt " +
-                        "(+${SystemClock.elapsedRealtime() - startMs}ms): ${e.message}",
-                )
-                throw e
-            }
-            if (SystemClock.elapsedRealtime() >= deadline) {
-                DiagnosticLog.w(
-                    TAG,
-                    "ADVERTISEMENT yielded no usable tag after $attempt attempt(s) over ${TAP_RETRY_WINDOW_MS}ms",
-                )
-                return null
-            }
-            try {
-                Thread.sleep(TAP_RETRY_INTERVAL_MS)
-            } catch (e: InterruptedException) {
-                Thread.currentThread().interrupt()
-                DiagnosticLog.w(TAG, "tap re-poll interrupted after $attempt attempt(s)")
-                return null
-            }
-        }
+        val advResp = isoDep.transceive(advApdu)
+        DiagnosticLog.w(TAG, "ADV apdu=${hex(advApdu)} resp=${hex(advResp)}")
+
+        val peer = parseTappedPeer(advResp)
+        return if (peer != null) TapResult.Resolved(peer) else TapResult.Woke
     }
 
     /**
-     * One ADVERTISEMENT round-trip + parse. Returns the resolved peer, or `null`
-     * when the receiver answered empty / not-yet-advertising (the caller retries
-     * within the re-poll window). Throws on an IsoDep I/O error (tag left field).
+     * Parse an ADVERTISEMENT response into a [TappedPeer], or `null` if it is empty /
+     * `0000` / not a usable Wi-Fi-LAN tag (i.e. the receiver was idle, not advertising).
      */
     @Suppress("ReturnCount")
-    private fun readAdvertisement(
-        isoDep: IsoDep,
-        advApdu: ByteArray,
-        attempt: Int,
-        startMs: Long,
-    ): TappedPeer? {
-        val advResp = isoDep.transceive(advApdu)
-        if (!endsWithOk(advResp) || advResp.size <= STATUS_LEN) {
-            // DIAG: log the FULL response bytes (not just size) + elapsed, so the
-            // empty `djvb.a()` (error trailer, wake fired) is distinguishable from a
-            // `90 00` accepted-but-empty and we can time how long the wake takes.
-            DiagnosticLog.w(
-                TAG,
-                "ADVERTISEMENT empty/not-OK attempt=$attempt resp=${hex(advResp)} (+${SystemClock.elapsedRealtime() - startMs}ms)",
-            )
-            return null
-        }
+    private fun parseTappedPeer(advResp: ByteArray): TappedPeer? {
+        if (!endsWithOk(advResp) || advResp.size <= STATUS_LEN) return null
         val body = advResp.copyOfRange(0, advResp.size - STATUS_LEN)
 
         val response = QuickShareNfcCodec.parseHhwvResponse(body) ?: return null
-        if (response.nfcTag.isEmpty()) {
-            DiagnosticLog.w(TAG, "hhwv carried no NfcTag yet (attempt $attempt)")
-            return null
-        }
+        if (response.nfcTag.isEmpty()) return null
         val nfcTag = QuickShareNfcCodec.parseNfcTag(response.nfcTag) ?: return null
         val endpointInfo = EndpointInfo.parse(nfcTag.endpointInfo) ?: return null
 
@@ -221,7 +204,7 @@ public class SuperDropTapReader(
         DiagnosticLog.w(
             TAG,
             "tap resolved endpointId=$endpointId ${lan.address.hostAddress}:${lan.port} " +
-                "name=${endpointInfo.deviceName} (attempt $attempt)",
+                "name=${endpointInfo.deviceName}",
         )
         return TappedPeer(
             endpointId = endpointId,
@@ -283,14 +266,5 @@ public class SuperDropTapReader(
             if (bytes.size > HEX_DUMP_MAX) sb.append("…(${bytes.size}B)")
             return sb.toString()
         }
-
-        /**
-         * How long to keep re-sending the ADVERTISEMENT on one sustained tap
-         * while a cold receiver wakes + starts advertising (see [exchange]).
-         */
-        private const val TAP_RETRY_WINDOW_MS = 2500L
-
-        /** Pause between ADVERTISEMENT re-polls within [TAP_RETRY_WINDOW_MS]. */
-        private const val TAP_RETRY_INTERVAL_MS = 250L
     }
 }

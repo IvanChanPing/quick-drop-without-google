@@ -131,6 +131,9 @@ internal class SendPeerPickerController(
         binding.sendNetworkHint.visibility = View.GONE
     }
 
+    /** Current resolved peers (snapshot) — used by the NFC tap-wake auto-connect. */
+    fun resolvedPeers(): List<NearbyPeer> = peers.toList()
+
     fun peerLabel(peer: NearbyPeer): String = peer.displayName()
 
     fun peerSubtitle(peer: NearbyPeer): String = planFor(peer).subtitle
