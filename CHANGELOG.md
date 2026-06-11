@@ -1,3 +1,14 @@
+## [2026-06-11] Send sheet entrance: drive expand + bounce from ONE animator (seamless)
+User: the bounce timing relative to the expand "did not look seamless". Cause: the expand and the bounce were two
+separate animators chained by `withEndAction`, so there was a visible beat between them (both ends slow). Fix:
+drive the WHOLE entrance from a single `ValueAnimator` with two phases — phase 1 (fraction 0..`expandFrac`) slides
+up + grows from `ENTRANCE_START_SCALE` to full size (iOS ease); phase 2 (`expandFrac`..1) does the top-edge bounce
+(content counter-scaled so the pill rides the top, bottom action row planted). `expandFrac =
+ENTRANCE_SLIDE_MS/(ENTRANCE_SLIDE_MS+STRETCH_DURATION_MS)`. At the phase boundary everything is continuous
+(scaleY=1, content unscaled, anchors at rest), so there is NO hand-off gap — it reads as one motion. Removed the
+`withEndAction` chaining. Receive sheet unchanged (still uses `playTopElasticStretch`). BUILD SUCCESSFUL; feel
+UNVERIFIED on-device — user tests. File: DraggableSheetLayout.kt.
+
 ## [2026-06-11] Send sheet entrance: slide + GROW-from-half + a shorter bounce
 User idea: "what if the card came up starting at half its size, expanded to full, then played the bounce." Plus:
 shorten the bounce.

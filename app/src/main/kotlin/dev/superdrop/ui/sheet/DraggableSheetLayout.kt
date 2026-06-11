@@ -153,31 +153,81 @@ public class DraggableSheetLayout
                         "animDurScale=${currentAnimatorDurationScale()} animatorsEnabled=${animatorsEnabled()}",
                 )
                 if (doSlide) {
-                    // Entrance = rise + GROW: the card starts just below the bottom edge
-                    // at ENTRANCE_START_SCALE of its size and slides up WHILE expanding to
-                    // full size. The grow is anchored at the bottom-centre (pivotX = mid,
-                    // pivotY = bottom) so the card "comes up" out of the bottom as it
-                    // expands. Snap to the precise off-screen start first (both off-screen,
-                    // no visible jump). iOS-style variable-speed ease-out (tune SLIDE_EASE_*).
-                    translationY = (height + paddingBottom + marginBottom + ENTRANCE_OFFSET_PX).toFloat()
+                    // SEAMLESS entrance driven by ONE animator so there is NO gap between
+                    // the expand and the bounce (the previous two-animator version, expand
+                    // then withEndAction->bounce, had a visible beat between them because
+                    // both ends were slow). Phase 1 EXPAND (fraction 0..expandFrac): the
+                    // card slides up from below the bottom edge WHILE growing from
+                    // ENTRANCE_START_SCALE to full size, bottom-centre pivot, iOS ease.
+                    // Phase 2 BOUNCE (expandFrac..1): the top edge elastically stretches and
+                    // settles (content counter-scaled so the pill rides the top, bottom
+                    // action row planted). At the phase boundary everything is continuous
+                    // (scaleY=1, content unscaled, anchors at rest) so it reads as one motion.
+                    val startTransY = (height + paddingBottom + marginBottom + ENTRANCE_OFFSET_PX).toFloat()
+                    val content = bounceContent
+                    val anchors = bounceBottomAnchors
+                    val extendPx = ENTRANCE_TOP_EXTEND_DP * resources.displayMetrics.density
+                    val h = height.toFloat()
+                    val expandFrac =
+                        ENTRANCE_SLIDE_MS.toFloat() / (ENTRANCE_SLIDE_MS + STRETCH_DURATION_MS).toFloat()
+                    val expandEase =
+                        PathInterpolator(SLIDE_EASE_X1, SLIDE_EASE_Y1, SLIDE_EASE_X2, SLIDE_EASE_Y2)
                     pivotX = width / 2f
-                    pivotY = height.toFloat()
+                    pivotY = h
+                    // Pre-set the start state (off-screen + half size) so the first drawn
+                    // frame is already correct; it's off-screen so invisible regardless.
+                    translationY = startTransY
                     scaleX = ENTRANCE_START_SCALE
                     scaleY = ENTRANCE_START_SCALE
-                    animate()
-                        .translationY(0f)
-                        .scaleX(1f)
-                        .scaleY(1f)
-                        .setDuration(ENTRANCE_SLIDE_MS)
-                        .setInterpolator(
-                            PathInterpolator(SLIDE_EASE_X1, SLIDE_EASE_Y1, SLIDE_EASE_X2, SLIDE_EASE_Y2),
+                    DiagnosticLog.e(DIAG_TAG, "entrance(expand+bounce) RUN: height=$height")
+                    ValueAnimator.ofFloat(0f, 1f).apply {
+                        duration = ENTRANCE_SLIDE_MS + STRETCH_DURATION_MS
+                        interpolator = LinearInterpolator() // phases are shaped below
+                        addUpdateListener { va ->
+                            val f = va.animatedFraction
+                            if (f <= expandFrac) {
+                                // EXPAND: slide up + grow 0.5->1.0; content + anchors ride
+                                // uniformly with the card (no counter-scale yet).
+                                val e = expandEase.getInterpolation(f / expandFrac)
+                                val s = ENTRANCE_START_SCALE + (1f - ENTRANCE_START_SCALE) * e
+                                scaleX = s
+                                scaleY = s
+                                translationY = startTransY * (1f - e)
+                                content?.scaleY = 1f
+                                anchors.forEach { it.translationY = 0f }
+                            } else {
+                                // BOUNCE: top-edge stretch about the bottom; content
+                                // counter-scaled about its top (pill rides the top edge),
+                                // bottom action row translated back down to stay planted.
+                                val bf = (f - expandFrac) / (1f - expandFrac)
+                                val rise = extendPx * topStretchProfile(bf)
+                                val k = 1f + rise / h
+                                scaleX = 1f
+                                translationY = 0f
+                                scaleY = k
+                                content?.let {
+                                    it.pivotY = 0f
+                                    it.scaleY = 1f / k
+                                }
+                                anchors.forEach { it.translationY = rise }
+                            }
+                        }
+                        addListener(
+                            object : AnimatorListenerAdapter() {
+                                // Fires on natural end AND cancel, so the reset + onComplete
+                                // (revealing the peer icons) can never be skipped.
+                                override fun onAnimationEnd(animation: Animator) {
+                                    scaleX = 1f
+                                    scaleY = 1f
+                                    translationY = 0f
+                                    content?.scaleY = 1f
+                                    anchors.forEach { it.translationY = 0f }
+                                    onComplete?.invoke()
+                                }
+                            },
                         )
-                        // The top-edge bounce plays once the card reaches full size
-                        // (SEQUENTIAL — the grow and the bounce both drive scaleY, so they
-                        // can't overlap; the hand-off is seamless because both are at
-                        // scaleY = 1 at that instant — "expand to full, then bounce").
-                        .withEndAction { playTopElasticStretch(onComplete) }
-                        .start()
+                        start()
+                    }
                 } else {
                     // Not pre-hidden (receive sheet): no slide, just the bounce.
                     postDelayed({ playTopElasticStretch(onComplete) }, WINDOW_SETTLE_MS)
