@@ -18,12 +18,19 @@ FINISHED FEATURES
    just like the old Quick Share. A much better improvement.
 
    Optional polish (can be kept or left out): the sheet has an entrance — it slides
-   up from below the bottom of the screen and, flowing straight out of that slide,
-   the rounded card top gives one smooth "extend and snap back" (the contents ride
-   with it without stretching). And if you want, the discovered-device icons can be
-   held back until that entrance finishes, so none pop in mid-slide. The icon delay
-   is self-contained and does NOT touch discovery — it can be turned on or off
-   independently of the rest of the bottom-sheet change.
+   up from the bottom of the screen and, as it lands, the rounded card's top edge
+   gives one small "extend and snap back". The device-name pill stays attached to
+   the top as it flexes, the rest of the sheet stays put, and nothing stretches or
+   distorts. And if you want, the discovered-device icons can be held back until the
+   entrance finishes, so none pop in mid-slide. Both the bounce and the icon delay
+   are self-contained and don't touch discovery — each can be kept or dropped
+   independently of the bottom-sheet change.
+
+   Technical: the slide is a view-level translate; the activity's own window open
+   animation is suppressed (overrideActivityTransition) so it doesn't fight the
+   slide. The bounce stretches only the card background (sheet scaleY about the
+   bottom); the body is counter-scaled to stay planted and the pill is translated
+   to ride the top edge, so only the empty card area between them flexes.
 
    Image for the PR: docs/pr-images/send-sheet-device.jpg (real device — OnePlus
    Nord N30 5G: header pill with your phone name, "1 file 240.5 KB", "Tap a device

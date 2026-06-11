@@ -1,3 +1,14 @@
+## [2026-06-11] PR breakdown: refreshed item #1 entrance/animation copy to the final behavior
+The send-sheet entrance went through several refinements (commits 03f8267, e5f0e6c, aa327bc) since the PR
+copy was last touched; updated SUPERDROP-CHANGES.txt item #1 to match what actually ships now:
+- Slide: "slides up from the bottom of the screen" (the view-level slide, with the competing window open
+  animation suppressed) — was vaguely "below the bottom".
+- Bounce: corrected from the old "contents ride without stretching" wording to the user-chosen model — the
+  card's top edge extends + snaps back, the device-name PILL stays attached to the top, the rest of the
+  sheet stays planted, nothing distorts. Added a short Technical note (overrideActivityTransition;
+  background scaleY + counter-scaled body + pill translate). Icon-delay still noted as optional.
+- **Files:** SUPERDROP-CHANGES.txt. Docs only.
+
 ## [2026-06-11] Send sheet slide: FIXED + EMULATOR-VERIFIED (it now slides from the very bottom)
 Root cause of "it never slid from the very bottom / faded into place", found by actually watching it on the
 redroid emulator (frame-by-frame at slowed animation): the activity's WINDOW open animation was transforming
