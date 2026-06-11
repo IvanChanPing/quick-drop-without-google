@@ -41,66 +41,38 @@ FINISHED FEATURES
    receive mode — and a single tap is all it takes.
 
    Technical: uses standard Android NFC. The receiver runs a Host Card Emulation
-   service on the Nearby Connections AID F00000FE2C; the sender uses NFC
-   reader-mode. On tap the sender sends SELECT + an ADVERTISEMENT command and the
-   receiver answers with its endpoint info plus a Wi-Fi-LAN address (IP:port)
-   packed in Quick Share's own NFC blob (the "deym" tag, marked
-   P2P_POINT_TO_POINT). NFC only does the handoff — the actual file transfer then
-   runs over the normal Wi-Fi (mDNS/TCP) path. "Idle phone" support: tapping a
-   closed/idle receiver's HCE starts its foreground service, opens a short
-   visibility window, and posts the Accept prompt — Android can launch an HCE
-   service even when the app's process is dead, which is what makes the cold tap
+   (HCE) service on the Nearby Connections AID F00000FE2C; the sender uses NFC
+   reader-mode. On tap the sender sends SELECT + an ADVERTISEMENT command:
+   - If the other phone is actively visible as a receiver, its HCE answers with
+     its endpoint info plus a Wi-Fi-LAN address (IP:port) packed in Quick Share's
+     own NFC blob (the "deym" tag, marked P2P_POINT_TO_POINT), and the sender
+     connects straight to that address.
+   - If the other phone is idle/closed, the tap WAKES it instead: Android launches
+     the receiver's HCE service even when its process is dead, which starts the
+     receiver's foreground service, opens a short visibility window, and posts the
+     Accept prompt. The sender treats the tap as a wake, opens a short window of
+     its own, and lets the normal Wi-Fi discovery find the now-advertising
+     receiver and auto-connect. This mirrors stock Quick Share, whose reader sends
+     the ADVERTISEMENT once and relies on discovery rather than a blocking re-read.
+   Either way NFC only does the handoff; the file transfer itself runs over the
+   normal Wi-Fi (mDNS/TCP) path. The tap re-arms after each use, so repeated taps
    work.
 
-   Real-device findings (2026-06-09) and what we did about each:
+   Android 15 routing: when two apps register the same NFC ID, Android 15 routes
+   the tap to the default "wallet" app. So while our receive sheet is open the app
+   claims the ID for the tap (CardEmulation.setPreferredService in
+   ConsentTrampolineActivity) — the supported way to receive on that shared ID on
+   Android 15 — and releases it when the sheet closes. On Android 14 the system
+   shows a chooser instead.
 
-   • RECEIVE into our app, on Android 15, was being stolen by Google.
-     Why (verified from Google's code + on device): when two apps register the
-     same NFC ID, Android 15 routes the tap to the default "wallet" app (Google),
-     so our app never saw it (on Android 14 it showed a chooser instead). Fix
-     added: while our receive sheet is open we now claim the NFC ID for the tap
-     (CardEmulation.setPreferredService in ConsentTrampolineActivity), the one
-     documented way to win it on Android 15. Sheet closed → it falls back to
-     native. (Built; on-device confirmation pending.)
+   Note on the Accept prompt: between two phones signed in to the SAME Google
+   account, stock Quick Share auto-accepts with no prompt (its self-share trust
+   check). Across different accounts the receiver taps Accept once — the same as
+   any cross-account Quick Share transfer.
 
-   • SEND from our app to a receiver, by tap, didn't start the transfer.
-     Why (verified from a real device log + Google's code): a receiver that's
-     idle answers the tap empty and only THEN wakes itself into receive and
-     starts advertising — so the single NFC read got nothing back. Fix added
-     (this is how stock Quick Share itself behaves): the tap is now a one-shot
-     WAKE, not a blocking re-poll. On an empty answer we treat the tap as having
-     woken the receiver, open a short window, and let our existing (working) Wi-Fi
-     discovery find the now-advertising receiver and auto-connect into the normal
-     transfer path. It re-arms on every tap (fixes "the second tap did nothing").
-     CONFIRMED WORKING ON DEVICE — a tap now starts the transfer.
-
-   • To see what's happening without a PC: added on-device diagnostics that
-     auto-upload the NFC tap details, since the tester has no adb. They now
-     upload RELIABLY — during a share the phone's only network is the local
-     share Wi-Fi (no internet), so a POST sent mid-share was silently dropped;
-     the uploader now queues each report and sends the whole queue the moment a
-     real-internet network is back (or instantly over cellular). Added a Settings
-     toggle, "Show NFC tap diagnostics" (on by default), to silence the on-screen
-     messages once everything works.
-
-   • A Bluetooth pairing request sometimes appeared during the tap.
-     Verified it is NOT coming from our transfer: every socket our connection
-     opens is insecure (no pairing) and our Bluetooth-Classic route is unused.
-     The prompt originates outside our connect path (e.g. an OEM NFC→Bluetooth
-     handover, or the other phone's own bootstrap); exact source not yet pinned
-     (needs: which phone shows it + the device name on the prompt).
-
-   Honest status: SEND-by-tap is CONFIRMED WORKING on a phone — a tap now starts
-   the transfer (one-shot wake → our existing Wi-Fi transfer). The ONE remaining
-   difference from stock Quick Share: the receiver shows an Accept prompt before
-   the transfer starts, whereas Quick-Share-to-Quick-Share starts with no prompt.
-   That "no prompt" is Google's self-share auto-accept, which only fires between
-   two devices on the SAME signed-in Google account — an account-bound trust check
-   we can't forge for a different account, so for now the receiver taps Accept
-   once. The Android-15 RECEIVE fix above (claiming the NFC ID while our sheet is
-   open) is built but still pending on-device confirmation. Full reverse-engineered
-   byte map + root causes live in docs/NFC_INTEROP_BYTEMAP.md; device-test notes
-   in BUGS.md #6.
+   Status: send-by-tap is device-tested and starts the transfer; the Android 15
+   receive-routing path is built and pending an on-device check. Full
+   reverse-engineered byte map lives in docs/NFC_INTEROP_BYTEMAP.md.
 
 4) Tap an iPhone to share a link
    Tap your phone with an iPhone (or any phone) and it opens your pairing link in

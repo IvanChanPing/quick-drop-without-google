@@ -1,17 +1,18 @@
-## [2026-06-11] Updated the PR breakdown (SUPERDROP-CHANGES.txt) for the tap-to-share fixes
-Brought item #3 "Tap to share" in `SUPERDROP-CHANGES.txt` (the "one pull request per thing" text the
-PR descriptions are written from) in line with what was actually built + verified this session, so the
-PR copy is accurate:
-- SEND-by-tap fix REWRITTEN: replaced the stale "re-poll the tap for ~2.5s" description with the actual
-  approach now shipped — a one-shot WAKE that hands off to our existing Wi-Fi discovery/transfer
-  (replicates stock Quick Share). Status upgraded to CONFIRMED WORKING ON DEVICE (user-verified).
-- Honest-status block: SEND-by-tap works; the only remaining difference from stock QS is the receiver
-  Accept prompt (stock's no-prompt is account-bound self-share auto-accept, not forgeable cross-account).
-- Diagnostics bullet: noted the auto-upload is now reliable (queue + flush-when-internet) and the new
-  Settings toggle "Show NFC tap diagnostics".
-- Added a finding: the Bluetooth pairing request seen during a tap is NOT from our connect (all our
-  sockets are insecure / no pairing); source still to be pinned.
-- **Files:** `SUPERDROP-CHANGES.txt`. (Docs only — no code/APK change.)
+## [2026-06-11] Rewrote PR breakdown item #3 "Tap to share" as the working feature only
+Per user: the PR copy should describe the FINISHED working feature, not "here was the non-working
+version + a fix on top" (a reviewer shouldn't implement the bad version then patch it). Rewrote item #3
+in `SUPERDROP-CHANGES.txt` (the "one pull request per thing" text the PR descriptions are written from):
+- Removed the "Real-device findings / what we did about each" broken→fixed narrative.
+- Folded the CORRECT mechanisms into the Technical block as plain design: visible-receiver path (HCE
+  returns the Wi-Fi-LAN deym tag → direct connect) vs idle-receiver path (tap wakes the HCE → sender
+  hands off to normal Wi-Fi discovery/auto-connect, mirroring stock Quick Share); tap re-arms each use.
+- Kept Android-15 NFC-ID claiming (setPreferredService) as a design detail, and one neutral note on the
+  Accept prompt (same-account self-share auto-accepts; cross-account taps Accept once).
+- Dropped the diagnostics-collector and Bluetooth-pair-request bullets from the PR copy — those are
+  investigation/debug artifacts, not part of the shipped feature (they remain in the journal + BUGS.md).
+- Status line trimmed to: send-by-tap device-tested; A15 receive path built, pending on-device check.
+- **Files:** `SUPERDROP-CHANGES.txt`. (Docs only — no code/APK change. Supersedes the prior same-day
+  entry that synced #3 in broken→fixed form.)
 
 ## [2026-06-11] Diagnostics now AUTO-UPLOAD reliably (queue + flush when internet is available)
 Root cause of "no logs": during an NFC/Wi-Fi share the phone's default network is the LOCAL share Wi-Fi (no
