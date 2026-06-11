@@ -1,3 +1,23 @@
+## [2026-06-11] Send sheet entrance: background-only bounce, iOS easing, smoother + faster (per user)
+Further feedback on the entrance ("only the background should bounce, content shouldn't bob"; "variable
+speed like iPhone"; "slide from below the screen"; "felt jerky"; "took too long to feel real"):
+1. **Bounce affects only the card surface now** — wrapped the sheet's content in a new `send_sheet_content`
+   LinearLayout and counter-scale it by the exact inverse about the same bottom pivot
+   (`DraggableSheetLayout.setBounceContent`, wired in `SendActivity.wireBottomSheet`). The whole sheet still
+   scales (so the rounded background stretches) but the icons/text stay put — only the surface flexes.
+2. **Not jerky** — replaced the half-sine stretch profile (which started at MAX velocity right after the
+   slide decelerated to ~0, causing a velocity jump) with a raised-cosine hump `0.5(1−cos2πt)` that has
+   ZERO velocity at both ends → smooth hand-off and settle.
+3. **iOS-style variable speed** — slide now uses `PathInterpolatorCompat.create(0.16,1,0.3,1)` (ease-out:
+   fast start, gentle settle) instead of `DecelerateInterpolator`. Still slides up from below the screen.
+4. **Faster** — `STRETCH_DURATION_MS` 360 → 260 so the bounce "feels real".
+5. **PR copy**: added an "optional polish" note to `SUPERDROP-CHANGES.txt` item #1 that the icon-appearance
+   delay is self-contained and can be included or left out (per user, "if they wanted to they could have
+   that delay").
+- **Files:** `app/.../ui/sheet/DraggableSheetLayout.kt`, `app/.../send/SendActivity.kt`,
+  `app/.../res/layout/activity_send.xml`, `SUPERDROP-CHANGES.txt`. `:app:assembleDebug` BUILD SUCCESSFUL;
+  APK refreshed. Compile-clean; on-device feel UNVERIFIED (no display) — user click-tests + tunes.
+
 ## [2026-06-11] Send sheet: tune entrance to extend+snap (no wobble) and delay device icons until after it
 Per user feedback on the previous build:
 1. **Entrance top-stretch reworked from elastic to a single extend+snap** (`DraggableSheetLayout`): the

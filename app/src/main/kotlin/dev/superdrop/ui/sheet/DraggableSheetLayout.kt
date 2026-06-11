@@ -15,10 +15,10 @@ import android.view.MotionEvent
 import android.view.View
 import android.view.ViewConfiguration
 import android.view.WindowInsets
-import android.view.animation.DecelerateInterpolator
 import android.view.animation.LinearInterpolator
 import android.view.animation.OvershootInterpolator
 import android.widget.LinearLayout
+import androidx.core.view.animation.PathInterpolatorCompat
 
 /**
  * Kotlin port of the OShare bottom-sheet card container (see
@@ -46,6 +46,14 @@ public class DraggableSheetLayout
         private var dragging: Boolean = false
         private var onDismiss: (() -> Unit)? = null
 
+        /**
+         * Optional content view that is counter-scaled during the entrance bounce
+         * so ONLY the sheet's rounded background stretches and the content stays
+         * put. Null (default) = the whole sheet (background + content) bounces.
+         * Set via [setBounceContent].
+         */
+        private var bounceContent: View? = null
+
         init {
             orientation = VERTICAL
             isClickable = true
@@ -56,45 +64,72 @@ public class DraggableSheetLayout
         }
 
         /**
+         * Provide the content wrapper to counter-scale during the entrance bounce
+         * so only the sheet's rounded background stretches (the icons/text stay
+         * put). Pass null to bounce the whole sheet (background + content).
+         */
+        public fun setBounceContent(view: View?) {
+            this.bounceContent = view
+        }
+
+        /**
          * Entrance animation. Two stages, by design:
-         *  1. The WHOLE sheet slides up from below and LANDS cleanly —
-         *     [DecelerateInterpolator], NO whole-card overshoot (this is the
-         *     change from the old [OvershootInterpolator] slide, which bounced
-         *     the entire card up and down past its resting spot).
-         *  2. Anchored at the sheet's BOTTOM edge, the TOP of the sheet then
-         *     stretches up and elastically settles — an over-scroll / rubber-band
-         *     feel where the bottom stays planted and only the top extends.
-         *     See [playTopElasticStretch].
+         *  1. The WHOLE sheet slides up from below the bottom of the screen and
+         *     LANDS cleanly — iOS-style ease-out ([PathInterpolatorCompat], variable
+         *     speed), NO whole-card overshoot (this is the change from the old
+         *     [OvershootInterpolator] slide, which bounced the entire card up and
+         *     down past its resting spot).
+         *  2. Anchored at the sheet's BOTTOM edge, only the rounded BACKGROUND then
+         *     stretches up and snaps back (the content is counter-scaled to stay
+         *     put). A smooth single hump — no wobble, not jerky. See
+         *     [playTopElasticStretch].
          */
         public fun playEntrance(onComplete: (() -> Unit)? = null) {
             post {
+                // Start fully BELOW the bottom of the screen (own height + bottom
+                // padding/inset + a margin) so it visibly slides up into place.
                 translationY = (height + paddingBottom + ENTRANCE_OFFSET_PX).toFloat()
                 scaleY = 1f
                 animate()
                     .translationY(0f)
                     .setDuration(ENTRANCE_DURATION_MS)
-                    .setInterpolator(DecelerateInterpolator(ENTRANCE_DECEL))
+                    // iOS-style ease-out: fast start, long gentle settle (variable
+                    // speed) rather than a constant glide.
+                    .setInterpolator(PathInterpolatorCompat.create(0.16f, 1f, 0.3f, 1f))
                     .withEndAction { playTopElasticStretch(onComplete) }
                     .start()
             }
         }
 
         /**
-         * Stage 2 of the entrance: a bottom-anchored stretch of the TOP edge.
-         * [pivotY] is set to the sheet's bottom so scaling Y leaves the bottom
-         * planted and lets the top extend up, then snap straight back to rest
-         * via [topStretchProfile] — a SINGLE smooth hump (extend + snap back),
-         * NO wobble / no bounce. Tune with [ENTRANCE_STRETCH] (how far the top
-         * extends) and [STRETCH_DURATION_MS] (shorter = snappier). Resets
-         * [scaleY] to 1 on completion.
+         * Stage 2 of the entrance: a bottom-anchored stretch of the TOP edge that
+         * affects ONLY the sheet's rounded background. [pivotY] is the sheet's
+         * bottom so scaling Y leaves the bottom planted and the top extends up,
+         * then returns to rest via [topStretchProfile] — a SINGLE smooth hump
+         * (extend + snap back, NO wobble / no dip below rest), with zero velocity
+         * at both ends so the hand-off from the slide and the settle are not jerky.
+         * When [bounceContent] is set, it is counter-scaled by the inverse about
+         * the SAME bottom pivot, so the content (icons/text) does NOT move — only
+         * the card surface stretches. Tune with [ENTRANCE_STRETCH] (extend amount)
+         * and [STRETCH_DURATION_MS] (shorter = snappier). Resets scales on end.
          */
         private fun playTopElasticStretch(onComplete: (() -> Unit)? = null) {
             pivotY = height.toFloat() // bottom edge = anchor; top is free to stretch
+            val content = bounceContent
             ValueAnimator.ofFloat(0f, 1f).apply {
                 duration = STRETCH_DURATION_MS
                 interpolator = LinearInterpolator() // the hump shape drives the motion
                 addUpdateListener { a ->
-                    scaleY = 1f + ENTRANCE_STRETCH * topStretchProfile(a.animatedFraction)
+                    val k = 1f + ENTRANCE_STRETCH * topStretchProfile(a.animatedFraction)
+                    scaleY = k
+                    // Counter-scale the content about the same screen point as the
+                    // sheet's bottom pivot (content-local: its own height + the
+                    // sheet's bottom padding). k * (1/k) about one point = identity,
+                    // so the content stays put while the background stretches.
+                    content?.let {
+                        it.pivotY = it.height.toFloat() + paddingBottom
+                        it.scaleY = 1f / k
+                    }
                 }
                 addListener(
                     object : AnimatorListenerAdapter() {
@@ -102,6 +137,7 @@ public class DraggableSheetLayout
                         // revealing delayed peer icons) can never be skipped.
                         override fun onAnimationEnd(animation: Animator) {
                             scaleY = 1f
+                            content?.scaleY = 1f
                             onComplete?.invoke()
                         }
                     },
@@ -111,13 +147,14 @@ public class DraggableSheetLayout
         }
 
         /**
-         * Single-hump stretch profile used by [playTopElasticStretch]: a half-sine
-         * that is 0 at t=0, rises to a single peak of 1 at t=0.5, and returns to 0
-         * at t=1 — staying >= 0 the whole way, so the top extends up once and snaps
-         * back to rest with NO wobble and NO dip below rest (not a bounce/spring).
+         * Single-hump stretch profile used by [playTopElasticStretch]: a raised
+         * cosine `0.5 * (1 - cos(2*pi*t))` that is 0 at t=0, rises to a single peak
+         * of 1 at t=0.5, and returns to 0 at t=1 — staying >= 0 the whole way AND
+         * with ZERO velocity at both ends (unlike a half-sine, which starts at full
+         * speed and feels jerky). One smooth extend + snap back, no wobble.
          */
         private fun topStretchProfile(t: Float): Float {
-            return Math.sin(t.toDouble() * Math.PI).toFloat()
+            return (0.5 * (1.0 - Math.cos(t.toDouble() * 2.0 * Math.PI))).toFloat()
         }
 
         /**
@@ -198,17 +235,18 @@ public class DraggableSheetLayout
         public companion object {
             private const val ENTRANCE_OFFSET_PX = 80
 
-            // Stage 1 — whole-sheet slide-up (no overshoot; it lands clean).
+            // Stage 1 — whole-sheet slide-up from below the screen, iOS-style
+            // ease-out (variable speed, set in [playEntrance]); lands clean.
             private const val ENTRANCE_DURATION_MS = 300L
-            private const val ENTRANCE_DECEL = 1.6f
 
-            // Stage 2 — bottom-anchored stretch of the TOP edge: it extends up
-            // ONCE and snaps back to rest, NO wobble / no bounce (a single smooth
-            // hump that never dips below rest). ENTRANCE_STRETCH = peak scaleY delta
+            // Stage 2 — bottom-anchored stretch of ONLY the card surface (content
+            // counter-scaled): extends up ONCE and snaps back, NO wobble / no dip
+            // below rest (a single smooth raised-cosine hump with zero velocity at
+            // both ends so it is not jerky). ENTRANCE_STRETCH = peak scaleY delta
             // (~4.5% top stretch); raise for a bigger extend. STRETCH_DURATION_MS =
-            // how long the extend+snap takes (shorter = snappier).
+            // how long the extend+snap takes (shorter = snappier / feels more real).
             private const val ENTRANCE_STRETCH = 0.045f
-            private const val STRETCH_DURATION_MS = 360L
+            private const val STRETCH_DURATION_MS = 260L
 
             /** Total wall-time of the entrance (slide + top stretch). Callers use
              *  it to time a follow-on reveal (e.g. delaying the peer icons until the

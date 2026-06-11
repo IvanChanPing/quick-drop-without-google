@@ -70,6 +70,22 @@
         android:paddingBottom="8dp">
 
         <!--
+          send_sheet_content — wraps ALL of the sheet's content (the device
+          pill + the 480dp state frame). The entrance "bounce" scales the whole
+          sheet to stretch its rounded BACKGROUND, and this wrapper takes the
+          exact inverse scale (same bottom pivot) so the content itself does NOT
+          move — only the card surface stretches. Wired via
+          DraggableSheetLayout.setBounceContent in SendActivity.wireBottomSheet.
+        -->
+        <LinearLayout
+            android:id="@+id/send_sheet_content"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:clipChildren="false"
+            android:clipToPadding="false"
+            android:orientation="vertical">
+
+        <!--
           Sheet header: the device-name pill (relocated from the old
           toolbar) centered at the top of the card so the user sees
           who the share is "from" at a glance. The id is preserved so
@@ -579,6 +595,8 @@
                 android:tint="?android:attr/textColorSecondary" />
 
         </FrameLayout>
+
+        </LinearLayout>
 
     </dev.superdrop.ui.sheet.DraggableSheetLayout>
 

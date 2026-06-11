@@ -17,6 +17,14 @@ FINISHED FEATURES
    more being forced all the way into the app just to send or receive something —
    just like the old Quick Share. A much better improvement.
 
+   Optional polish (can be kept or left out): the sheet has an entrance — it slides
+   up from below the bottom of the screen and the rounded card surface gives one
+   smooth "extend and snap back" at the top (iOS-style variable speed; the content
+   stays put, only the surface flexes). And if you want, the discovered-device
+   icons can be held back until that entrance finishes, so none pop in mid-slide.
+   The icon delay is self-contained and does NOT touch discovery — it can be turned
+   on or off independently of the rest of the bottom-sheet change.
+
    Image for the PR: docs/pr-images/send-sheet-device.jpg (real device — OnePlus
    Nord N30 5G: header pill with your phone name, "1 file 240.5 KB", "Tap a device
    to send", a circular peer icon "Mike's phone", the QR button top-right, and

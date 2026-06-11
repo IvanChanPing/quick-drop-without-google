@@ -1342,6 +1342,9 @@ public class SendActivity : AppCompatActivity() {
             binding.sendSheet,
             resources.getDimensionPixelSize(R.dimen.send_sheet_base_bottom_padding),
         )
+        // Bounce only the card surface: counter-scale the content wrapper so the
+        // icons/text stay put while the rounded background stretches on entrance.
+        binding.sendSheet.setBounceContent(binding.sendSheetContent)
         // Hold the device-icon row hidden during the entrance so a fast-found
         // device does not appear mid-slide. Discovery keeps running; only the
         // icons' APPEARANCE is delayed (alpha gate, revealed on completion).
