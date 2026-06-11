@@ -159,30 +159,41 @@ FINISHED FEATURES
    "Allow" dialog) and, on OEM ROMs that no-op it, escalates to the App Info /
    battery settings page.
 
+9) Cleaner device names in the send picker (no raw IP addresses)
+   Nearby devices that don't broadcast a name — typically a stock or "hidden"
+   Quick Share phone — now show a friendly "Quick Share device" label in the send
+   sheet instead of their raw IP address, so the picker never shows cryptic numbers.
+
+   Technical: the picker label falls back through BLE name → "Quick Share device
+   (endpointId)" → "Quick Share BLE device"; the final fallback used to return the
+   internal stableId (a LAN address), which leaked an IP into the UI. It now returns
+   a generic "Quick Share device" label instead. (Two Super Drop phones advertise
+   with their real names, so this only affects nameless/hidden peers.)
+
 
 ====================================================================
 GROUNDWORK (started, not finished/turned on yet)
 ====================================================================
 
-9) Groundwork for a full bottom-sheet receive screen
-   Laid the receive sheet in place so receiving could feel like the send sheet.
-   In practice it currently comes through as a heads-up notification rather than a
-   full sheet — this is the base for finishing that.
+10) Groundwork for a full bottom-sheet receive screen
+    Laid the receive sheet in place so receiving could feel like the send sheet.
+    In practice it currently comes through as a heads-up notification rather than a
+    full sheet — this is the base for finishing that.
 
-10) Groundwork for a much better, iOS-style animated receive notification
+11) Groundwork for a much better, iOS-style animated receive notification
     Plumbing for the receive prompt to appear over other apps and transform into a
     pill, for a smoother iOS-like feel. (Colors can be redesigned.)
 
-11) Groundwork for an NFC tap-to-share switch (off / always on / on for a while)
+12) Groundwork for an NFC tap-to-share switch (off / always on / on for a while)
     The base for letting you choose when your phone is tappable: never, always,
     or only for a limited window.
 
-12) Groundwork for Live Updates (status-bar progress chip)
+13) Groundwork for Live Updates (status-bar progress chip)
     Prepped the live status-bar progress chip so a transfer can show up at the top
     of the screen / in the OEM "island." It's wired but not switched on yet
     (waiting on a build-tool version).
 
-13) Glow NFC tap animation
+14) Glow NFC tap animation
     On an NFC tap, play a glowing reveal as the receive prompt appears over
     whatever's on screen. Separate from the regular tap-to-share (#3); builds on
-    the animated overlay groundwork in #10.
+    the animated overlay groundwork in #11.

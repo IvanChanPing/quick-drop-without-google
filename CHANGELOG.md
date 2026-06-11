@@ -1,3 +1,12 @@
+## [2026-06-11] PR breakdown: new finished item #9 "Cleaner device names in the send picker"; groundwork renumbered
+Per user, the peer-name-not-IP fix becomes its own small PR item. Added FINISHED item #9: nameless/hidden
+peers (stock Quick Share) now show a "Quick Share device" label in the send picker instead of a raw IP
+address. Grounded in `discovery-android/.../NearbyPeer.kt` (commit 096673f): the displayName fallback used
+to return the internal stableId (a LAN address); now returns a generic label. Groundwork items renumbered
+9–13 → 10–14 (kept finished #1–#8 stable); fixed the internal cross-reference in #14 (#10 → #11). Per user,
+the debug diagnostics (auto-upload + "Show NFC tap diagnostics" toggle) stay OUT of the PR copy (debug-only).
+- **Files:** `SUPERDROP-CHANGES.txt`. (Docs only — no code/APK change.)
+
 ## [2026-06-11] PR breakdown item #4 reframed around the QR-button → iPhone NFC tag (per user, its own PR)
 User wants the "QR code button produces the NFC tag for iPhone" change captured as its own separate PR.
 It already is item #4; sharpened the copy so the QR-button coupling is explicit (it was described only as
