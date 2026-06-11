@@ -619,3 +619,36 @@ Our impl read: `app/.../nfc/SuperDropTapReader.kt` + `core-protocol/.../nfc/Quic
 - ⇒ NOT implementing yet (per user's 110% bar): diagnosis + architecture are verified; the woken-receiver
   identification correlation is the single unpinned link. Options: (a) pin it from the decompile; (b) ship a
   bounded/observable heuristic + device-verify.
+
+## ✅ STEP 1 PINNED (2026-06-11) — identification is POSITIONAL (no token); connect via discovery
+- QS RECEIVE surface → ADVERTISES (strings: "Stopping advertising because no receive surface is registered" L22421;
+  "Start advertising with mode %s…" L23817; "Cancelling the Fast Init HUN because we're now advertising with a
+  foreground receive surface" L24684). QS SEND surface → SCANS/DISCOVERS ("…we don't have a scanning send surface" L7458).
+- NFC tag (startNfcAdvertising/djvf.h) is registered ONLY on the startDiscovery path ⇒ **a woken RECEIVER (which
+  advertises, does not discover) does NOT present an NFC tag.** A re-read tap → `0000` again.
+- HCE wake branch (g==null) does NOT stash the sender's endpoint (djvf.f only; djvf.d runs only on g!=null). So
+  the wake carries NO identity. ⇒ **No token. The QS sender connects to the woken receiver its DISCOVERY surfaces
+  (positional/temporal: the device that wakes+advertises right after the tap).** Single tap = unambiguous.
+- ⇒ FIX (matches QS, reuses proven `onQrPeersResolved` shape): tap = ONE-shot read (no 2.5s blocking loop). On a
+  real tag (receiver already advertising) → existing onPeerTapped→connect. On `0000` (wake) → arm a bounded
+  "watch discovery, auto-connect to the woken QS receiver, prefer Wi-Fi-LAN, once" window; reset for retry.
+
+## STEP 2 PRE-BUILD RISK PASS (2026-06-11)
+1. ASSUMPTIONS: (a) our discovery surfaces the woken QS receiver over mDNS/Wi-Fi — VERIFIED our picker already
+   resolves QS devices (trace `endpoint:L6DT`); whether it appears IN TIME post-wake = device-pending. (b) the
+   existing onPeerSelected connect path works to QS — USER-CONFIRMED (transfer always worked). (c) reader stays
+   armed after a failed tap — VERIFIED (we only disable on success/destroy).
+2. UNKNOWNS (make observable): does the woken receiver appear in our discovery within the window? → log it. Does
+   it auto-accept? → expect a confirm (non-self-share, verified). Both device-pending, surfaced via diagnostics.
+3. PRECONDITIONS: send sheet open (discovery running) — VERIFIED peerPickerController.start() at SendActivity:304.
+4. ALL ENTRY POINTS: SuperDropTapReader.onTag/exchange (one-shot + wake signal); SendActivity onNfcPeerTapped
+   (unchanged, real-tag path) + NEW onTapWake→arm window + the discovery resolved callback (mirror onQrPeersResolved).
+   Do NOT touch the transfer/connect (onPeerSelected→buildOutboundConnection) — user-protected.
+5. CROSS-CUTTING: reader callback on binder thread (marshal to UI as onNfcPeerTapped already does); window must
+   be single-shot + time-bounded + cleared on connect/teardown (avoid wrong-device / stale auto-connect); no
+   main-thread block (remove the 2.5s sleep loop — improves ANR posture).
+6. OBSERVABILITY: log "tap: real tag → connect" vs "tap: wake (0000) → arming discovery auto-connect (Ns)"; log
+   the woken peer resolved + chosen; log window expiry. All via existing DiagnosticLog/collector.
+7. VERIFY: device test = tap idle QS phone (BT+location+visible), watch it open + receive (or confirm). I cannot
+   drive it; hand the user a precise test. APDU framing fixes (Le=0xFF, hhww+localEndpointId+endpointInfo) for
+   the real-tag path included.
