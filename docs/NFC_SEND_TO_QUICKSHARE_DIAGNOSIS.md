@@ -693,3 +693,15 @@ Built `:app:assembleDebug` SUCCESSFUL; `super-drop-debug.apk` refreshed. Matches
 - STATUS: **compile-clean; DEVICE-UNVERIFIED.** The make-or-break (does the woken stock QS advertise reachably +
   accept our inbound connect, expecting a confirm for non-self-share) is the on-device tap test. Deferred refinements:
   ADVERTISEMENT Le 0x00→0xFF + hhww localEndpointId/endpointInfo (only matter for the already-advertising case).
+
+## TIMING (2026-06-11) — why QS→QS is instant; our 15s is a FALLBACK ceiling, not a delay
+User: QS→QS tap was ~instantaneous. VERIFIED why: a VISIBLE Quick Share phone advertises in the BACKGROUND
+("Starting a sync for background advertising" NearbySharingChimeraService L23169; gated on isVisibleToSomeSender
+L27868), app closed. So the SENDER has ALREADY discovered the receiver before the tap; the tap connects to the
+already-known peer instantly (+ wakes the receiver UI) — no discovery wait on the critical path.
+Our code handles the instant case: `onNfcTapWake` immediately re-checks `peerPickerController.resolvedPeers()`
+and auto-connects if the receiver is already discovered (earlier trace proved we discover a visible QS device
+over mDNS, `endpoint:L6DT … WIFI_LAN`). So instant when visible. `TAP_WAKE_WINDOW_MS`=15s is ONLY the fallback
+ceiling for a not-yet-discovered (colder/visibility-off) receiver — it does NOT delay the instant path.
+NOTE: the instant path REQUIRES the receiver to be discoverable (visibility on) so we have it pre-tap — same
+precondition QS itself needs.
