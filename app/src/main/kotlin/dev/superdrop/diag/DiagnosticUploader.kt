@@ -6,63 +6,70 @@
 package dev.superdrop.diag
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.widget.Toast
 import dev.superdrop.discovery.diagnostics.DiagnosticLog
-import java.io.OutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLEncoder
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.ConcurrentLinkedQueue
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * DiagnosticUploader — auto-uploads recent on-device diagnostics to a collector
- * so a developer can read them WITHOUT adb / without the user hunting for a zip.
+ * DiagnosticUploader — auto-uploads recent on-device diagnostics to a collector so a
+ * developer can read them WITHOUT adb / without the user hunting for a zip or screenshot.
  *
- * ### What it does / why
- *
- * The user can't run `adb logcat`, so NFC-tap diagnosis was stuck. This posts
- * [DiagnosticLog]'s recent in-memory buffer (which now includes the NFC tap
- * lines — see `SuperDropTapReader` / `SuperDropTapHce`) to [COLLECTOR_URL] over
- * HTTPS, tagged with device model + Android version + app version + a `reason`.
- * Fully background (no ANR), best-effort (failures are swallowed / toasted).
+ * ### Why "queue + flush when internet is available"
+ * During an NFC/Wi-Fi share the phone's default network is the LOCAL share Wi-Fi, which
+ * has NO internet — so a POST sent *during* the tap silently fails (this is exactly why
+ * earlier device uploads never arrived). Instead, every [upload] request is QUEUED, and a
+ * single [ConnectivityManager] network callback uploads the whole queue the moment a
+ * VALIDATED-internet network is available — i.e. right after the share finishes and the
+ * phone is back online, or immediately over cellular if cellular data is up. The user does
+ * nothing; the logs arrive on their own once there's real internet.
  *
  * ### Where it's invoked
- *  - `MainActivity.onCreate` → `reason="app-open"` (notify=true; shows a toast),
- *    so opening the app ships whatever just happened (covers the receiver phone
- *    whose HCE may never have fired on a tap).
- *  - `SuperDropTapReader` after a send-tap exchange → `reason="nfc-send-tap"`.
- *  - `SuperDropTapHce` after handling an ADVERTISEMENT → `reason="nfc-recv-tap"`.
+ *  - `MainActivity.onCreate` → `reason="app-open"` (so reopening the app after a tap ships
+ *    whatever just happened).
+ *  - `SendActivity.onPause` → `reason="send-leave"` (ships the full ring after a tap attempt,
+ *    even if the reader's onTag never fired).
+ *  - `SuperDropTapReader` after a send-tap → `reason="nfc-send-tap"`.
+ *  - `SuperDropTapHce` after an ADVERTISEMENT → `reason="nfc-recv-tap"`.
  *
  * ### Status
- * DEBUG diagnostic instrument. The collector is an ephemeral cloudflared tunnel;
- * if it changes the upload fails (observable via the toast) and the URL must be
- * re-baked. Server-side receipt verified via curl; the on-device POST path is
- * exercised the first time the app runs this.
+ * DEBUG instrument. Collector = an ephemeral cloudflared tunnel ([COLLECTOR_URL]); re-bake
+ * if it changes. The on-device queue is in-memory (survives the share; lost if the process
+ * is killed before internet returns). Server receipt verified via curl.
  */
 public object DiagnosticUploader {
-    /**
-     * Ephemeral cloudflared collector endpoint (POST body = recent diagnostics).
-     * Re-bake if the tunnel restarts. Re-baked 2026-06-10 for the Round-2
-     * NFC-tap-to-Quick-Share byte trace (SuperDropTapReader logs SELECT/ADV
-     * response bytes + tag-loss timing); collector = /root/nfc-diag/collector.py
-     * on the dev box behind this quick tunnel. NOTE: the on-device
-     * shake-to-bug-report (BugReportFlowSupport) captures the SAME DiagnosticLog
-     * ring in a ZIP with no network dependency — use that if the tunnel is down.
-     */
     private const val COLLECTOR_URL = "https://missing-advocate-wing-programmer.trycloudflare.com/"
 
-    private const val CONNECT_TIMEOUT_MS = 10_000
+    private const val CONNECT_TIMEOUT_MS = 15_000
     private const val READ_TIMEOUT_MS = 15_000
 
+    /** Cap so a long offline stretch can't grow the queue without bound. */
+    private const val MAX_QUEUE = 12
+
+    private data class Pending(val reason: String, val body: String)
+
+    private val queue = ConcurrentLinkedQueue<Pending>()
+    private val callbackRegistered = AtomicBoolean(false)
+
+    @Volatile private var wantNotify = false
+
     /**
-     * Upload the recent diagnostics buffer. Returns immediately; the work runs
-     * on a throwaway background thread.
+     * Queue the recent diagnostics buffer for upload, then ensure the flush-on-internet
+     * callback is registered. Returns immediately; nothing blocks.
      *
      * @param reason short label recorded with the upload (e.g. "nfc-send-tap").
-     * @param notify when true, a Toast reports success/failure to the user.
+     * @param notify when true, a Toast confirms once the queue actually uploads.
      */
     public fun upload(
         context: Context,
@@ -70,24 +77,94 @@ public object DiagnosticUploader {
         notify: Boolean = false,
     ) {
         val appContext = context.applicationContext
+        if (notify) wantNotify = true
         Thread {
-            val result =
-                runCatching {
-                    DiagnosticLog.flushFileSink()
-                    val body = DiagnosticLog.dumpRecent().ifBlank { "(no recent diagnostics)" }
-                    post(appContext, reason, body)
-                }.getOrElse { "upload failed: ${it.message}" }
-            DiagnosticLog.w(TAG, "diagnostics upload ($reason): $result")
-            if (notify) {
-                Handler(Looper.getMainLooper()).post {
-                    Toast.makeText(appContext, "Diagnostics: $result", Toast.LENGTH_LONG).show()
-                }
-            }
+            DiagnosticLog.flushFileSink()
+            val body = DiagnosticLog.dumpRecent().ifBlank { "(no recent diagnostics)" }
+            while (queue.size >= MAX_QUEUE) queue.poll()
+            queue.add(Pending(reason, body))
+            DiagnosticLog.w(
+                TAG,
+                "diagnostics queued ($reason) — uploads when internet is available (queued=${queue.size})",
+            )
+            registerFlusher(appContext)
+            // If a validated-internet network already exists (e.g. cellular is up), flush now.
+            currentInternetNetwork(appContext)?.let { drain(appContext, it) }
         }.apply { isDaemon = true }.start()
+    }
+
+    /** Register a single process-lifetime callback that drains the queue whenever a
+     * validated-internet network becomes available. Network IO is moved off the callback
+     * thread. Registered once (guarded); released when the process dies. */
+    private fun registerFlusher(context: Context) {
+        if (!callbackRegistered.compareAndSet(false, true)) return
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+        if (cm == null) {
+            callbackRegistered.set(false)
+            return
+        }
+        val request =
+            NetworkRequest.Builder()
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                .addCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+                .build()
+        runCatching {
+            cm.registerNetworkCallback(
+                request,
+                object : ConnectivityManager.NetworkCallback() {
+                    override fun onAvailable(network: Network) {
+                        Thread { drain(context, network) }.apply { isDaemon = true }.start()
+                    }
+                },
+            )
+        }.onFailure { callbackRegistered.set(false) }
+    }
+
+    /** A network that currently has validated internet (cellular when Wi-Fi is the local
+     * share net), or null. */
+    private fun currentInternetNetwork(context: Context): Network? {
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return null
+        return runCatching {
+            cm.allNetworks.firstOrNull { n ->
+                val caps = cm.getNetworkCapabilities(n)
+                caps != null &&
+                    caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) &&
+                    caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED)
+            }
+        }.getOrNull()
+    }
+
+    /** Upload every queued item over [network]; on a failure, requeue and stop (a later
+     * onAvailable retries). Best-effort. */
+    @Synchronized
+    private fun drain(
+        context: Context,
+        network: Network,
+    ) {
+        var sentAny = false
+        var item = queue.poll()
+        while (item != null) {
+            val result = runCatching { post(context, network, item.reason, item.body) }
+                .getOrElse { "upload failed: ${it.message}" }
+            DiagnosticLog.w(TAG, "diagnostics upload (${item.reason}): $result")
+            if (!result.startsWith("sent")) {
+                queue.add(item) // put it back; wait for the next validated network
+                break
+            }
+            sentAny = true
+            item = queue.poll()
+        }
+        if (sentAny && wantNotify) {
+            wantNotify = false
+            Handler(Looper.getMainLooper()).post {
+                Toast.makeText(context, "Diagnostics uploaded", Toast.LENGTH_LONG).show()
+            }
+        }
     }
 
     private fun post(
         context: Context,
+        network: Network,
         reason: String,
         body: String,
     ): String {
@@ -101,7 +178,9 @@ public object DiagnosticUploader {
                 "&android=" + enc(Build.VERSION.RELEASE) +
                 "&app=" + enc(app) +
                 "&reason=" + enc(reason)
-        val conn = URL(url).openConnection() as HttpURLConnection
+        // Bind the connection to the validated-internet network so the POST does NOT route
+        // onto the no-internet local share Wi-Fi.
+        val conn = network.openConnection(URL(url)) as HttpURLConnection
         return try {
             conn.requestMethod = "POST"
             conn.connectTimeout = CONNECT_TIMEOUT_MS
@@ -109,8 +188,7 @@ public object DiagnosticUploader {
             conn.doOutput = true
             conn.setRequestProperty("Content-Type", "text/plain; charset=utf-8")
             val bytes = body.toByteArray(StandardCharsets.UTF_8)
-            val out: OutputStream = conn.outputStream
-            out.use { it.write(bytes) }
+            conn.outputStream.use { it.write(bytes) }
             val code = conn.responseCode
             if (code in 200..299) "sent ${bytes.size}B (HTTP $code)" else "server HTTP $code"
         } finally {

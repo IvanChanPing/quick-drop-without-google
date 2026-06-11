@@ -47,6 +47,7 @@ import dev.superdrop.discovery.bootstrap.BleGattInitialControlClient
 import dev.superdrop.discovery.bootstrap.BleGattInitialControlServer
 import dev.superdrop.discovery.bootstrap.BleL2capInitialControlClient
 import dev.superdrop.discovery.bootstrap.BluetoothClassicBootstrapClient
+import dev.superdrop.diag.DiagnosticUploader
 import dev.superdrop.discovery.diagnostics.DiagnosticLog
 import dev.superdrop.discovery.medium.MediumRegistries
 import dev.superdrop.nfc.NfcLinkHolder
@@ -401,6 +402,10 @@ public class SendActivity : AppCompatActivity() {
         super.onPause()
         // Release the NFC controller while we are not the foreground sheet.
         tapReader?.disable()
+        // Queue the full diagnostics ring for upload now that a tap attempt is over — this
+        // captures the case where the reader's onTag never fired (no tap read), which a
+        // tap-only upload would miss. The uploader holds it until internet is available.
+        DiagnosticUploader.upload(this, reason = "send-leave")
     }
 
     /**

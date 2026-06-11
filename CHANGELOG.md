@@ -1,3 +1,18 @@
+## [2026-06-11] Diagnostics now AUTO-UPLOAD reliably (queue + flush when internet is available)
+Root cause of "no logs": during an NFC/Wi-Fi share the phone's default network is the LOCAL share Wi-Fi (no
+internet), so the old `URL.openConnection()` POST routed onto it and silently failed — the device uploads never
+arrived. Per user ("wait until it's done, then upload"): the uploader now QUEUES each request and a single
+`ConnectivityManager` network callback uploads the whole queue the moment a VALIDATED-internet network is
+available (right after the share, or instantly over cellular). User does nothing.
+- **`DiagnosticUploader.kt`** rewritten: in-memory queue (cap 12) + `registerNetworkCallback`(INTERNET+VALIDATED)
+  → drains over that network (`Network.openConnection`); immediate flush if a validated net already exists;
+  Toast "Diagnostics uploaded" once it lands. Single callback (guarded), IO off the callback thread.
+- **`SendActivity.onPause`**: queues `reason="send-leave"` so the full ring ships after a tap attempt even if the
+  reader's onTag never fired (the "no toasts / nothing happened" case).
+- STATUS: `:app:assembleDebug` SUCCESSFUL; `super-drop-debug.apk` refreshed. Compile-clean; device-UNVERIFIED
+  (needs the user's phone to have a validated network to flush over). Collector = the live cloudflared tunnel.
+- **Files:** `app/.../diag/DiagnosticUploader.kt`, `app/.../send/SendActivity.kt`, `super-drop-debug.apk`.
+
 ## [2026-06-11] Settings toggle: "Show NFC tap diagnostics" (on by default)
 Per user, the on-screen NFC-tap diagnostics (the Toasts) now have a Settings toggle. Gates ONLY the visible
 Toasts at the single `SendActivity.nfcTapToast` choke point; the silent in-memory `DiagnosticLog` ring keeps
