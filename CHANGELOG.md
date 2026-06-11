@@ -1,3 +1,23 @@
+## [2026-06-11] Send sheet entrance: keep the bottom action row planted during the bounce
+The bounce now rides the pill + upper content up with the stretching top edge, but the user wanted the BOTTOM
+elements — the "Can't find the device?" help link and the Cancel/Done button — to NOT be carried by the bounce
+(they should still slide up with the sheet, just stay put during the top-edge stretch). So the stretch opens in
+the gap BETWEEN the picker area and the bottom row, instead of moving the buttons.
+
+- `DraggableSheetLayout`: new `bounceBottomAnchors` + `setBounceBottomAnchors(vararg View)`. During
+  `playTopElasticStretch`, each anchor is translated DOWN by the same `rise` the content rides UP — the net
+  ancestor scaleY on the anchor's translationY is 1 (sheet ×k composed with content ×1/k), so `translationY = rise`
+  exactly cancels the ride and the row stays planted. Reset to 0 on animation end (so it slides normally otherwise).
+- `activity_send.xml`: gave the Cancel/Done frame an id (`send_action_row`) so it can be passed as an anchor.
+- `SendActivity.wireBottomSheet`: `setBounceBottomAnchors(sendHelpLink, sendActionRow)`.
+
+Receive sheet unaffected (no anchors set → no-op). BUILD SUCCESSFUL (after also adding `send_action_row` to the
+landscape variant `layout-land/activity_send.xml` — ViewBinding makes a field nullable if an id is absent from any
+config, which first broke the build). WATCH on-device: the action row sits in the fixed 480dp clipped frame and is
+translated down up to 16dp during the bounce; there's ~20dp bottom padding so it should clear, but check the Cancel
+button isn't clipped at the bounce peak. Feel UNVERIFIED on-device — user tests. Files: DraggableSheetLayout.kt,
+SendActivity.kt, activity_send.xml, layout-land/activity_send.xml.
+
 ## [2026-06-11] Send sheet entrance: pill pinned to the top edge + a quicker slide
 Two polish tweaks from on-device feedback (slide + overlap from the entries below are confirmed working on the
 OnePlus):

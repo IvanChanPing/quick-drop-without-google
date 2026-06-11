@@ -1365,12 +1365,16 @@ public class SendActivity : AppCompatActivity() {
             binding.sendSheet,
             resources.getDimensionPixelSize(R.dimen.send_sheet_base_bottom_padding),
         )
-        // Bounce only the card BACKGROUND: the content wrapper (every element — the
-        // device pill + the 480dp state frame) is counter-scaled about its centre so
-        // the elements keep their size and just ride up a little while the rounded
-        // background stretches around them. send_device_pill is a CHILD of
-        // send_sheet_content, so this single wrapper covers it — no separate top-rider.
+        // Bounce only the card BACKGROUND. The content wrapper (pill + the 480dp state
+        // frame) is counter-scaled about its TOP so the elements keep their size and the
+        // device pill rides UP glued to the stretching top edge (send_device_pill is a
+        // CHILD of send_sheet_content, so this wrapper covers it).
         binding.sendSheet.setBounceContent(binding.sendSheetContent)
+        // ...but keep the BOTTOM action row planted during the bounce: the "Can't find
+        // the device?" help link and the Cancel/Done row ride with the slide-up, not the
+        // bounce, so the stretch opens in the gap above them rather than carrying the
+        // buttons up.
+        binding.sendSheet.setBounceBottomAnchors(binding.sendHelpLink, binding.sendActionRow)
         // Pre-hide the sheet fully below the screen NOW (before the window is shown) so
         // there is no flash of it at rest. The actual slide-up is kicked LATER from
         // onEnterAnimationComplete() (see [startSendSheetEntrance]) — AFTER the window's

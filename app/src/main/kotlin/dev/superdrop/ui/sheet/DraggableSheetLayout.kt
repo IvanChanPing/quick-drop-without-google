@@ -54,15 +54,27 @@ public class DraggableSheetLayout
         private var onDismiss: (() -> Unit)? = null
 
         /**
-         * Optional content wrapper (every visible element — the device-name pill +
-         * the state frame) that is counter-scaled by the inverse of the sheet's
-         * entrance-bounce stretch, about its OWN CENTRE, so the elements keep their
-         * exact size (do NOT stretch) and merely ride up a little with the stretch
-         * while the rounded background stretches around them. Null (default) = the
-         * whole sheet (background + content) stretches together. Set via
-         * [setBounceContent].
+         * Optional content wrapper (every visible element — the device-name pill + the
+         * state frame) that is counter-scaled by the inverse of the sheet's
+         * entrance-bounce stretch, about its OWN TOP, so the elements keep their exact
+         * size (do NOT stretch) and ride UP with the stretching top edge (so the device
+         * pill stays glued to the top). Null (default) = the whole sheet (background +
+         * content) stretches together. Set via [setBounceContent]. Views in
+         * [bounceBottomAnchors] are then re-planted so the bottom action row doesn't
+         * ride up with it.
          */
         private var bounceContent: View? = null
+
+        /**
+         * Optional views — the bottom action row (the "can't find the device?" link and
+         * the Cancel/Done button) — that should STAY PLANTED during the entrance bounce
+         * even though [bounceContent] rides up. Each is translated DOWN by the same
+         * `rise` the content rides UP, cancelling it (the net ancestor scaleY on their
+         * translationY is 1: sheet ×k composed with content ×1/k), so the stretch opens
+         * in the gap ABOVE them instead of carrying them up. They still slide normally —
+         * translationY is reset to 0 outside the bounce. Set via [setBounceBottomAnchors].
+         */
+        private var bounceBottomAnchors: List<View> = emptyList()
 
         init {
             orientation = VERTICAL
@@ -75,12 +87,21 @@ public class DraggableSheetLayout
 
         /**
          * Provide the content wrapper to counter-scale during the entrance bounce so
-         * only the sheet's rounded background stretches — the elements keep their
-         * size and just ride up (see [bounceContent]). Pass null to stretch the whole
-         * sheet (background + content).
+         * only the sheet's rounded background stretches — the elements keep their size
+         * and ride up with the top edge (see [bounceContent]). Pass null to stretch the
+         * whole sheet (background + content).
          */
         public fun setBounceContent(view: View?) {
             this.bounceContent = view
+        }
+
+        /**
+         * Provide the bottom action-row views to keep PLANTED during the entrance bounce
+         * (see [bounceBottomAnchors]): they ride with the slide-up but the bounce's
+         * top-edge stretch does not carry them — the gap opens above them instead.
+         */
+        public fun setBounceBottomAnchors(vararg views: View) {
+            this.bounceBottomAnchors = views.toList()
         }
 
         /**
@@ -204,11 +225,10 @@ public class DraggableSheetLayout
          *   - ride UP WITH the stretching top edge (the TOP pivot makes the whole
          *     content rigidly follow the top, so the device-name PILL stays GLUED to
          *     the card's top edge as it extends — no gap opens above it).
-         * Net: only the rounded background stretches; the elements keep their size and
-         * the pill tracks the top edge. (A small gap opens transiently at the BOTTOM as
-         * the content rides up; it closes as the bounce settles.) With no [bounceContent]
-         * set the whole sheet (background + content) stretches together. Resets
-         * transforms on end.
+         * Net: the pill + upper content track the top edge while [bounceBottomAnchors]
+         * (the bottom action row) stay planted, so the stretch opens in the gap BETWEEN
+         * them and nothing distorts. With no [bounceContent] set the whole sheet
+         * (background + content) stretches together. Resets transforms on end.
          */
         private fun playTopElasticStretch(onComplete: (() -> Unit)? = null) {
             val h = height
@@ -236,6 +256,11 @@ public class DraggableSheetLayout
                         it.pivotY = 0f
                         it.scaleY = 1f / k
                     }
+                    // Re-plant the bottom action row: translate it DOWN by the same
+                    // `rise` the content rode UP (the net ancestor scaleY on its
+                    // translationY is 1), so it stays put while the gap ABOVE it
+                    // stretches — the bounce doesn't carry the buttons up.
+                    bounceBottomAnchors.forEach { it.translationY = rise }
                 }
                 addListener(
                     object : AnimatorListenerAdapter() {
@@ -244,6 +269,7 @@ public class DraggableSheetLayout
                         override fun onAnimationEnd(animation: Animator) {
                             scaleY = 1f
                             content?.scaleY = 1f
+                            bounceBottomAnchors.forEach { it.translationY = 0f }
                             onComplete?.invoke()
                         }
                     },

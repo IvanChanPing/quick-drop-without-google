@@ -434,8 +434,11 @@
 
                 <!-- Cancel / Done as a frosted "glass" plate: a backdrop
                      blur sits behind a transparent-background button. Cancel
-                     and Done are mutually exclusive. -->
+                     and Done are mutually exclusive. The id lets SendActivity keep
+                     this bottom action row PLANTED during the entrance bounce
+                     (DraggableSheetLayout.setBounceBottomAnchors). -->
                 <FrameLayout
+                    android:id="@+id/send_action_row"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="16dp">
