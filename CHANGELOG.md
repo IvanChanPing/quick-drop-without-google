@@ -1,3 +1,34 @@
+## [2026-06-11] Issue #200: fix send→Windows "Can't complete transfer" (conditional safe-to-disconnect teardown)
+Android(Super Drop)→Windows Quick Share: the file fully transferred but Windows showed "Can't complete transfer"
+(Android↔Android and Windows→Android worked). Root cause (diagnosed from the issue's success-vs-fail Windows gist
+logs + the code): on the SUCCESS path, `OutboundConnectionDriver.streamFilesAndComplete` sent the terminal
+`Disconnection` (`request_safe_to_disconnect=true`) IMMEDIATELY after the last payload byte. Windows has
+safe-to-disconnect DISABLED (advertises `safe_to_disconnect_version=0`) and treats a Disconnection that arrives
+before it reaches kComplete as REMOTE_DISCONNECTION → kFailed (discarding the already-complete payload). Android
+receivers are lenient (kept the buffered payload → Android↔Android worked). Stock Quick Share's sender does NOT
+disconnect early — it lets the receiver finalize + close (transfer ends as receiver-driven LOCAL_DISCONNECTION
+after kComplete).
+
+Fix (core-protocol `OutboundConnectionDriver`): capture the peer's `safe_to_disconnect_version` from its
+ConnectionResponseFrame (field 7) at the handshake (new `peerSafeToDisconnectVersion`). In
+`streamFilesAndComplete`, gate the terminal Disconnection: **version ≥ 1** (Samsung One UI 7+, stock Android, Bada —
+all advertise ≥1) → UNCHANGED (send Disconnection + drain ack). **version 0** (Windows) → do NOT send the eager
+Disconnection; the existing safe-disconnect drain (`shouldDrainForSafeDisconnect` is true for Completed) then waits
+for the peer's FIN/close via `drainSafeDisconnectAck`'s `Closed` branch, bounded by the 5–60s
+`safeDisconnectAckTimeoutMillis` grace timeout — mirroring stock. Keep-alive ticker keeps the connection alive
+during the wait.
+
+Risk: LOW / well-contained — version-≥1 paths (Bada↔Bada, Samsung↔Samsung, Android receivers) are byte-for-byte
+unchanged; only the send-to-a-version-0-receiver SUCCESS path changed; the receive direction (Windows→Android) is
+untouched. The file is already delivered, so this only changes WHEN we hang up (worst case for a stray version-0
+peer = wait out the timeout, then close — not a failure). Observability: logs the detected peer
+`safeToDisconnectVersion` + which teardown path was taken.
+
+Verification: BUILD SUCCESSFUL. UNVERIFIED end-to-end — can't test Windows Quick Share interop here; needs a real
+Windows receiver (the issue reporter / a Windows box). An Android↔Android send is a no-regression sanity check
+(version-≥1 path unchanged). Tracked as SUPERDROP-CHANGES.txt item #16 (not a GitHub PR). File:
+core-protocol/src/main/kotlin/dev/superdrop/protocol/connection/OutboundConnectionDriver.kt.
+
 ## [2026-06-11] Send sheet entrance: REVERTED to the height-only build; reveal kept as an A/B variant
 Per user: reverted the entrance code from the clip REVEAL/UNFOLD (`ccd8f09`) back to the height-only "full width,
 height grows + overshoot" build (`1cbc2d6`) — they chose that as the base (despite its content squish) and want BOTH

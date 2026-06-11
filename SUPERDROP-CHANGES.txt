@@ -263,3 +263,31 @@ GROUNDWORK (started, not finished/turned on yet)
     Full write-up: docs/research/google-tap-to-share-gesture-exchange.md
     Status: research / groundwork only. Revisit when Google ships it to a stable
     release AND we have an NFC device with the feature enabled.
+
+16) Send to Windows: fix "Can't complete transfer" (issue #200)
+    Sending a file from the phone to Windows Quick Share showed "Sent" on the phone but
+    "Can't complete transfer" on Windows — even though the whole file actually arrived.
+    Phone-to-phone and Windows-to-phone already worked; only phone-to-Windows failed.
+
+    Cause: right after sending the last byte, our app immediately told the receiver to
+    disconnect. Windows treats a disconnect that lands before it has finished writing the
+    file as a failure, so it threw the completed transfer away. (Android receivers are
+    more forgiving and kept the file — which is why phone-to-phone worked.) The real
+    Quick Share sender doesn't hang up early; it leaves the connection open and lets the
+    receiver finish and close first.
+
+    Fix: do what Quick Share does, but only for the receivers that need it. Every receiver
+    advertises whether it supports the "safe to disconnect" handshake. Samsung, Android,
+    and our own app DO (and are completely unaffected — same behavior as before). Windows
+    says it does NOT. For a receiver that doesn't, we no longer send the early disconnect:
+    we wait for it to finish and close, then close (with a generous timeout as a safety
+    net). The file already transferred, so this only changes WHEN we hang up.
+
+    Risk: low and well-contained — phone-to-phone and the receiving direction are
+    untouched; only the "send to a Windows-style receiver" path changed. The detected
+    receiver type is logged.
+
+    Status: built; needs a real Windows Quick Share receiver to confirm end-to-end (can't
+    test Windows interop in the build env). A phone-to-phone send is a no-regression check.
+    Code: core-protocol OutboundConnectionDriver (gate the terminal disconnect on the
+    receiver's advertised safe_to_disconnect_version).
