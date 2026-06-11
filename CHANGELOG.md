@@ -1,3 +1,20 @@
+## [2026-06-11] Send sheet: elastic top-stretch entrance + "tap an iPhone" hint on the QR panel
+Two UI tweaks to the send bottom sheet, per user.
+1. **Entrance animation reworked** (`DraggableSheetLayout.playEntrance`): was an `OvershootInterpolator`
+   slide that bounced the WHOLE card up and down past its resting spot. Now the whole sheet slides up and
+   LANDS clean (`DecelerateInterpolator`, no overshoot), then — anchored at its bottom edge
+   (`pivotY = height`) — only the TOP stretches up and elastically settles via a decaying-sine impulse
+   (`playTopElasticStretch` / `elasticImpulse`), bottom planted. Tunable constants ENTRANCE_STRETCH /
+   ELASTIC_FREQ / ELASTIC_DECAY. Renders un-clipped because `send_sheet_root`/`send_sheet` already set
+   `clipChildren=false`. COMPILE-checked; the on-device feel is UNVERIFIED (no display here) — user
+   click-tests and can tune the constants.
+2. **QR panel "tap an iPhone" hint** (`activity_send.xml` `send_qr_nfc_hint` + string `show_qr_nfc_hint`):
+   the QR/link screen now also tells the user that, while it's open, they can tap an iPhone to the back to
+   open the link in its browser. Truthful because `onShowQrClicked` arms the NDEF tag
+   (`NfcLinkHolder.currentUrl`) while the panel is open (this is PR item #4).
+- **Files:** `app/.../ui/sheet/DraggableSheetLayout.kt`, `app/.../res/layout/activity_send.xml`,
+  `app/.../res/values/strings.xml`. Compile-clean pending the build; device feel UNVERIFIED.
+
 ## [2026-06-11] PR breakdown: added a real-device send-sheet screenshot to item #1
 Added `docs/pr-images/send-sheet-device.jpg` — a real-device capture (OnePlus Nord N30 5G / CPH2515,
 Android 14) of the send bottom sheet: header pill with the device name, "1 file 240.5 KB", "Tap a device

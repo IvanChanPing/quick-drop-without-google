@@ -514,6 +514,20 @@
 
                     </HorizontalScrollView>
 
+                    <!-- send_qr_nfc_hint — small centered secondary-grey line under
+                         the link telling the user this screen is ALSO a tappable NFC
+                         tag for an iPhone (the QR button arms the NDEF link while open;
+                         see SendActivity.onShowQrClicked / NfcLinkHolder). -->
+                    <TextView
+                        android:id="@+id/send_qr_nfc_hint"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="14dp"
+                        android:gravity="center"
+                        android:text="@string/show_qr_nfc_hint"
+                        android:textAppearance="@style/TextAppearance.AppCompat.Body2"
+                        android:textColor="?android:attr/textColorSecondary" />
+
                     <LinearLayout
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"

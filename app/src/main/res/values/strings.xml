@@ -403,6 +403,12 @@
          to whoever holds it. Avoids em dashes in line with the rest
          of the app's copy. -->
     <string name="show_qr_intro">Ask the recipient to scan the QR code or open the link. Anyone holding the QR code or link can receive the files.</string>
+    <!-- iPhone-tap hint on the QR panel. Truthful only while this panel is
+         open: SendActivity.onShowQrClicked publishes the same pairing URL to
+         the NDEF HCE (NfcLinkHolder.currentUrl), so an iPhone tapped to the
+         back reads it and opens the link in Safari. Cleared when the panel
+         closes. Avoids em dashes in line with the rest of the app's copy. -->
+    <string name="show_qr_nfc_hint">No app on the other phone? While this screen is open you can also tap an iPhone (or any phone) to the back of yours to open this link in its browser. No scanning needed.</string>
     <string name="show_qr_image_description">QR code for the Quick Share pairing URL</string>
     <!-- Used by the standalone ShowQrActivity, which still has a
          single-button bottom row. The in-card QR panel inside
