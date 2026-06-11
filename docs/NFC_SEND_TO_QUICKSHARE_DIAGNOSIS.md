@@ -665,3 +665,16 @@ tap not triggering that existing flow on a 0000 wake. The whole earlier "build a
 doubly wrong (we already have it). Pausing implementation to READ the existing FastInit/GATT/discovery/connect
 path before wiring the tap into it (per the 110% bar). NEXT (step 2, corrected): read BleQuickShareAdvertiser +
 NearbyPeerDiscovery + OutboundConnectionDriver + onPeerSelected to learn exactly what the tap must hand off to.
+
+## ⛔ CORRECTION (2026-06-11) — FastInit is NOT part of the NFC mechanism (do not conflate)
+User challenged: is FastInit related to NFC, or just the original BLE→P2P sharing? VERIFIED: BLE→P2P only.
+- The NFC HCE `NfcAdvertisingChimeraService` references FastInit **0 times** (grep count = 0). The NFC tag
+  exchange (SELECT/ADVERTISEMENT/CONNECT/DATA) + tag registration (`djvf.h ← deyl.i ← dfad/dfet/djkb`, the Nearby
+  Connections discovery layer) are INDEPENDENT of FastInit.
+- FastInit (`dnmj`, FE2C/FC128E BLE adv) → scan → "Device nearby is sharing" HUN = the BLE proximity path.
+- ONLY crossover (incidental): the NFC wake PI (`djvf.i`, L29347) is registered inside `X()`, the FastInit-scan
+  method (next to `dnmj.q` FastInit scan start, L29365). So both need "foreground nearby presence," but FastInit
+  does NOTHING in the NFC tag exchange. 
+⇒ For the NFC-tap fix, FastInit is a RED HERRING. The earlier "build a FastInit emitter" detour + the FastInit
+frame map were chasing the BLE path, not NFC. NFC-tap fix = tag exchange + wake + hand off to the (already-working)
+connection. Do NOT drag FastInit into the NFC fix.
