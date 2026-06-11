@@ -18,7 +18,6 @@ import android.view.ViewConfiguration
 import android.view.ViewGroup
 import android.view.WindowInsets
 import android.view.animation.LinearInterpolator
-import android.view.animation.PathInterpolator
 import android.view.animation.OvershootInterpolator
 import android.widget.LinearLayout
 import androidx.core.view.doOnLayout
@@ -153,25 +152,23 @@ public class DraggableSheetLayout
                         "animDurScale=${currentAnimatorDurationScale()} animatorsEnabled=${animatorsEnabled()}",
                 )
                 if (doSlide) {
-                    // SEAMLESS entrance driven by ONE animator so there is NO gap between
-                    // the expand and the bounce (the previous two-animator version, expand
-                    // then withEndAction->bounce, had a visible beat between them because
-                    // both ends were slow). Phase 1 EXPAND (fraction 0..expandFrac): the
-                    // card slides up from below the bottom edge WHILE growing from
-                    // ENTRANCE_START_SCALE to full size, bottom-centre pivot, iOS ease.
-                    // Phase 2 BOUNCE (expandFrac..1): the top edge elastically stretches and
-                    // settles (content counter-scaled so the pill rides the top, bottom
-                    // action row planted). At the phase boundary everything is continuous
-                    // (scaleY=1, content unscaled, anchors at rest) so it reads as one motion.
+                    // SEAMLESS expand+bounce as ONE continuous motion — no "expand finishes,
+                    // THEN the bounce starts" beat. scaleY follows a single OVERSHOOT curve
+                    // from ENTRANCE_START_SCALE: it grows toward full size and, carrying its
+                    // momentum, sails slightly PAST full, then settles. The overshoot past
+                    // 1.0 IS the bounce; because the curve passes THROUGH full size without
+                    // stopping (continuous velocity), the expand and the bounce blend into
+                    // one motion instead of running back-to-back. scaleX grows to full but is
+                    // clamped at 1.0 (no horizontal overshoot) so the overshoot is a vertical
+                    // top-edge stretch; the slide finishes exactly as the card reaches full
+                    // size; content is counter-scaled and the bottom action row planted ONLY
+                    // while past full size (so the pill rides the stretching top edge and the
+                    // bottom stays put). Tune the bounce magnitude with ENTRANCE_OVERSHOOT_TENSION.
                     val startTransY = (height + paddingBottom + marginBottom + ENTRANCE_OFFSET_PX).toFloat()
                     val content = bounceContent
                     val anchors = bounceBottomAnchors
-                    val extendPx = ENTRANCE_TOP_EXTEND_DP * resources.displayMetrics.density
                     val h = height.toFloat()
-                    val expandFrac =
-                        ENTRANCE_SLIDE_MS.toFloat() / (ENTRANCE_SLIDE_MS + STRETCH_DURATION_MS).toFloat()
-                    val expandEase =
-                        PathInterpolator(SLIDE_EASE_X1, SLIDE_EASE_Y1, SLIDE_EASE_X2, SLIDE_EASE_Y2)
+                    val overshoot = OvershootInterpolator(ENTRANCE_OVERSHOOT_TENSION)
                     pivotX = width / 2f
                     pivotY = h
                     // Pre-set the start state (off-screen + half size) so the first drawn
@@ -179,37 +176,31 @@ public class DraggableSheetLayout
                     translationY = startTransY
                     scaleX = ENTRANCE_START_SCALE
                     scaleY = ENTRANCE_START_SCALE
-                    DiagnosticLog.e(DIAG_TAG, "entrance(expand+bounce) RUN: height=$height")
+                    DiagnosticLog.e(DIAG_TAG, "entrance(overshoot) RUN: height=$height")
                     ValueAnimator.ofFloat(0f, 1f).apply {
                         duration = ENTRANCE_SLIDE_MS + STRETCH_DURATION_MS
-                        interpolator = LinearInterpolator() // phases are shaped below
+                        interpolator = LinearInterpolator() // the overshoot curve is applied below
                         addUpdateListener { va ->
-                            val f = va.animatedFraction
-                            if (f <= expandFrac) {
-                                // EXPAND: slide up + grow 0.5->1.0; content + anchors ride
-                                // uniformly with the card (no counter-scale yet).
-                                val e = expandEase.getInterpolation(f / expandFrac)
-                                val s = ENTRANCE_START_SCALE + (1f - ENTRANCE_START_SCALE) * e
-                                scaleX = s
-                                scaleY = s
-                                translationY = startTransY * (1f - e)
-                                content?.scaleY = 1f
-                                anchors.forEach { it.translationY = 0f }
-                            } else {
-                                // BOUNCE: top-edge stretch about the bottom; content
-                                // counter-scaled about its top (pill rides the top edge),
-                                // bottom action row translated back down to stay planted.
-                                val bf = (f - expandFrac) / (1f - expandFrac)
-                                val rise = extendPx * topStretchProfile(bf)
-                                val k = 1f + rise / h
-                                scaleX = 1f
-                                translationY = 0f
-                                scaleY = k
+                            // o: 0 -> rises -> overshoots above 1 -> settles to 1 (one motion).
+                            val o = overshoot.getInterpolation(va.animatedFraction)
+                            val sy = ENTRANCE_START_SCALE + (1f - ENTRANCE_START_SCALE) * o
+                            scaleY = sy
+                            scaleX = minOf(1f, sy) // grow to full, but don't overshoot horizontally
+                            // The slide finishes exactly as the card first reaches full size.
+                            val slideProg =
+                                ((sy - ENTRANCE_START_SCALE) / (1f - ENTRANCE_START_SCALE)).coerceIn(0f, 1f)
+                            translationY = startTransY * (1f - slideProg)
+                            if (sy > 1f) {
+                                // Past full size = the bounce: keep elements their size (pill
+                                // rides the stretching top edge), plant the bottom action row.
                                 content?.let {
                                     it.pivotY = 0f
-                                    it.scaleY = 1f / k
+                                    it.scaleY = 1f / sy
                                 }
-                                anchors.forEach { it.translationY = rise }
+                                anchors.forEach { it.translationY = (sy - 1f) * h }
+                            } else {
+                                content?.scaleY = 1f
+                                anchors.forEach { it.translationY = 0f }
                             }
                         }
                         addListener(
@@ -446,16 +437,12 @@ public class DraggableSheetLayout
             private const val ENTRANCE_OFFSET_PX = 80
             private const val ENTRANCE_SLIDE_MS = 240L // snappier than the old 300ms
 
-            // iOS-style variable-speed ease-out for the slide, as a cubic-bezier
-            // (PathInterpolator control points P1=(x1,y1), P2=(x2,y2); ends fixed at
-            // (0,0)->(1,1)). This curve (~easeOutQuart) sets off quickly then decelerates
-            // smoothly into rest — the "iPhone" variable speed, less mechanical than a
-            // plain DecelerateInterpolator. Tune toward (0.16,1,0.3,1) for a more
-            // dramatic ease, or (0.33,1,0.68,1) for a gentler one.
-            private const val SLIDE_EASE_X1 = 0.25f
-            private const val SLIDE_EASE_Y1 = 1f
-            private const val SLIDE_EASE_X2 = 0.5f
-            private const val SLIDE_EASE_Y2 = 1f
+            // Overshoot tension for the entrance: how far the card sails PAST full size
+            // before settling (that overshoot IS the bounce). The card scales
+            // ENTRANCE_START_SCALE -> 1.0 via OvershootInterpolator(this) as ONE motion;
+            // higher = bigger overshoot/bounce. ~1.0 gives a small ~2-3% overshoot (a
+            // subtle vertical top-edge pop). Tunable.
+            private const val ENTRANCE_OVERSHOOT_TENSION = 1.0f
 
             // The card grows from this fraction of its size up to full during the
             // entrance (slide + expand), anchored at the bottom-centre so it "comes up"

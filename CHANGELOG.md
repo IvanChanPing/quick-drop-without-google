@@ -1,3 +1,16 @@
+## [2026-06-11] Send sheet entrance: blend expand+bounce into ONE overshoot curve (no sequential beat)
+The previous one-animator version still had TWO sequential phases (expand to full, THEN bounce) — the user said it
+"still [wasn't] smooth... one had to finish before the other started." Root cause: the curve decelerated to rest at
+full size before the bounce began. Fix: make scaleY follow a SINGLE `OvershootInterpolator` curve from
+`ENTRANCE_START_SCALE` — the card grows and, carrying its momentum, sails slightly PAST full size and settles. The
+overshoot past 1.0 IS the bounce, and because the curve passes THROUGH full size with continuous (non-zero)
+velocity, there is no stop/handoff — expand and bounce are one motion. Details: `scaleX = min(1, scaleY)` so the
+overshoot is vertical only (a top-edge stretch, no horizontal distortion); the slide finishes exactly as the card
+first reaches full size; content is counter-scaled and the bottom action row planted only while `scaleY > 1`
+(pill rides the top edge, bottom stays put). New tunable `ENTRANCE_OVERSHOOT_TENSION` (≈1.0 ≈ a small 2-3%
+overshoot). Removed the `SLIDE_EASE_*` cubic-bezier + the two-phase split. Receive sheet unchanged. BUILD
+SUCCESSFUL; feel UNVERIFIED on-device — user tests. File: DraggableSheetLayout.kt.
+
 ## [2026-06-11] Send sheet entrance: drive expand + bounce from ONE animator (seamless)
 User: the bounce timing relative to the expand "did not look seamless". Cause: the expand and the bounce were two
 separate animators chained by `withEndAction`, so there was a visible beat between them (both ends slow). Fix:
