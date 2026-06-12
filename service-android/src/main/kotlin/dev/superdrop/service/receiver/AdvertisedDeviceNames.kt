@@ -16,6 +16,7 @@ import androidx.core.content.ContextCompat
 import dev.superdrop.protocol.endpoint.DeviceType
 import dev.superdrop.protocol.endpoint.EndpointInfo
 import dev.superdrop.protocol.endpoint.TlvRecord
+import dev.superdrop.protocol.endpoint.withSuperDropMarker
 import java.nio.charset.StandardCharsets
 import java.security.SecureRandom
 
@@ -109,7 +110,12 @@ internal class AndroidAdvertisedDeviceNamePolicy(
             reserved = previous?.reserved ?: false,
             metadata = previous?.metadata?.copyOf() ?: randomMetadata(),
             deviceName = resolve(),
-            tlvRecords = previous?.tlvRecords?.deepCopy() ?: emptyList(),
+            // Append the Super Drop "recognise-Bada" marker TLV so another Super Drop device can
+            // badge this receiver as Super Drop in its send picker. Idempotent (won't duplicate when
+            // a previous identity already carried it) and invisible to stock Quick Share, which
+            // ignores unknown TLV types. See [SuperDropPeerMarker]. This is the single receiver-side
+            // identity build site (all advertise/rotate paths funnel through here).
+            tlvRecords = (previous?.tlvRecords?.deepCopy() ?: emptyList()).withSuperDropMarker(),
         )
 
     private fun readSystemDeviceName(): String? {

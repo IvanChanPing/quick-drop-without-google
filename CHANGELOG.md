@@ -1,3 +1,34 @@
+## [2026-06-12] Bada-recognizes-Bada: "Super Drop" peer marker + send-picker badge (its own PR)
+The send picker now tells a Super Drop (Bada) device apart from a stock Google/Samsung Quick Share device:
+a Super Drop peer's chip shows a small blue **"Super Drop"** badge under the device name; stock peers show
+no badge. Mechanism: Super Drop appends a reserved-type TLV record (`type=0xBA`, `value="SD"+0x01`) to its
+advertised receiver `EndpointInfo`. Unknown TLV types round-trip verbatim and are ignored by stock Quick
+Share, so this is invisible to Google/Samsung peers and changes nothing about how they discover or connect.
+
+Why it's safe (all VERIFIED by reading the code, not assumed):
+- The 31-byte legacy BLE budget is NOT at risk: the compact `0xFEF3` primary advertisement is a fixed
+  17-byte GATT header (`BleAdvertisementHeader.encodeSingleSlot`); the EndpointInfo only feeds its 4-byte
+  content hash. The full EndpointInfo (and thus the marker) travels over the GATT-slot read, the extended
+  visible advertisement, and mDNS TXT — none bound by 31 bytes.
+- Peer identity is the 16-byte `EndpointInfo.metadata`, not a hash of the whole blob, so a trailing marker
+  can't break stock contacts/visibility recognition. `QrTlvMatcher` skips non-type-1 TLVs, so QR is untouched.
+- The injection is idempotent (`withSuperDropMarker()` no-ops if already present) so identity rotations that
+  carry forward `previous.tlvRecords` don't accumulate duplicate markers.
+
+Scope: RECEIVER marker + sender-side detection only. The SENDER's `EndpointInfo` (sent to Windows/stock on
+the send path) is deliberately left UNCHANGED to avoid any unverified Windows TLV-tolerance regression to the
+just-fixed issue #200. Both Super Drop devices advertise as receivers, so the picker badge works in both
+directions without marking the sender identity.
+
+Files: new `core-protocol/.../endpoint/SuperDropPeerMarker.kt` (type/magic + `record()`,
+`List<TlvRecord>.withSuperDropMarker()`, `EndpointInfo.hasSuperDropMarker()`); receiver inject in
+`service-android/.../receiver/AdvertisedDeviceNames.kt` (`createEndpointInfo`); detection + badge in
+`app/.../send/SendPeerPickerController.kt` (render loop) and the new `DeviceIconView.setSuperDrop(Boolean)`
+(`app/.../ui/sheet/DeviceIconView.kt`, the `superDropBadge` pill). KAT test `SuperDropPeerMarkerTest`.
+
+Verification: BUILD + core-protocol unit tests — see commit. On-device badge (two real devices) UNVERIFIED
+until hardware test. Tracked as SUPERDROP-CHANGES.txt item #17 (not a GitHub PR).
+
 ## [2026-06-11] Issue #200: fix send→Windows "Can't complete transfer" (conditional safe-to-disconnect teardown)
 Android(Super Drop)→Windows Quick Share: the file fully transferred but Windows showed "Can't complete transfer"
 (Android↔Android and Windows→Android worked). Root cause (diagnosed from the issue's success-vs-fail Windows gist

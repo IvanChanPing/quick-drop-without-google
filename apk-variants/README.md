@@ -17,4 +17,9 @@ install either and compare on-device. Both are the same app/package
   rounded TOP corners only appear as the unfold completes (rect clip).
   (= git `ccd8f09`.)
 
-Repo root `super-drop-debug.apk` mirrors variant A (the reverted/base code).
+Repo root `super-drop-debug.apk` tracks the latest base: it uses variant A's
+**height-only entrance** plus everything merged since (the #200 send-to-Windows fix and
+the new "Super Drop" peer-recognition badge). The two `apk-variants/*.apk` files above are
+**frozen entrance-only snapshots** for the A/B comparison — neither carries the Super Drop
+badge — so installing them compares purely the entrance animation. Install the repo-root
+APK for the latest features.

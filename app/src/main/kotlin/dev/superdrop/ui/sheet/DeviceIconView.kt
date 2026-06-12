@@ -6,7 +6,9 @@
 package dev.superdrop.ui.sheet
 
 import android.content.Context
+import android.graphics.drawable.GradientDrawable
 import android.view.Gravity
+import android.view.View
 import android.view.animation.OvershootInterpolator
 import android.widget.LinearLayout
 import android.widget.TextView
@@ -28,6 +30,13 @@ public class DeviceIconView(
 ) : LinearLayout(context) {
     private val ring: RingProgressView
     private val nameView: TextView
+
+    // superDropBadge — a small rounded "Super Drop" pill (white text on a translucent
+    // Super Drop blue fill, ~10sp, centred just under the device name). Shown ONLY when
+    // the discovered peer advertises the Super Drop marker TLV (see [setSuperDrop]); GONE
+    // for stock Quick Share / Samsung peers. Lets the user tell a Super Drop device apart
+    // from an "original" Quick Share device at a glance in the send picker.
+    private val superDropBadge: TextView
     private val statusView: TextView
 
     init {
@@ -52,6 +61,29 @@ public class DeviceIconView(
                 ellipsize = android.text.TextUtils.TruncateAt.END
             }
         addView(nameView, LayoutParams((96 * d).toInt(), LayoutParams.WRAP_CONTENT))
+
+        superDropBadge =
+            TextView(context).apply {
+                text = SUPER_DROP_BADGE_TEXT
+                setTextColor(BADGE_TEXT_COLOR)
+                textSize = 10f
+                gravity = Gravity.CENTER
+                val hPad = (6 * d).toInt()
+                val vPad = (1 * d).toInt()
+                setPadding(hPad, vPad, hPad, vPad)
+                background =
+                    GradientDrawable().apply {
+                        cornerRadius = 8 * d
+                        setColor(BADGE_FILL_COLOR)
+                    }
+                visibility = View.GONE
+            }
+        addView(
+            superDropBadge,
+            LayoutParams(LayoutParams.WRAP_CONTENT, LayoutParams.WRAP_CONTENT).apply {
+                topMargin = (4 * d).toInt()
+            },
+        )
 
         statusView =
             TextView(context).apply {
@@ -98,9 +130,24 @@ public class DeviceIconView(
         nameView.text = name
     }
 
+    /**
+     * Show or hide the "Super Drop" badge under the device name. Called by the
+     * send picker with `true` when the discovered peer advertises the Super Drop
+     * marker TLV (`EndpointInfo.hasSuperDropMarker()`), `false` for stock peers.
+     * Cheap visibility toggle — safe to call on every render.
+     */
+    public fun setSuperDrop(isSuperDrop: Boolean) {
+        superDropBadge.visibility = if (isSuperDrop) View.VISIBLE else View.GONE
+    }
+
     public companion object {
         private const val NAME_COLOR = 0xFF111114.toInt()
         private const val STATUS_COLOR = 0xFF0A84FF.toInt()
+        private const val SUPER_DROP_BADGE_TEXT = "Super Drop"
+
+        // Badge pill: white text on a solid Super Drop blue (#0A84FF) fill.
+        private const val BADGE_TEXT_COLOR = 0xFFFFFFFF.toInt()
+        private const val BADGE_FILL_COLOR = 0xFF0A84FF.toInt()
         private const val BOUNCE_DOWN_SCALE = 0.82f
         private const val BOUNCE_DOWN_MS = 90L
         private const val BOUNCE_UP_MS = 320L

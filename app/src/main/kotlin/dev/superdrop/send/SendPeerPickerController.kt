@@ -12,6 +12,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import dev.superdrop.R
 import dev.superdrop.databinding.ActivitySendBinding
 import dev.superdrop.discovery.NearbyPeer
+import dev.superdrop.protocol.endpoint.hasSuperDropMarker
 import dev.superdrop.ui.sheet.DeviceIconView
 import dev.superdrop.discovery.NearbyPeerDiscovery
 import dev.superdrop.discovery.NearbyPeerEvent
@@ -80,6 +81,10 @@ internal class SendPeerPickerController(
         val stableId: String,
         val title: String,
         val subtitle: String,
+        // Whether the peer is a Super Drop device (advertises the marker TLV). Part of the
+        // snapshot so a peer flipping false->true mid-discovery (full EndpointInfo resolved
+        // after an initial pulse-only sighting) forces the chip to redraw with its badge.
+        val isSuperDrop: Boolean,
     )
 
     fun start() {
@@ -271,6 +276,7 @@ internal class SendPeerPickerController(
             val peer: NearbyPeer,
             val title: String,
             val subtitle: String,
+            val isSuperDrop: Boolean,
         )
         val seenNames = HashSet<String>()
         val targetRows =
@@ -279,11 +285,13 @@ internal class SendPeerPickerController(
                 if (!plan.isConnectable) return@mapNotNull null
                 val label = peerLabel(peer)
                 if (!seenNames.add(label)) return@mapNotNull null
-                TargetRow(peer, label, plan.subtitle)
+                // A peer is "Super Drop" if its advertised EndpointInfo carries our marker TLV.
+                val isSuperDrop = peer.endpointInfo?.hasSuperDropMarker() == true
+                TargetRow(peer, label, plan.subtitle, isSuperDrop)
             }
         val targetSnapshot =
             targetRows.map { row ->
-                RenderedRowSnapshot(row.peer.stableId, row.title, row.subtitle)
+                RenderedRowSnapshot(row.peer.stableId, row.title, row.subtitle, row.isSuperDrop)
             }
 
         // Subtitle ("Looking for nearby devices…" vs "Pick a device")
@@ -316,6 +324,9 @@ internal class SendPeerPickerController(
             val icon = DeviceIconView(context, stableId, target.title)
             icon.isEnabled = true
             icon.alpha = 1f
+            // Badge the chip "Super Drop" when the peer advertises our marker TLV, so the
+            // user can tell a Super Drop device from a stock Quick Share one at a glance.
+            icon.setSuperDrop(target.isSuperDrop)
             icon.setOnClickListener {
                 // Acknowledge the tap with the OShare bounce, then route
                 // through the SAME selection path the old row click used

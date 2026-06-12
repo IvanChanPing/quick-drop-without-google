@@ -291,3 +291,37 @@ GROUNDWORK (started, not finished/turned on yet)
     test Windows interop in the build env). A phone-to-phone send is a no-regression check.
     Code: core-protocol OutboundConnectionDriver (gate the terminal disconnect on the
     receiver's advertised safe_to_disconnect_version).
+
+17) Super Drop recognizes Super Drop: a "Super Drop" badge in the send picker
+    When you pick a device to send to, you couldn't tell whether a nearby phone was running
+    Super Drop or just stock Quick Share — they all looked the same. Now, if the device is
+    running Super Drop, its chip in the picker shows a small blue "Super Drop" badge under
+    the name. Stock Quick Share / Samsung devices show no badge, exactly as before.
+
+    How it works: Super Drop quietly tags the identity it broadcasts with a tiny private
+    marker. The Quick Share format is designed to carry extra "tags" like this, and any app
+    that doesn't recognize a tag just ignores it — so to a Google or Samsung phone, our
+    marker is invisible and changes nothing about how they see us or connect. Another Super
+    Drop phone, though, spots the marker and draws the badge. The marker is also
+    self-checking: if some future Quick Share update ever happened to use the same tag slot
+    for something else, the value wouldn't match ours, so we'd never badge a stock device by
+    mistake.
+
+    Won't this break talking to Galaxy/Windows/Pixel? No. We checked the actual code: the
+    marker rides along with the device name (which is already broadcast in full over Wi-Fi
+    and the longer Bluetooth channel), not in the tiny fixed-size Bluetooth "pulse," so it
+    can't overflow any size limit. Identity matching (for your contacts) uses a separate
+    fixed field, not the tags, so that's unaffected too. We also deliberately did NOT tag
+    the SENDING identity — only the receiving one — so the send-to-Windows fix from #16 is
+    not touched. Both phones broadcast a receiving identity anyway, so the badge shows up
+    in both directions.
+
+    Risk: low. Stock peers ignore unknown tags; the change is additive and idempotent
+    (it won't pile up duplicate markers as the privacy-rotating identity refreshes).
+
+    Status: built and unit-tested (the marker survives encode/decode and isn't confused
+    with stock tags). The on-screen badge with two real devices is not yet verified on
+    hardware. This is its own pull request, separate from the others.
+    Code: new SuperDropPeerMarker (core-protocol); AdvertisedDeviceNames adds the marker to
+    the advertised receiver identity; SendPeerPickerController + DeviceIconView draw the
+    badge.
