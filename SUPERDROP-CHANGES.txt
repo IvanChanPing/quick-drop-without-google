@@ -354,3 +354,123 @@ GROUNDWORK (started, not finished/turned on yet)
     Code: new popup_fade_in_fast.xml + WindowAnimation.SuperDrop.SendSheet.Fast (themes.xml)
     wired to Theme.SuperDrop.SendSheet; ENTRANCE_TRIGGER_FALLBACK_MS (SendActivity) and
     ENTRANCE_SLIDE_MS (DraggableSheetLayout) shortened.
+
+
+================================================================================
+GITHUB BUG ROOT-CAUSE DIAGNOSES (investigation only — NO app code changed)
+================================================================================
+Causes for the open kyujin-cho/Bada issues, found by reading the actual code +
+logs this session. Each is marked by how strongly it is proven. This is
+diagnosis, not a fix — no source was modified for this section.
+
+D1) #189 / #205 / #213 — off-LAN (no shared Wi-Fi) send to a stock Quick Share
+    phone fails with "Pipe closed" before the secure handshake.  [ROOT CAUSE
+    FOUND — primary-source verified]
+    Cause: real Quick Share does its no-Wi-Fi "handshake over Bluetooth" using
+    Bluetooth CLASSIC (RFCOMM), but this app only tries Bluetooth LOW ENERGY
+    (BLE), which a stock phone can't complete:
+      - The BLE "L2CAP" attempt fails first because stock expects a 4-byte
+        length prefix on those packets and the app sends the open-source raw
+        form, so the receiver rejects it.
+      - The app then falls back to BLE "GATT", but stock Google Play Services'
+        own GATT server is buggy on that path ("No handler registered for
+        characteristic 00000100-…-0101"), so it drops the link about a second
+        later — surfacing to us as "Pipe closed". Real senders never hit this
+        because they use RFCOMM.
+      - Compounding it, the app waits 1.5s for an optional upgrade offer before
+        sending its first secure-handshake message, and the receiver has already
+        given up by then.
+    This was confirmed by Google-Play-Services logs + a Bluetooth HCI snoop in
+    upstream issue #214 (the maintainer's verified root cause of #189/#213).
+    Why THIS app still has it: upstream already fixed it (PR #215 added the
+    RFCOMM route + bridged the Bluetooth-Classic address from the advertisement
+    and mDNS; PR #218 removed the 1.5s wait) — but THIS fork does not contain
+    either fix. Verified locally: the merge commits are absent; the RFCOMM route
+    is hard-disabled (UserFacingMediumFeatures.kt:18 BLUETOOTH_CLASSIC_USER_
+    FACING_ENABLED = false); the route order is still Wi-Fi → BLE-L2CAP →
+    BLE-GATT → BT-Classic-last (SendBootstrapPlan.kt:91-97); the wait is still
+    1500ms (OutboundConnectionDriver.kt:1687). The RFCOMM code exists but is
+    unreachable. (The "location permission denied" in the report is a red
+    herring — discovery works; nearby-device perms are granted.)
+    Fix would be: pull upstream #215 + #218 (or re-enable RFCOMM + reorder the
+    route ladder + add the L2CAP length prefix + drop the serial wait).
+    Verification level: VERIFIED (upstream HCI/logcat root cause read directly +
+    fork's missing-fix state confirmed in code). The exact L2CAP error for THIS
+    reporter is recoverable from their attached bug-report zip if wanted.
+
+D2) #200 — send to a WINDOWS PC shows "Can't complete transfer".  [ROOT CAUSE
+    FOUND — already addressed in item #16 above]
+    Cause: the app hangs up (sends the terminal Disconnect) the instant the last
+    byte is sent; Windows (which has "safe to disconnect" disabled) treats a
+    disconnect that lands before it finishes writing as a failure and discards
+    the file. See item #16 for the fix that gates the disconnect on the
+    receiver's advertised version.
+    Verification level: VERIFIED from the issue's success-vs-fail Windows logs +
+    the code.
+
+D3) #196 — a Huawei/HarmonyOS phone running this app can only be found while the
+    app is open in the FOREGROUND.  [ROOT CAUSE FOUND — verified, two layers]
+    Cause: two things compound.
+      (a) OEM behaviour: HarmonyOS aggressively kills background apps and ignores
+          the "disable battery optimization" toggle the user already set. Real
+          Quick Share survives only because it is a built-in system service the
+          OS won't kill; a sideloaded app gets reaped when backgrounded.
+      (b) App gap that makes (a) fatal: the receiver runs as a foreground service
+          (ReceiverForegroundService, START_STICKY) but it is only ever started
+          when the user opens the app (MainActivity) or taps a control — there is
+          NO boot-start and NO scheduled revival in the app/service (no
+          BOOT_COMPLETED receiver, no WorkManager/JobScheduler/AlarmManager for
+          the receiver; the only boot receiver in the project belongs to the
+          separate radio-helper APK). Confirmed: app/ and service-android/
+          manifests contain no <receiver>; the service decl is
+          foregroundServiceType="connectedDevice" and onStartCommand returns
+          START_STICKY. The "always visible" toggle is also in-memory only and
+          resets on process death. So once HarmonyOS kills the process, nothing
+          brings the receiver back until the user re-opens the app — which is
+          exactly the reported symptom.
+    Verification level: VERIFIED in code for the app-gap (a Bada persistence
+    gap); the HarmonyOS-specific reaping itself is well-known OEM behaviour, not
+    a code defect. Not fixable purely at the protocol level.
+
+D4) #197 — a Windows sender lists the SAME Android phone dozens of times in its
+    nearby-devices list.  [PARTIALLY VERIFIED — maintainer-confirmed tradeoff]
+    Cause: the receiver re-advertises its presence frequently, and Windows
+    (unlike Android) does not de-duplicate the picker by a stable identity, so it
+    draws one row per advertisement. The maintainer marked this status:BLOCKED
+    and states the frequent re-advertise is a DELIBERATE temporary workaround for
+    a device-detection failure — de-duping/slowing it risks regressing detection.
+    What I verified in code: the identity rotator is NOT the per-second cause —
+    ReceiverIdentityRotator rotates the BLE/mDNS identity ONLY after an inbound
+    transfer reaches a terminal state (it collects session.completions; KDoc
+    "after an inbound terminal result"), so idle discovery does not rotate. The
+    mDNS gate publishes/unpublishes on the sender's BLE pulse with a debounce
+    (MdnsAdvertisementGate) — it flaps but is not a per-second loop.
+    Verification level: rotator-not-the-cause = VERIFIED; the precise per-second
+    re-advertise locus was not isolated to one line in code (it is the
+    advertise-surface cadence the maintainer describes as the deliberate
+    workaround) — maintainer-stated cause, status:blocked.
+
+D5) #209 — the send screen shows an empty device list with no explanation when
+    Bluetooth is off and you're not on a shared Wi-Fi network.  [ROOT CAUSE
+    FOUND — verified; labeled enhancement]
+    Cause: with Bluetooth off (no BLE) and no shared Wi-Fi (no mDNS), discovery
+    genuinely finds nothing — and the send screen has NO code that checks the
+    Bluetooth/Wi-Fi state to tell the user why. Verified: the send package
+    contains no BluetoothAdapter/WifiManager/ConnectivityManager state check that
+    surfaces a hint; the one "network required" hint card (sendNetworkHint) is
+    permanently hidden (set to View.GONE in SendPeerPickerController), so the user
+    only gets a generic timed "no devices nearby" empty state with no reason or
+    next step.
+    Verification level: VERIFIED in code (the absence of any transport-state
+    hint is the cause). Labeled type:enhancement / priority:low upstream.
+
+D6) Not real bugs / not diagnosable as defects:
+    - #168 make outbound file chunk size adaptive — an enhancement, not a defect.
+    - #217 reverse-engineer GMS L2CAP data-phase framing — a research task.
+    - #194 native HarmonyOS support — a feature request.
+    - #208 auto-generated bug report — no usable detail / no repro attached.
+    - #205 and #213 are the SAME bug as #189 (folded into D1).
+
+Highest-certainty, highest-impact finding: D1 (#189) — this fork is simply behind
+upstream (missing PRs #215 + #218), which is why off-LAN sends to stock phones
+still fail here.
