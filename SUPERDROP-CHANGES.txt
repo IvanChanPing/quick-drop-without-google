@@ -428,9 +428,25 @@ D3) #196 — a Huawei/HarmonyOS phone running this app can only be found while t
           resets on process death. So once HarmonyOS kills the process, nothing
           brings the receiver back until the user re-opens the app — which is
           exactly the reported symptom.
+      (c) Battery-tuned scan/advertise (issue #35, "Battery-tuned scan
+          settings"): when the app is backgrounded — which includes the SCREEN
+          turning off while Bada is the active app — AppLifecycleScanModeObserver
+          drops the BLE scan AND advertiser from LOW_LATENCY to BALANCED
+          (ReceiverForegroundService.kt:444-446, :1734-1745), keyed on
+          ProcessLifecycleOwner (app foreground/background, NOT a battery-saver or
+          Doze check — the fork only logs powerSaveMode in bug reports). This is
+          intentional power-saving (and #35's whole point is to run the scan from
+          the FGS so background scanning isn't throttled to Android's ~30-min
+          opportunistic mode), but it makes background/screen-off pulse detection
+          slower than foreground, and it is moot once HarmonyOS kills the FGS in
+          (a). So screen-off + BALANCED + OEM-kill together produce "only
+          discoverable while the app is open/foreground."
     Verification level: VERIFIED in code for the app-gap (a Bada persistence
-    gap); the HarmonyOS-specific reaping itself is well-known OEM behaviour, not
-    a code defect. Not fixable purely at the protocol level.
+    gap) and the battery-tuned scan/advertise (#35); the HarmonyOS-specific
+    reaping itself is well-known OEM behaviour, not a code defect. Whether
+    BALANCED-in-background measurably hurts detection on a NON-aggressive Android
+    (vs. the OEM-kill) is not measured here — needs a device. Not fixable purely
+    at the protocol level.
 
 D4) #197 — a Windows sender lists the SAME Android phone dozens of times in its
     nearby-devices list.  [PARTIALLY VERIFIED — maintainer-confirmed tradeoff]
