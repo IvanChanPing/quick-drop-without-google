@@ -29,7 +29,11 @@ FINISHED FEATURES
    And if you want, the discovered-device icons can be held back until the entrance
    finishes, so none pop in mid-slide. The bounce and the icon delay are self-contained
    and don't touch discovery — each can be kept or dropped independently of the
-   bottom-sheet change.
+   bottom-sheet change. And every part of the motion is yours to tune however you
+   want: the slide speed, how far/quick it kicks off vs. eases in, how much the top
+   edge stretches and how springy the settle feels, and how long the device icons
+   are held back are all plain values (see the Technical block) — dial any of them
+   up or down, or zero them out, to match the feel you're after.
 
    Technical: the slide is a view-level translate with an iOS-style cubic-bezier
    ease-out, kicked from Activity.onEnterAnimationComplete() — i.e. AFTER the activity
@@ -146,9 +150,18 @@ FINISHED FEATURES
    then puts them back exactly how they were once it's done, so you never have to
    fiddle with your radios. Set up once and it keeps working after every restart.
    (Requires a one-time wireless-debugging / ADB setup.)
-   Ships with a small companion helper app that does the actual switching —
-   needed because the main app can't toggle the radios on modern Android by
-   itself; the helper handles it and the main app just asks it to.
+   Ships with a small companion helper app that does the actual switching. Why a
+   SECOND app is needed: Android blocks any modern app from turning Wi-Fi or
+   Bluetooth on/off in code. It only allows it for apps built against an OLD
+   version of Android (Bluetooth toggling up to Android 12, Wi-Fi toggling up to
+   Android 9), and that allowance is tied to how old the app is built — it is NOT
+   a permission you can request or be granted. The main Super Drop app is built
+   modern (it has to be), so it simply isn't permitted to flip the radios itself,
+   no matter what. The fix is a tiny separate helper app deliberately built
+   against that older target purely so it IS allowed to switch the radios; the
+   main app just asks the helper to do it. It must be a separate app because one
+   app can't be both modern and old-built at the same time — so the capability
+   has to live in its own small companion app.
 
    Technical:
    - Why a separate helper: the radio-toggle APIs are gated by targetSdk, not by
