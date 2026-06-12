@@ -434,7 +434,11 @@ public class DraggableSheetLayout
             // the window open transition (SendActivity.onEnterAnimationComplete) so it
             // is not masked by the window's own animation.
             private const val ENTRANCE_OFFSET_PX = 80
-            private const val ENTRANCE_SLIDE_MS = 240L // snappier than the old 300ms
+            // A little quicker than the old 240ms (which was itself snappier than 300ms),
+            // per the "make the slide a little quicker" request. Shared by the send sheet
+            // and the consent sheet (both call playEntrance); 30ms is modest enough that
+            // the consent entrance is effectively unchanged.
+            private const val ENTRANCE_SLIDE_MS = 210L
 
             // Overshoot tension for the entrance: how far the card sails PAST full size
             // before settling (that overshoot IS the bounce). The card scales

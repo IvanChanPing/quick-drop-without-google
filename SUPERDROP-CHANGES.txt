@@ -325,3 +325,32 @@ GROUNDWORK (started, not finished/turned on yet)
     Code: new SuperDropPeerMarker (core-protocol); AdvertisedDeviceNames adds the marker to
     the advertised receiver identity; SendPeerPickerController + DeviceIconView draw the
     badge.
+
+18) Send sheet entrance: starts sooner, slides a little quicker
+    When you pick our app from the system share sheet, the card now starts sliding in
+    sooner — closer to the way the bridge-share app does it, where its card animates in
+    over the share sheet while the share sheet just fades out behind it (instead of
+    waiting for the share sheet to fully slide away first).
+
+    How: our window is already see-through with a soft dim, so whatever's behind stays
+    visible while our card animates. The card's slide-up waits for the window's own brief
+    open fade to finish (that wait is what fixed the earlier "card appears already there,
+    no slide" glitch on the OnePlus). We shortened that open fade from 200ms to ~120ms, so
+    the slide kicks in noticeably sooner without bringing the glitch back. We also trimmed
+    the slide itself slightly (a little quicker, as asked). Only the SEND sheet changed;
+    the receive/consent sheet is untouched.
+
+    Why not make it instant (zero delay, like the very first thing you see)? A zero-length
+    window animation reintroduces the OnePlus glitch where the card snaps in with no slide,
+    and the Android call that force-disables the window animation was already found to be
+    ignored on the OnePlus share-sheet launch. The short fade is the safe sweet spot.
+
+    Risk: low and contained — same proven trigger, just a shorter wait; easy to dial back
+    (one number) if it ever looks too fast on a given phone.
+
+    Status: built. The exact on-device feel (does it start sooner and still slide cleanly
+    on your OnePlus?) needs your eyes — it can't be verified in the build environment.
+    Separate pull request from the others; trivially revertible.
+    Code: new popup_fade_in_fast.xml + WindowAnimation.SuperDrop.SendSheet.Fast (themes.xml)
+    wired to Theme.SuperDrop.SendSheet; ENTRANCE_TRIGGER_FALLBACK_MS (SendActivity) and
+    ENTRANCE_SLIDE_MS (DraggableSheetLayout) shortened.

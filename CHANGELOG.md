@@ -1,3 +1,35 @@
+## [2026-06-12] Send sheet entrance: start sooner (faster window fade) + a little quicker slide
+Per the user's "make the slide a little quicker … then maybe make the animation start sooner" + the
+bridge-share observation (its sheet animates in OVER the still-fading chooser instead of waiting for the
+chooser to slide away). The send activity window is already translucent with a 0.2 system dim, so the
+chooser stays visible beneath; the lever for "sooner" is the window OPEN fade that the proven
+`onEnterAnimationComplete` trigger waits for.
+
+Changes (scoped to the SEND sheet; the consent sheet's entrance is untouched):
+- New `popup_fade_in_fast.xml` (~120ms vs the shared `popup_fade_in`'s 200ms) + a new Send-only
+  `WindowAnimation.SuperDrop.SendSheet.Fast` style; `Theme.SuperDrop.SendSheet` now uses it. The
+  consent sheet (`Theme.SuperDrop.ReceiveSheet`) keeps the original 200ms style.
+- `ENTRANCE_TRIGGER_FALLBACK_MS` 450 → 260 (the fallback that kicks the entrance if
+  onEnterAnimationComplete never fires; lowered to match the faster fade so a missed callback recovers
+  sooner). The `sendSheetEntranceStarted` guard still makes whichever trigger fires first win.
+- `ENTRANCE_SLIDE_MS` 240 → 210 ("a little quicker"; shared by the send + consent slide, 30ms is modest).
+
+Mechanism preserved (low regression risk): the slide is STILL triggered at onEnterAnimationComplete —
+i.e. AFTER the window fade completes — so it is not masked by the window transition (the OnePlus
+"appears already settled, no slide" bug the trigger originally fixed). Only the fade it waits for got
+shorter, so the slide simply starts sooner. A zero-duration window animation was deliberately NOT used
+(that reintroduces the mask, and `overridePendingTransition(0,0)` was already found not honored on the
+OnePlus chooser launch path).
+
+Make-or-break unknown (device-only): whether ~120ms is still enough settle time for the OnePlus to fire
+onEnterAnimationComplete cleanly after the fade (very likely — the mask was about OVERLAP, not fade
+length). UNVERIFIED on hardware; the user tests on their OnePlus. If the slide looks masked again, bump
+`popup_fade_in_fast` back toward 200ms. Separate commit from the marker; easy to revert.
+
+Files: new `app/.../res/anim/popup_fade_in_fast.xml`; `app/.../res/values/themes.xml` (new Fast style +
+Send theme); `app/.../send/SendActivity.kt` (ENTRANCE_TRIGGER_FALLBACK_MS + comment);
+`app/.../ui/sheet/DraggableSheetLayout.kt` (ENTRANCE_SLIDE_MS). SUPERDROP-CHANGES item #18.
+
 ## [2026-06-12] Bada-recognizes-Bada: "Super Drop" peer marker + send-picker badge (its own PR)
 The send picker now tells a Super Drop (Bada) device apart from a stock Google/Samsung Quick Share device:
 a Super Drop peer's chip shows a small blue **"Super Drop"** badge under the device name; stock peers show

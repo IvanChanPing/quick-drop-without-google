@@ -228,8 +228,11 @@ public class SendActivity : AppCompatActivity() {
         // by / racing with the window animation. That race is the timing bug that made
         // the sheet "appear already settled" (fade only, no slide) on OnePlus. The
         // window OPEN animation is a soft FADE only (Theme.SuperDrop.SendSheet ->
-        // WindowAnimation.SuperDrop.SendSheet `popup_fade_in`, no vertical translate),
-        // so the 0.2 dim fades in without competing with the view slide. We do NOT
+        // WindowAnimation.SuperDrop.SendSheet.Fast `popup_fade_in_fast`, ~120ms, no
+        // vertical translate) — shortened from the old 200ms so onEnterAnimationComplete
+        // fires (and the slide STARTS) sooner, closer to the bridge "animate over the
+        // still-fading chooser" feel. The fade still completes BEFORE the slide starts, so
+        // the slide is not masked. The 0.2 dim fades in without competing with it. We do NOT
         // override the window transition here (overrideActivityTransition was not
         // honored on the OnePlus chooser launch path anyway) — the theme carries the
         // fade, and the visible slide is the view animation.
@@ -2119,8 +2122,10 @@ public class SendActivity : AppCompatActivity() {
         /** Fallback delay (from wireBottomSheet) to kick the sheet entrance if
          *  [onEnterAnimationComplete] never fires on some OEM launch path, so the
          *  pre-hidden sheet can't get stuck off-screen. Long enough that
-         *  onEnterAnimationComplete (after the ~200ms window fade) normally wins. */
-        private const val ENTRANCE_TRIGGER_FALLBACK_MS: Long = 450L
+         *  onEnterAnimationComplete (after the now ~120ms fast window fade —
+         *  WindowAnimation.SuperDrop.SendSheet.Fast) normally wins, but shorter than
+         *  the old 450ms so a missed callback recovers sooner too. */
+        private const val ENTRANCE_TRIGGER_FALLBACK_MS: Long = 260L
 
         /** Fade-in duration for the device-icon row once the sheet entrance
          *  animation finishes ([revealPeerIcons]). */

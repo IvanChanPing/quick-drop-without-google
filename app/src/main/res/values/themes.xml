@@ -286,7 +286,9 @@
         <item name="android:windowNoTitle">true</item>
         <item name="android:backgroundDimEnabled">true</item>
         <item name="android:backgroundDimAmount">0.2</item>
-        <item name="android:windowAnimationStyle">@style/WindowAnimation.SuperDrop.SendSheet</item>
+        <!-- FAST open fade (~120ms) so the view slide-up starts sooner; see
+             WindowAnimation.SuperDrop.SendSheet.Fast. Consent sheet stays on the 200ms one. -->
+        <item name="android:windowAnimationStyle">@style/WindowAnimation.SuperDrop.SendSheet.Fast</item>
     </style>
 
     <!--
@@ -306,6 +308,24 @@
         <item name="android:activityOpenEnterAnimation">@anim/popup_fade_in</item>
         <item name="android:activityCloseExitAnimation">@anim/slide_down_out</item>
         <item name="android:taskOpenEnterAnimation">@anim/popup_fade_in</item>
+        <item name="android:taskCloseExitAnimation">@anim/slide_down_out</item>
+    </style>
+
+    <!--
+      FAST window enter/exit pair — used ONLY by Theme.SuperDrop.SendSheet (the
+      send picker). Identical to WindowAnimation.SuperDrop.SendSheet except the
+      OPEN enter uses the ~120ms popup_fade_in_fast instead of the 200ms
+      popup_fade_in, so onEnterAnimationComplete() fires sooner and the
+      DraggableSheetLayout view slide-up STARTS sooner — the "bridge starts the
+      animation sooner / over the still-fading chooser" feel. CLOSE is unchanged
+      (slide_down_out). The consent sheet (Theme.SuperDrop.ReceiveSheet) keeps the
+      original 200ms WindowAnimation.SuperDrop.SendSheet above, so only the send
+      sheet's entrance speeds up.
+    -->
+    <style name="WindowAnimation.SuperDrop.SendSheet.Fast" parent="@android:style/Animation.Activity">
+        <item name="android:activityOpenEnterAnimation">@anim/popup_fade_in_fast</item>
+        <item name="android:activityCloseExitAnimation">@anim/slide_down_out</item>
+        <item name="android:taskOpenEnterAnimation">@anim/popup_fade_in_fast</item>
         <item name="android:taskCloseExitAnimation">@anim/slide_down_out</item>
     </style>
 
