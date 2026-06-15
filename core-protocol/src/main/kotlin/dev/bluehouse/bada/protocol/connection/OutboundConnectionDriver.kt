@@ -129,6 +129,25 @@ internal class OutboundConnectionDriver(
     private var currentItemPayloadId: Long? = null
 
     /**
+     * The peer receiver's advertised `safe_to_disconnect_version`
+     * (ConnectionResponseFrame field 7), captured during the handshake.
+     *
+     * - `0` = the peer has safe-to-disconnect DISABLED — notably **Windows Quick
+     *   Share** (issue #200: it logs `[safe-to-disconnect]: Local enabled: false;
+     *   Version: 0`). Such a peer treats a sender-initiated `Disconnection` that
+     *   arrives BEFORE it reaches `kComplete` as a transfer FAILURE
+     *   ("Can't complete transfer"), even though every byte already arrived.
+     * - `>= 1` = it supports the safe-to-disconnect handshake (Samsung One UI 7+,
+     *   stock Android Quick Share, and this app, which advertises version 1).
+     *
+     * Gates the SUCCESS-path teardown in [streamFilesAndComplete]: for a version-0
+     * peer we do NOT proactively send the terminal `Disconnection`; instead we let
+     * the receiver finalize and close first (the existing safe-disconnect drain
+     * waits for the peer's FIN), mirroring stock Quick Share. Defaults to 0.
+     */
+    private var peerSafeToDisconnectVersion: Int = 0
+
+    /**
      * Drive the entire sender-side lifecycle. Returns the terminal
      * [OutboundResult]; throws on coroutine cancellation (handled by
      * the caller).
@@ -168,11 +187,18 @@ internal class OutboundConnectionDriver(
         if (peerResponse.v1.hasConnectionResponse()) {
             val cr = peerResponse.v1.connectionResponse
 
+            // Capture the peer's safe_to_disconnect_version (issue #200). 0 = the
+            // receiver has safe-to-disconnect DISABLED (e.g. Windows Quick Share) and
+            // must NOT be disconnected before it reaches kComplete; the success-path
+            // teardown in streamFilesAndComplete gates the eager Disconnection on this.
+            peerSafeToDisconnectVersion = cr.safeToDisconnectVersion
+
             @Suppress("DEPRECATION")
             val status = cr.status
             logger(
                 "step 4: peer.response=${cr.response} status=$status " +
-                    "osType=${if (cr.hasOsInfo()) cr.osInfo.type else "<none>"}",
+                    "osType=${if (cr.hasOsInfo()) cr.osInfo.type else "<none>"} " +
+                    "safeToDisconnectVersion=$peerSafeToDisconnectVersion",
             )
         }
         check(peerResponse.isConnectionResponse()) {
@@ -1362,9 +1388,29 @@ internal class OutboundConnectionDriver(
             logger("fsm: streamOneFile DONE name=${file.name}")
         }
 
-        // All files streamed. Emit Disconnection and complete.
-        logger("fsm: all files streamed, sending Disconnection")
-        runCatching { sendTerminalDisconnection(channel) }
+        // All files streamed (every byte delivered). TEARDOWN — issue #200:
+        // Only proactively send the terminal Disconnection when the peer supports the
+        // safe-to-disconnect handshake (safe_to_disconnect_version >= 1: Samsung One UI
+        // 7+, stock Android Quick Share, this app). For a version-0 peer (Windows Quick
+        // Share has safe-to-disconnect DISABLED), a sender-initiated Disconnection that
+        // lands before it reaches kComplete is treated as a FAILURE and the already-
+        // complete payload is discarded ("Can't complete transfer"). So for version 0 we
+        // do NOT send it; the existing safe-disconnect drain (shouldDrainForSafeDisconnect
+        // is true for Completed) instead waits for the receiver to finalize and close
+        // first, bounded by the grace timeout — mirroring stock Quick Share, whose sender
+        // never disconnects early. Receive direction and version>=1 senders are unchanged.
+        if (peerSafeToDisconnectVersion >= 1) {
+            logger(
+                "fsm: all files streamed, sending Disconnection " +
+                    "(peer safeToDisconnectVersion=$peerSafeToDisconnectVersion)",
+            )
+            runCatching { sendTerminalDisconnection(channel) }
+        } else {
+            logger(
+                "fsm: all files streamed; peer safeToDisconnectVersion=0 (e.g. Windows) — " +
+                    "NOT sending eager Disconnection; awaiting receiver close (issue #200)",
+            )
+        }
         return OutboundResult.Completed
     }
 
