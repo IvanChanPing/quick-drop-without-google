@@ -257,18 +257,18 @@
     </style>
 
     <!--
-      Translucent bottom-sheet theme for SendActivity (Phase 1 OShare
-      port). The activity window is made transparent and non-fullscreen
+      Translucent bottom-sheet theme for SendActivity. The activity
+      window is made transparent and non-fullscreen
       so its layout — a transparent FrameLayout scrim hosting a
       bottom-anchored DraggableSheetLayout card — can float over the
-      app/launcher behind it like the OShare send sheet:
+      app/launcher behind it like the send sheet:
 
         * windowIsTranslucent / transparent windowBackground /
           windowContentOverlay=null — the window has no opaque surface;
           only the sheet card and a light dim layer paint.
         * windowNoTitle — no action-bar title strip above the sheet.
         * backgroundDimEnabled + backgroundDimAmount=0.2 — a soft
-          (not heavy) scrim behind the sheet, matching the OShare
+          (not heavy) scrim behind the sheet, matching the
           "light scrim, not fully dark" look.
         * windowAnimationStyle — slide-up enter / slide-down exit
           (see WindowAnimation.Bada.SendSheet) so the window rises
@@ -330,12 +330,12 @@
     </style>
 
     <!--
-      Translucent bottom-sheet theme for ConsentTrampolineActivity
-      (Phase 2 OShare receive port). Mirrors Theme.Bada.SendSheet:
+      Translucent bottom-sheet theme for ConsentTrampolineActivity.
+      Mirrors Theme.Bada.SendSheet:
       the activity window is made transparent and non-fullscreen so its
       layout — a transparent FrameLayout scrim hosting a bottom-anchored
       DraggableSheetLayout card — floats over whatever is behind it like
-      the OShare receive sheet:
+      the receive sheet:
 
         * windowIsTranslucent / transparent windowBackground /
           windowContentOverlay=null — the window has no opaque surface;
@@ -344,7 +344,7 @@
           dialog) so the consent surface reads as a bottom sheet.
         * windowNoTitle — no action-bar title strip above the sheet.
         * backgroundDimEnabled + backgroundDimAmount=0.2 — a soft scrim
-          behind the sheet, matching the OShare "light scrim" look and
+          behind the sheet, matching the "light scrim" look and
           the sender sheet's dim.
         * windowAnimationStyle — slide-up enter / slide-down exit
           (reuses WindowAnimation.Bada.SendSheet) so the window

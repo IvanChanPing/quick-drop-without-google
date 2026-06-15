@@ -17,8 +17,7 @@ import kotlin.math.max
 import kotlin.math.min
 
 /**
- * Kotlin port of the OShare circular avatar (see shareit-bridge
- * `com.bridge.share.ui.RingProgressView`): a filled blue disc with a
+ * A circular avatar: a filled blue disc with a
  * centered glyph, ringed by a progress arc (12 o'clock origin, sweeps
  * clockwise). Used for each discovered device in the send bottom sheet;
  * the ring tracks transfer progress, and the disc morphs into a green

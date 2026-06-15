@@ -14,8 +14,7 @@ import android.widget.LinearLayout
 import android.widget.TextView
 
 /**
- * Kotlin port of the OShare device chip (see shareit-bridge
- * `com.bridge.share.ui.DeviceIconView`): one discovered device in the
+ * One discovered device in the
  * send sheet, rendered as a circular [RingProgressView] icon, the device
  * name below it, and a status line ("Connecting", "Sending"). Tapping
  * plays a bounce so the user sees the tap registered.

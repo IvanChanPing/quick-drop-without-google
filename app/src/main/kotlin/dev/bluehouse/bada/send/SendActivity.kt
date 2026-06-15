@@ -237,8 +237,8 @@ public class SendActivity : AppCompatActivity() {
         // window OPEN animation is a soft FADE only (Theme.Bada.SendSheet ->
         // WindowAnimation.Bada.SendSheet.Fast `popup_fade_in_fast`, ~120ms, no
         // vertical translate) — shortened from the old 200ms so onEnterAnimationComplete
-        // fires (and the slide STARTS) sooner, closer to the bridge "animate over the
-        // still-fading chooser" feel. The fade still completes BEFORE the slide starts, so
+        // fires (and the slide STARTS) sooner, so the sheet animates over the
+        // still-fading chooser. The fade still completes BEFORE the slide starts, so
         // the slide is not masked. The 0.2 dim fades in without competing with it. We do NOT
         // override the window transition here (overrideActivityTransition was not
         // honored on the OnePlus chooser launch path anyway) — the theme carries the
@@ -1474,7 +1474,7 @@ public class SendActivity : AppCompatActivity() {
     }
 
     /**
-     * Wire the OShare-style bottom-sheet presentation (Phase 1):
+     * Wire the bottom-sheet presentation:
      *
      *  - tapping the empty scrim area outside the card dismisses the
      *    activity (slide-down via the window exit animation),

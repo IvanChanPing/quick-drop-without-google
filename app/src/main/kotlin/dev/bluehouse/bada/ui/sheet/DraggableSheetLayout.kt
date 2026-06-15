@@ -24,9 +24,8 @@ import androidx.core.view.doOnLayout
 import dev.bluehouse.bada.discovery.diagnostics.DiagnosticLog
 
 /**
- * Kotlin port of the OShare bottom-sheet card container (see
- * shareit-bridge `com.bridge.share.ui.DraggableSheetLayout`). A
- * bottom-anchored card that:
+ * A bottom-sheet card container.
+ * A bottom-anchored card that:
  *
  *  - slides up from below the bottom edge on entrance (a VIEW-level slide in
  *    [playEntrance], pre-hidden via [prepareOffscreen] and triggered by the host

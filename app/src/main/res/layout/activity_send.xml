@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Layout for SendActivity (#24) — restructured for Phase 1 into an
-  OShare-style bottom sheet (see dev.bluehouse.bada.ui.sheet.DraggableSheetLayout).
+  Layout for SendActivity (#24) — restructured for Phase 1 into a
+  bottom sheet (see dev.bluehouse.bada.ui.sheet.DraggableSheetLayout).
 
   Shape (back to front):
     1. Root FrameLayout — transparent, match_parent, bottom gravity.

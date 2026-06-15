@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   Landscape variant of SendActivity (#24), restructured for Phase 1 into
-  the same OShare-style bottom sheet as portrait
+  the same bottom sheet as portrait
   (dev.bluehouse.bada.ui.sheet.DraggableSheetLayout). The card is anchored to
   the bottom of the translucent activity window and spans the width with
   side margins; its interior keeps the landscape left/right split so the

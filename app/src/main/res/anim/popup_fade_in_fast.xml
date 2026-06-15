@@ -3,8 +3,8 @@
   FAST variant of popup_fade_in — the SEND sheet's window OPEN animation.
   Same gentle alpha fade + tiny scale-up as popup_fade_in, but ~120ms instead
   of 200ms so the window settles (and onEnterAnimationComplete fires) sooner,
-  which makes the view-level slide-up start sooner — closer to the bridge-share
-  "the sheet animates in over the still-fading chooser" feel the user wanted.
+  which makes the view-level slide-up start sooner, so the sheet animates in
+  over the still-fading chooser instead of appearing already settled.
 
   WHY a separate resource (not just shortening popup_fade_in): popup_fade_in is
   shared by Theme.Bada.ReceiveSheet (the consent sheet) via the shared

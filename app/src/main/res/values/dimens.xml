@@ -16,7 +16,7 @@
          overlays the fragment. -->
     <dimen name="settings_content_bottom_padding">24dp</dimen>
 
-    <!-- Design bottom padding for the OShare-style SendActivity bottom
+    <!-- Design bottom padding for the SendActivity bottom
          sheet (dev.bluehouse.bada.ui.sheet.DraggableSheetLayout). The
          navigation-bar inset is added on top of this at runtime by
          DraggableSheetLayout.applyBottomInset so the card content clears

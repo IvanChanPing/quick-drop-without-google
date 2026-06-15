@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
-  Window exit animation for the OShare-style SendActivity bottom sheet
+  Window exit animation for the SendActivity bottom sheet
   (Theme.Bada.SendSheet). Slides the window back down below the
   bottom edge as the activity finishes.
 -->
