@@ -36,9 +36,8 @@ import java.util.Date
  * ------------
  * `AdbWifiManager` — the low-level `libadb-android` connection manager for the
  * **Bada Radio Helper's self-ADB Wi-Fi** path. Lives in the HELPER module
- * (`:radio-helper`), NOT the main app — it was migrated here so every sharing
- * app (Bada, the Bridge, O+ Connect, …) can reach it through the one
- * helper instead of each embedding its own copy.
+ * (`:radio-helper`), NOT the main app, so the app reaches it through the one
+ * helper instead of embedding its own copy.
  *
  * WHAT IT DOES
  * ------------

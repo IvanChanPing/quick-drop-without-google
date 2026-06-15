@@ -6,10 +6,9 @@
  * ════════════════════════════════════════════════════════════════════════════
  *
  * WHAT THIS IS
- *   The single file ANY of our file-sharing apps (Bada, the Bridge,
- *   O+ Connect / OShare, and any future one) copies in to route Wi-Fi/Bluetooth
- *   toggling through the ONE installed `radio-helper` APK — instead of each app
- *   re-implementing the targetSdk-28 legacy toggle / self-ADB / Shizuku ladder.
+ *   The client the app uses to route Wi-Fi/Bluetooth toggling through the one
+ *   installed `radio-helper` APK, instead of re-implementing the targetSdk-28
+ *   legacy toggle / self-ADB / Shizuku ladder itself.
  *
  * WHY
  *   The radio-enable capability is targetSdkVersion-gated (setWifiEnabled needs
