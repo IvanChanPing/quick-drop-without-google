@@ -17,23 +17,10 @@ FINISHED FEATURES
    more being forced all the way into the app just to send or receive something —
    just like the old Quick Share. A much better improvement.
 
-   Optional polish (can be kept or left out): the sheet has an entrance — it slides
-   up from below the bottom of the screen with an iPhone-style variable speed (quick
-   to set off, then easing smoothly into place) and, as it lands, the rounded card's
-   top edge gives one small elastic "extend and settle". The bounce flows straight out
-   of the slide as one continuous motion (not a separate beat afterwards). Only the
-   rounded card background stretches; the contents keep their exact size, so nothing
-   distorts — the device-name pill and the device picker ride up glued to the
-   stretching top edge, while the bottom action row (the "Can't find the device?" link
-   and the Cancel button) stays planted, so the stretch opens in the gap between them.
-   And if you want, the discovered-device icons can be held back until the entrance
-   finishes, so none pop in mid-slide. The bounce and the icon delay are self-contained
-   and don't touch discovery — each can be kept or dropped independently of the
-   bottom-sheet change. And every part of the motion is yours to tune however you
-   want: the slide speed, how far/quick it kicks off vs. eases in, how much the top
-   edge stretches and how springy the settle feels, and how long the device icons
-   are held back are all plain values (see the Technical block) — dial any of them
-   up or down, or zero them out, to match the feel you're after.
+   Design can be tuned: the sheet slides up from the bottom with an iPhone-style
+   variable speed and a small bounce as it settles. The slide speed, the bounce,
+   and how long the device icons are held back are all adjustable (or can be turned
+   off).
 
    Technical: the slide is a view-level translate with an iOS-style cubic-bezier
    ease-out, kicked from Activity.onEnterAnimationComplete() — i.e. AFTER the activity
@@ -69,10 +56,10 @@ FINISHED FEATURES
    Image for the PR: docs/pr-images/receive-tile-sheet.png
 
 3) Tap to share
-   You can now tap two phones together to start a transfer. The tap passes your
-   identity and your Wi-Fi address and starts the transfer. It even works when the
-   other phone is just sitting idle with the app closed — the tap wakes it into
-   receive mode — and a single tap is all it takes.
+   You can tap two phones together to start a transfer — it uses the same flow as
+   Quick Share. The tap passes your identity and your Wi-Fi address and starts the
+   transfer. It even works when the other phone is just sitting idle with the app
+   closed — the tap wakes it into receive mode — and a single tap is all it takes.
 
    Technical: uses standard Android NFC. The receiver runs a Host Card Emulation
    (HCE) service on the Nearby Connections AID F00000FE2C; the sender uses NFC
@@ -104,11 +91,9 @@ FINISHED FEATURES
    check). Across different accounts the receiver taps Accept once — the same as
    any cross-account Quick Share transfer.
 
-   Status: send-by-tap is device-tested and starts the transfer; the Android 15
-   receive-routing path is built and pending an on-device check. Full
-   reverse-engineered byte map lives in docs/NFC_INTEROP_BYTEMAP.md.
+   Reference: full reverse-engineered byte map in docs/NFC_INTEROP_BYTEMAP.md.
 
-4) The QR code button also turns your phone into an NFC tag for iPhones
+4) Clicking the QR code button turns your phone into an NFC tag for iPhones
    When you open the in-sheet QR code (the "Show QR" button on the send sheet),
    your phone simultaneously becomes a tappable NFC tag carrying that same pairing
    link. Tap an iPhone (or any phone) to the back and it opens the link in that
@@ -146,6 +131,7 @@ FINISHED FEATURES
    can't be resolved.
 
 7) Automatically turn Wi-Fi and Bluetooth on for a transfer, then off again
+   (requires a small companion helper app)
    When a transfer starts, the app switches Wi-Fi and Bluetooth on for you and
    then puts them back exactly how they were once it's done, so you never have to
    fiddle with your radios. Set up once and it keeps working after every restart.
@@ -242,8 +228,8 @@ GROUNDWORK (started, not finished/turned on yet)
     the animated overlay groundwork in #11.
 
 15) Groundwork / research for Google's upcoming "Tap to Share"
-    Google is building an AirDrop-style "Tap to Share" into Android (tap two phones
-    to share files/contacts). It isn't released yet. We reverse-engineered the
+    Google is building an AirDrop-style "Tap to Share" into Android — tap two phones
+    to share files AND contacts. It isn't released yet. We reverse-engineered the
     in-progress code inside Google Play Services to see how it works and whether we
     could match it, and wrote up the findings so we have a head start for when Google
     ships it. This item is research and a written plan only — there is NO new code
@@ -338,35 +324,6 @@ GROUNDWORK (started, not finished/turned on yet)
     Code: new SuperDropPeerMarker (core-protocol); AdvertisedDeviceNames adds the marker to
     the advertised receiver identity; SendPeerPickerController + DeviceIconView draw the
     badge.
-
-18) Send sheet entrance: starts sooner, slides a little quicker
-    When you pick our app from the system share sheet, the card now starts sliding in
-    sooner — closer to the way the bridge-share app does it, where its card animates in
-    over the share sheet while the share sheet just fades out behind it (instead of
-    waiting for the share sheet to fully slide away first).
-
-    How: our window is already see-through with a soft dim, so whatever's behind stays
-    visible while our card animates. The card's slide-up waits for the window's own brief
-    open fade to finish (that wait is what fixed the earlier "card appears already there,
-    no slide" glitch on the OnePlus). We shortened that open fade from 200ms to ~120ms, so
-    the slide kicks in noticeably sooner without bringing the glitch back. We also trimmed
-    the slide itself slightly (a little quicker, as asked). Only the SEND sheet changed;
-    the receive/consent sheet is untouched.
-
-    Why not make it instant (zero delay, like the very first thing you see)? A zero-length
-    window animation reintroduces the OnePlus glitch where the card snaps in with no slide,
-    and the Android call that force-disables the window animation was already found to be
-    ignored on the OnePlus share-sheet launch. The short fade is the safe sweet spot.
-
-    Risk: low and contained — same proven trigger, just a shorter wait; easy to dial back
-    (one number) if it ever looks too fast on a given phone.
-
-    Status: built. The exact on-device feel (does it start sooner and still slide cleanly
-    on your OnePlus?) needs your eyes — it can't be verified in the build environment.
-    Separate pull request from the others; trivially revertible.
-    Code: new popup_fade_in_fast.xml + WindowAnimation.SuperDrop.SendSheet.Fast (themes.xml)
-    wired to Theme.SuperDrop.SendSheet; ENTRANCE_TRIGGER_FALLBACK_MS (SendActivity) and
-    ENTRANCE_SLIDE_MS (DraggableSheetLayout) shortened.
 
 
 ================================================================================

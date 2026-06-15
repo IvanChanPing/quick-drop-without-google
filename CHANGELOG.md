@@ -1,3 +1,29 @@
+## [2026-06-15] SUPERDROP-CHANGES.txt: apply the user's phone edits + cleanup pass
+The user downloaded `SUPERDROP-CHANGES.txt` via the on-box File Manager (upload_server.py,
+:8080, serves `/mnt/HC_Volume_105518598/uploads/`), edited it on the phone, and re-uploaded it.
+Applied their edits to the repo copy, then cleaned the phone-editing garble and resolved their three
+inline "note for Claude" markers (answers collected via a clarifying question round):
+- Trimmed item #1's long animation paragraph to a short "Design can be tuned" note (their trim),
+  fixed the truncated sentence; Technical block kept.
+- Item #2/#3/#4: repaired garbled text ("sets the to receive", "any nearby phon", the
+  "uses same as quick share" fragment, lowercase/double-spaced #4 title). Reworded #3's opener to
+  "it uses the same flow as Quick Share". Restored the "Android 15 routing:" sub-heading (the user's
+  deletion left that paragraph — which is entirely about Android 15/14 — as a fragment); dropped the
+  per-item Status line per the user's trim and replaced the dangling byte-map line with a "Reference:".
+- Item #7: folded the user's "(requires secondary helper app)" note into a clean title parenthetical.
+- #10: LEFT as groundwork. The user confirmed they meant the full-sheet *incoming* receive screen
+  (still delivered as the heads-up notification = #5); the receive sheet that DOES work is the
+  tile-launched one (#2). Verified in code: BadaQuickShareTileService.launchReceiveSheet →
+  ConsentTrampolineActivity ACTION_OPEN_RECEIVE_SHEET (works); incoming consent = ConsentNotification
+  (notification, not a sheet).
+- #14: removed the "to see it worke" garble.
+- #15: first line made explicit that Google's "Tap to Share" is contacts AND files (the user's #12
+  note actually referred to #15; #12 — the NFC on/off/timed switch — left unchanged).
+- #18 (send-sheet entrance tweak): REMOVED entirely per the user — it's just a tuning of #1, not its
+  own PR. Doc now lists items 1–17 + the D1–D6 bug diagnoses.
+No app code changed — this is PR-copy only. Clean copy also placed back in the File Manager uploads
+folder for the user to download and review.
+
 ## [2026-06-12] Send sheet entrance: start sooner (faster window fade) + a little quicker slide
 Per the user's "make the slide a little quicker … then maybe make the animation start sooner" + the
 bridge-share observation (its sheet animates in OVER the still-fading chooser instead of waiting for the
