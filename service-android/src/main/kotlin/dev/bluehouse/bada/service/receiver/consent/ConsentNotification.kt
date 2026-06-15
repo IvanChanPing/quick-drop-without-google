@@ -190,7 +190,7 @@ public object ConsentNotification {
         //   RECOLORED (default) — custom RemoteViews (notification_consent):
         //     recolored Decline/Accept centered pair via
         //     DecoratedCustomViewStyle.
-        //   BRIDGE — same mechanism but the shareit-bridge-style card layout
+        //   BRIDGE — same mechanism but the styled card layout
         //     (notification_consent_bridge).
         //   SHEET — no custom view at all: a standard/minimal notification
         //     (BigTextStyle + addAction Accept/Reject), where the bottom

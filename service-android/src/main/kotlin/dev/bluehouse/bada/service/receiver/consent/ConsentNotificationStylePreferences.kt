@@ -19,7 +19,7 @@ import android.content.SharedPreferences
  *    heads-up (`notification_consent`) with recolored Decline/Accept as a
  *    centered pair, via DecoratedCustomViewStyle.
  *  - [Style.BRIDGE] — a custom RemoteViews (`notification_consent_bridge`)
- *    styled like the shareit-bridge receive card (light surface, bold dark
+ *    styled like the receive card (light surface, bold dark
  *    title, gray subtitle, Decline | divider | Accept button row).
  *  - [Style.SHEET] — no custom view at all; the standard/minimal
  *    notification (BigTextStyle + addAction Accept/Reject), with the
@@ -37,7 +37,7 @@ public class ConsentNotificationStylePreferences(
         /** Existing custom RemoteViews heads-up; recolored centered button pair. */
         RECOLORED,
 
-        /** Custom RemoteViews styled like the shareit-bridge receive card. */
+        /** Custom RemoteViews styled like the receive card. */
         BRIDGE,
 
         /** Standard minimal notification; the bottom sheet is the surface. */

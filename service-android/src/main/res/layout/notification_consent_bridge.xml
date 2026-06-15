@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   BRIDGE-style custom heads-up content (option 2) — a heavily restyled heads-up
-  (NO overlay) made to resemble the shareit-bridge receive card more strongly
+  (NO overlay) made to resemble the receive card more strongly
   than option 1: a DARK rounded card with a slight white outline, a placeholder
   thumbnail, the text moved beside it, and a Decline | Accept button row.
 

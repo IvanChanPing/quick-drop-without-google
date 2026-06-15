@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- Placeholder thumbnail square for the BRIDGE-style consent heads-up
-     (option 2), mirroring the shareit-bridge ReceiveCard's plain gray thumb.
+     (option 2), mirroring the ReceiveCard's plain gray thumb.
      A real file thumbnail isn't available before the transfer is accepted, so
      this is a static rounded placeholder. -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
