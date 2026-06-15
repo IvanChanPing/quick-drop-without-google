@@ -93,7 +93,8 @@ FINISHED FEATURES
 
    Reference: full reverse-engineered byte map in docs/NFC_INTEROP_BYTEMAP.md.
 
-4) Clicking the QR code button turns your phone into an NFC tag for iPhones
+4) Clicking the QR code button turns your phone into an NFC tag for iPhones to automatically open page
+   (Works for the in-app QR code too, not just the send-sheet "Show QR".)
    When you open the in-sheet QR code (the "Show QR" button on the send sheet),
    your phone simultaneously becomes a tappable NFC tag carrying that same pairing
    link. Tap an iPhone (or any phone) to the back and it opens the link in that
