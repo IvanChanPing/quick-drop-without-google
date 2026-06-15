@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  HCE descriptor for the Bada Quick Share NFC tap-to-share receiver.
+
+  Declares the Nearby Connections NFC advertising AID F00000FE2C that a
+  Quick Share SENDER in reader-mode SELECTs, then reads our `hhwv`
+  response (deym NfcTag + Wi-Fi-LAN rxInstantConnectionAdv) to discover
+  our live receiver and connect over Wi-Fi-LAN.
+
+  Distinct AID from the iPhone NDEF-link service (D2760000850101), so the
+  two HostApduServices coexist on the one NFC controller.
+
+  category="other"  -> no default-payment role required.
+  requireDeviceUnlock="false" -> answered from the lock screen too; the
+  HCE only emits a real tag while a receiver is live (gated in code via
+  NfcTapLinkHolder, which the receiver service drives per the user's NFC
+  tap-to-share availability setting).
+-->
+<host-apdu-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/nfc_tap_hce_service_description"
+    android:requireDeviceUnlock="false">
+    <aid-group android:description="@string/nfc_tap_hce_service_description"
+        android:category="other">
+        <aid-filter android:name="F00000FE2C" />
+    </aid-group>
+</host-apdu-service>
