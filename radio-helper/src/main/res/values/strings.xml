@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Shown in Settings > Accessibility under this service, explaining exactly
+         what it does and that it does NOT read screen content. -->
+    <string name="qs_accessibility_description">Detects when Google Quick Share opens so Bada Radio Helper can turn Wi‑Fi and Bluetooth on for the transfer and restore them afterward. It reads only which app is in the foreground — never screen content.</string>
+</resources>

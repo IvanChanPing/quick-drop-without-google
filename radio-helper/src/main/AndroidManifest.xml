@@ -1,0 +1,134 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <uses-sdk tools:overrideLibrary="rikka.shizuku.provider, rikka.shizuku.api, rikka.shizuku.shared, rikka.shizuku.aidl" />
+
+    <!-- Shizuku = OPTIONAL silent Wi-Fi path (runs `svc wifi` as the shell UID)
+         for OEMs (e.g. ColorOS) that clamp setWifiEnabled. Not required — the
+         default Wi-Fi fallback is the system Wi-Fi panel (one tap). -->
+    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
+
+    <!-- Legacy radio-toggle capability (works because targetSdk = 28). -->
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <uses-permission android:name="android.permission.CHANGE_WIFI_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.BLUETOOTH" />
+    <uses-permission android:name="android.permission.BLUETOOTH_ADMIN" />
+
+    <!-- Self-ADB Wi-Fi path (silent toggle without Shizuku, survives reboots):
+         * INTERNET — open the localhost TCP socket to the device's own adbd.
+         * WRITE_SECURE_SETTINGS — write Settings.Global.adb_wifi_enabled to bring
+           Wireless debugging back up after each reboot. We can't hold this at
+           install; the helper SELF-GRANTS it once via `pm grant ... ` over the
+           first ADB pairing (AdbWifiTestActivity step 2). It is declared here so
+           that self-grant is permitted (pm grant only works for declared perms).
+           NOTE: WRITE_SECURE_SETTINGS does NOT make setWifiEnabled() work — the
+           legacy targetSdk-28 path / Shizuku / self-ADB handle the actual toggle;
+           WSS is ONLY for re-enabling wireless debugging on boot.
+         * RECEIVE_BOOT_COMPLETED — self-start on boot to re-warm the connection
+           (AdbWifiBootReceiver), so there is NO per-reboot manual step. -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS"
+        tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <!-- FOREGROUND_SERVICE: the boot warm-up runs ~60-90s; foreground so ColorOS
+         background limits don't kill it before it re-establishes the connection. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+
+    <!-- Only apps signed with the same key (Bada) may bind the
+         radio service. The in-process self-test activity is unaffected. -->
+    <permission
+        android:name="dev.bluehouse.bada.radiohelper.permission.BIND_RADIO"
+        android:protectionLevel="signature" />
+
+    <application
+        android:allowBackup="false"
+        android:label="Bada Radio Helper">
+
+        <!-- Standalone self-test: install this APK alone and tap the
+             buttons to confirm the OEM (e.g. ColorOS) honours the
+             targetSdk-28 radio toggle before wiring the main app. -->
+        <activity
+            android:name=".SelfTestActivity"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- NOTE: the separate "Radio Helper: ADB-WiFi Setup" launcher was
+             REMOVED — the user refused a second home-screen icon. The one-time
+             pairing controls now live as buttons on SelfTestActivity (the single
+             "Bada Radio Helper" launcher). -->
+
+        <!-- Bound by :app via Messenger to flip radios on an NFC tap. -->
+        <service
+            android:name=".RadioService"
+            android:exported="true"
+            android:permission="dev.bluehouse.bada.radiohelper.permission.BIND_RADIO" />
+
+        <!-- Quick Share auto-detect (AccessibilityService). Watches foreground
+             windows; when Google Quick Share's UI (com.google.android.gms,
+             class …nearby.sharing.*) comes to the front it runs the helper's
+             prepare-share flow (enable Wi-Fi/BT) and restores after. Listed in
+             Settings > Accessibility as "Bada Quick Share auto-detect";
+             enabled ONCE, re-bound by the OS on every boot (no per-reboot step).
+             android:permission BIND_ACCESSIBILITY_SERVICE is REQUIRED by the
+             platform so only the system can bind it. -->
+        <service
+            android:name=".QuickShareWatcherService"
+            android:exported="true"
+            android:label="Bada Quick Share auto-detect"
+            android:permission="android.permission.BIND_ACCESSIBILITY_SERVICE">
+            <intent-filter>
+                <action android:name="android.accessibilityservice.AccessibilityService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.accessibilityservice"
+                android:resource="@xml/quick_share_accessibility_config" />
+        </service>
+
+        <!-- SELF-START on boot: re-warm the self-ADB Wi-Fi connection after a
+             reboot (re-enable wireless debugging + mDNS-discover the adbd port),
+             so there is NO per-reboot manual step. Receiver only kicks the
+             service; the service does the blocking work on a background thread. -->
+        <receiver
+            android:name=".AdbWifiBootReceiver"
+            android:enabled="true"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED" />
+            </intent-filter>
+        </receiver>
+        <service
+            android:name=".AdbWifiBootService"
+            android:exported="false" />
+
+        <!-- Receives the 6-digit code typed into the PairingNotifier inline-reply
+             notification (the Brevent trick that keeps the pairing dialog open).
+             Not exported — only our own PendingIntent fires it. -->
+        <receiver
+            android:name=".PairingReplyReceiver"
+            android:exported="false" />
+
+        <!-- SAFETY watchdog: AlarmManager fires this if a share's transferFinished
+             never arrives (app crash/kill mid-transfer) → restores the user's
+             original Wi-Fi/BT so radios aren't stranded on. Not exported. -->
+        <receiver
+            android:name=".ShareWatchdogReceiver"
+            android:exported="false" />
+
+        <!-- Shizuku provider (required by the Shizuku API to talk to the
+             Shizuku/Sui service). The RadioShellService user service is NOT
+             declared here — Shizuku spawns it via app_process. -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:enabled="true"
+            android:exported="true"
+            android:multiprocess="false"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
+    </application>
+</manifest>

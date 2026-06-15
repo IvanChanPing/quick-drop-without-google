@@ -169,6 +169,12 @@ dependencies {
     // ZXing (`zxing-android-embedded`) is intentionally not used.
     implementation(libs.zxing.core)
 
+    // NOTE: the self-ADB Wi-Fi stack (libadb-android + Conscrypt + BouncyCastle)
+    // was MOVED OUT of :app into :radio-helper. The radios are toggled by the
+    // standalone helper APK (which targets API 28 for the legacy capability and
+    // self-starts on boot); :app reaches it through the helper's RadioService,
+    // so the ADB client must NOT live here. See radio-helper/build.gradle.kts.
+
     testImplementation(libs.junit4)
     androidTestImplementation(libs.androidx.test.junit)
     androidTestImplementation(libs.androidx.test.espresso.core)
