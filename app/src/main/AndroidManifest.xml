@@ -115,6 +115,12 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
 
+    <!-- Bind the radio-helper companion APK's RadioService (signature-protected
+         BIND_RADIO) so the app can ask it to turn Wi-Fi/Bluetooth on for a transfer
+         and restore them after. Granted only when Bada is signed with the same key
+         as the helper. See the :radio-helper module + RadioHelperClient. -->
+    <uses-permission android:name="dev.bluehouse.bada.radiohelper.permission.BIND_RADIO" />
+
     <!-- Wi-Fi local-only hotspot bandwidth-upgrade medium (#50). Both
          lines are required by WifiManager.startLocalOnlyHotspot on
          API 26+ — CHANGE_WIFI_STATE is install-time normal protection
@@ -211,6 +217,10 @@
         <package android:name="dev.bluehouse.libredrop.debug" />
         <package android:name="io.github.kyujincho.wvmg" />
         <package android:name="io.github.kyujincho.wvmg.debug" />
+        <!-- The radio-helper companion APK, bound by RadioHelperClient to flip
+             Wi-Fi/Bluetooth for a transfer (release + debug ids). -->
+        <package android:name="dev.bluehouse.bada.radiohelper" />
+        <package android:name="dev.bluehouse.bada.radiohelper.debug" />
     </queries>
 
     <application
