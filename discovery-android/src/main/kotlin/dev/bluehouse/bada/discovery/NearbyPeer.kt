@@ -139,7 +139,14 @@ public data class NearbyPeer(
         if (bleName != null) return bleName
         if (!endpointId.isNullOrBlank()) return "Quick Share device ($endpointId)"
         if (bleAdvertisement != null) return "Quick Share BLE device"
-        return stableId
+        // Never surface the raw stableId (a LAN address / synthetic discovery
+        // key) as a user-facing name. A peer advertising hidden — stock Quick
+        // Share always sets the visibility bit, so deviceName is omitted on the
+        // wire — legitimately has no name to show before negotiation; show a
+        // generic label instead of leaking its IP address into the picker.
+        // (Two Bada devices advertise hidden=false with their real names,
+        // so this fallback only hits stock/hidden peers.)
+        return "Quick Share device"
     }
 
     /** Diagnostic source for the label selected by [displayName]. */
