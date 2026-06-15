@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <string name="app_name">bada</string>
+    <string name="app_name">Bada</string>
 
     <!-- Bottom-navigation tab labels for MainActivity. The send/receive
          tab is the default destination on cold start; settings holds the
@@ -123,6 +123,8 @@
     <string name="main_always_visible_caption_off">Active only while a nearby device is scanning over Bluetooth.</string>
     <string name="main_bug_report_title">Shake to report a bug</string>
     <string name="main_bug_report_subtitle">When enabled, shaking the phone while Bada is open offers to package recent diagnostics, device state, and a screenshot into a zip that you save yourself. Nothing is uploaded automatically.</string>
+    <string name="settings_nfc_diagnostics_title">Show NFC tap diagnostics</string>
+    <string name="settings_nfc_diagnostics_subtitle">When enabled, each NFC tap-to-share shows on-screen messages (read outcome, wake, which device it connects to, or why it could not). Turn this off for a clean tap once everything works. The detailed log is always kept for bug reports.</string>
     <string name="main_keep_screen_on_title">Keep screen on during transfers</string>
     <string name="main_keep_screen_on_subtitle">Keep the display awake while sending or receiving files so long transfers stay visible and reliable.</string>
     <string name="main_transfer_expert_title">Expert transfer details</string>
@@ -221,7 +223,7 @@
     <string name="settings_battery_subtitle">Exempt this app from battery optimization so it can keep receiving Quick Share files when the screen is off.</string>
     <string name="settings_battery_status_exempt">Currently: exempt from battery optimization</string>
     <string name="settings_battery_status_not_exempt">Currently: not exempt — receiving may stop in the background</string>
-    <string name="settings_battery_open">Open battery settings</string>
+    <string name="settings_battery_open">Turn off battery optimization</string>
 
     <!-- Settings tab "Full-screen transfer alerts" row + first-launch
          dialog (Android 14+). On API 34+ USE_FULL_SCREEN_INTENT is a
@@ -238,6 +240,21 @@
     <string name="settings_fsi_open">Open notification settings</string>
     <string name="fsi_dialog_body">When a transfer arrives while Bada is in the background, Android needs the full-screen notification permission to pop the PIN prompt over your screen. Without it, the prompt arrives as a regular notification you tap to open. Open settings to allow it, or Skip to handle it later from the Settings tab.</string>
     <string name="fsi_dialog_skip_toast">You can change this from Settings.</string>
+
+    <!-- NFC tap to share (dedicated setting; not tied to the visible toggle). -->
+    <string name="settings_nfc_title">NFC tap to share</string>
+    <string name="settings_nfc_subtitle">Choose when another phone can start a transfer by tapping it to this device.</string>
+    <string name="settings_nfc_mode_sheet">Only while a receive sheet is open</string>
+    <string name="settings_nfc_mode_foreground">While the app is open</string>
+    <string name="settings_nfc_mode_background">Always (even in the background)</string>
+
+    <!-- Incoming transfer style (how the consent notification is presented). -->
+    <string name="settings_consent_style_title">Incoming transfer style</string>
+    <string name="settings_consent_style_subtitle">Choose how the consent prompt looks when another device wants to send you files.</string>
+    <string name="settings_consent_style_recolored">Recolored buttons</string>
+    <string name="settings_consent_style_bridge">Bridge card style</string>
+    <string name="settings_consent_style_sheet">Bottom sheet only</string>
+    <string name="settings_consent_style_sheet_needs_fsi">Bottom sheet only needs full-screen access to pop the sheet over other apps. Allow it on the next screen.</string>
 
     <!-- Permissions onboarding (#26 + #31). -->
     <string name="onboarding_title">App permissions</string>
@@ -335,6 +352,8 @@
     <string name="send_help_sheet_visibility_body">On the receiving device, make sure the toggle reads "Ready to receive". In that mode, anyone nearby can share files with it. If it\'s already in that mode but still doesn\'t appear here, try fully closing Bada on both devices and reopening it.</string>
     <string name="send_help_sheet_qr_title">Or share via QR code</string>
     <string name="send_help_sheet_qr_body">If the receiver still does not appear, tap the QR code button at the top right of this card. Have the receiver scan the code or open the link to start the transfer.</string>
+    <string name="send_help_sheet_tap_title">Sharing with a tap</string>
+    <string name="send_help_sheet_tap_body">To share with a tap, hold the two phones back-to-back. The other phone only needs its screen on — it does not have to open the app. Only one phone taps to send: if the other phone is also on its own send screen, neither can receive the tap, so let it sit on its home screen instead.</string>
     <string name="send_help_sheet_compat_title">Check device compatibility</string>
     <string name="send_help_sheet_compat_body">Bada is currently an experimental project. On some devices a peer may be discoverable but unable to receive files, and some devices may not be discoverable at all. We plan to widen device support in future updates.</string>
     <string name="send_help_sheet_close">Got it</string>
@@ -381,6 +400,12 @@
          label for the route now being tried (e.g. "BLE GATT AA:BB:…"). -->
     <string name="send_status_retrying_route">Retrying via %1$s…</string>
 
+    <!-- Shown on the send status panel while a tap-to-send connection is
+         retried during its Wi-Fi-readiness grace window: an NFC tap can land
+         before the just-forced Wi-Fi has finished connecting, so we keep
+         retrying the (Wi-Fi-only) tap connection rather than failing. -->
+    <string name="send_status_tap_waiting_wifi">Waiting for Wi‑Fi…</string>
+
     <!--
       Rate + ETA suffixes appended to the progress line during a
       send. The acceptance criterion calls for accessibility-friendly
@@ -419,7 +444,12 @@
          to share AND that the QR / link grants unconditional access
          to whoever holds it. Avoids em dashes in line with the rest
          of the app's copy. -->
-    <string name="show_qr_intro">Ask the recipient to scan the QR code or open the link. Anyone holding the QR code or link can receive the files.</string>
+    <!-- The trailing "or tap to share with an iPhone" is truthful only while
+         this panel is open: SendActivity.onShowQrClicked publishes the same
+         pairing URL to the NDEF HCE (NfcLinkHolder.currentUrl), so an iPhone
+         tapped to the back reads it and opens the link in Safari. Kept to one
+         line (no separate paragraph) so the panel never needs to scroll. -->
+    <string name="show_qr_intro">Ask the recipient to scan the QR code or open the link. Anyone holding the QR code or link can receive the files, or tap to share with an iPhone.</string>
     <string name="show_qr_image_description">QR code for the Quick Share pairing URL</string>
     <!-- Used by the standalone ShowQrActivity, which still has a
          single-button bottom row. The in-card QR panel inside
@@ -495,6 +525,16 @@
     <string name="consent_state_view_image">View image</string>
     <string name="consent_state_close">Close</string>
     <string name="consent_state_view_image_unavailable">No app can open this image.</string>
+
+    <!--
+      Waiting state (Phase 2). Shown when the receive bottom sheet is
+      opened from the Quick Settings tile with no transfer yet pending:
+      the device is now discoverable and waiting for a nearby sender to
+      start a transfer. When one arrives the same sheet swaps to the
+      consent prompt in place.
+    -->
+    <string name="consent_state_waiting_title">Ready to receive</string>
+    <string name="consent_state_waiting_body">Waiting for a nearby device to share…</string>
 
     <!--
       Integer percentage label rendered in the centre of the circular

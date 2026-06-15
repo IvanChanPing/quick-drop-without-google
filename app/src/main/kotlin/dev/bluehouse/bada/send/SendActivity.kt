@@ -48,8 +48,12 @@ import dev.bluehouse.bada.discovery.bootstrap.BleGattInitialControlClient
 import dev.bluehouse.bada.discovery.bootstrap.BleGattInitialControlServer
 import dev.bluehouse.bada.discovery.bootstrap.BleL2capInitialControlClient
 import dev.bluehouse.bada.discovery.bootstrap.BluetoothClassicBootstrapClient
+import dev.bluehouse.bada.diag.DiagnosticUploader
 import dev.bluehouse.bada.discovery.diagnostics.DiagnosticLog
 import dev.bluehouse.bada.discovery.medium.MediumRegistries
+import dev.bluehouse.bada.nfc.NfcLinkHolder
+import dev.bluehouse.bada.nfc.NfcTapDiagnosticsPreferences
+import dev.bluehouse.bada.nfc.BadaTapReader
 import dev.bluehouse.bada.protocol.connection.CancelCause
 import dev.bluehouse.bada.protocol.connection.FileSource
 import dev.bluehouse.bada.protocol.connection.OutboundConnection
@@ -66,11 +70,15 @@ import dev.bluehouse.bada.protocol.qr.QrKeyDerivation
 import dev.bluehouse.bada.protocol.qr.QrTlvMatcher
 import dev.bluehouse.bada.protocol.qr.QrUrl
 import dev.bluehouse.bada.service.receiver.AdvertisedDeviceNames
+import dev.bluehouse.bada.service.radio.RadioHelperClient
+import dev.bluehouse.bada.service.radio.ShareRadioController
 import dev.bluehouse.bada.service.receiver.OutboundSessionActiveHolder
 import dev.bluehouse.bada.transfer.KeepScreenOnPreferences
 import dev.bluehouse.bada.transfer.TransferExpertDetailsFormatter
 import dev.bluehouse.bada.transfer.TransferExpertViewPreferences
 import dev.bluehouse.bada.ui.BackdropBlurView
+import dev.bluehouse.bada.ui.sheet.DraggableSheetLayout
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.combine
@@ -131,6 +139,29 @@ public class SendActivity : AppCompatActivity() {
     private var senderGattServer: BleGattInitialControlServer? = null
 
     /**
+     * shareRadios — the shared [ShareRadioController] that forces the SENDER's
+     * Wi-Fi + Bluetooth ON for the whole send flow (discovery + transfer) and
+     * restores the user's original state when the Send screen finishes. The SAME
+     * controller backs the receiver / NFC / tile paths
+     * ([dev.bluehouse.bada.service.receiver.ReceiverForegroundService]). Held for the
+     * activity lifetime; primed in [requestRadiosForSend] (onCreate), released in
+     * [restoreRadiosAfterSend] (onDestroy). The helper owns capture/enable/restore;
+     * this app tracks nothing. NOT device-verified end-to-end.
+     */
+    private val shareRadios: ShareRadioController by lazy {
+        ShareRadioController(this, logTag = "BadaSendRadio")
+    }
+
+    /**
+     * Quick Share NFC tap-to-share reader (Phase 4, direction: us-as-sender).
+     * Enabled in reader-mode while the send sheet is up AND the iPhone-link
+     * QR panel is NOT showing (the NDEF HCE owns NFC then — mutually
+     * exclusive on one controller). On a tap we read the receiver's HCE
+     * tag and auto-connect to it as if its peer-icon had been tapped.
+     */
+    private var tapReader: BadaTapReader? = null
+
+    /**
      * Set to `true` while a connection attempt is being made AND there
      * is at least one further fallback route to try if it fails. The
      * StateFlow collector consults this flag in
@@ -159,6 +190,13 @@ public class SendActivity : AppCompatActivity() {
     private var qrSigningKey: PrivateKey? = null
     private var qrMatchConnectStarted: Boolean = false
 
+    // NFC tap-wake auto-connect state. A tap on an IDLE Quick Share receiver makes its
+    // HCE fire the wake (Quick Share opens) and returns no endpoint over NFC. Mirroring
+    // stock Quick Share, we then let the already-running discovery surface the now-waking
+    // receiver and auto-connect to it within [TAP_WAKE_WINDOW_MS]. Single-shot.
+    private var tapWakeWindowUntilMs: Long = 0L
+    private var tapWakeConnectStarted: Boolean = false
+
     /**
      * `SystemClock.elapsedRealtime()` of the first QR match seen with only
      * a BLE route (no Wi-Fi LAN yet), or 0 if none. Used by [chooseQrMatch]
@@ -182,8 +220,34 @@ public class SendActivity : AppCompatActivity() {
      */
     private var sentImagePreviewUri: Uri? = null
 
+    /**
+     * Guard so the sheet slide-up entrance ([startSendSheetEntrance]) runs exactly
+     * once, whether it is triggered by [onEnterAnimationComplete] (primary) or the
+     * wireBottomSheet fallback timer.
+     */
+    private var sendSheetEntranceStarted: Boolean = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Entrance = a VIEW-level slide-up of the sheet (DraggableSheetLayout
+        // .playEntrance), triggered from onEnterAnimationComplete() — i.e. AFTER the
+        // activity window's own OPEN transition finishes — so the slide is NOT masked
+        // by / racing with the window animation. That race is the timing bug that made
+        // the sheet "appear already settled" (fade only, no slide) on OnePlus. The
+        // window OPEN animation is a soft FADE only (Theme.Bada.SendSheet ->
+        // WindowAnimation.Bada.SendSheet.Fast `popup_fade_in_fast`, ~120ms, no
+        // vertical translate) — shortened from the old 200ms so onEnterAnimationComplete
+        // fires (and the slide STARTS) sooner, closer to the bridge "animate over the
+        // still-fading chooser" feel. The fade still completes BEFORE the slide starts, so
+        // the slide is not masked. The 0.2 dim fades in without competing with it. We do NOT
+        // override the window transition here (overrideActivityTransition was not
+        // honored on the OnePlus chooser launch path anyway) — the theme carries the
+        // fade, and the visible slide is the view animation.
+        DiagnosticLog.e(
+            OUTBOUND_TAG,
+            "SendActivity.onCreate: view-slide entrance (fires at onEnterAnimationComplete); " +
+                "sdk=${Build.VERSION.SDK_INT}",
+        )
         // Veto receiver-side mDNS publish for the duration of this
         // activity. When Bada concurrently publishes its receiver-side
         // mDNS record AND opens an outbound `OutboundConnection` to the
@@ -194,6 +258,10 @@ public class SendActivity : AppCompatActivity() {
         // peer writes server_init). Pausing the gate for the lifetime
         // of `SendActivity` clears that race window.
         OutboundSessionActiveHolder.setOutboundSessionActive(true)
+        // Force Wi-Fi + Bluetooth ON for the send (discovery needs BT, transfer
+        // needs Wi-Fi) via the universal radio-helper. Symmetric to the receiver
+        // wake. Restored in onDestroy (when finishing). Async — safe on main.
+        requestRadiosForSend()
         binding = ActivitySendBinding.inflate(layoutInflater)
         setContentView(binding.root)
         bugReportFlowSupport = BugReportFlowSupport.install(this)
@@ -216,10 +284,16 @@ public class SendActivity : AppCompatActivity() {
                 lifecycle = lifecycle,
                 scope = lifecycleScope,
                 onPeerSelected = ::onPeerSelected,
-                onPeersResolved = ::onQrPeersResolved,
+                onPeersResolved = ::onSendPeersResolved,
                 logDiagnostic = ::logOutboundDiagnostic,
                 senderEndpointId = senderEndpointId,
             )
+
+        // Quick Share NFC tap-to-share reader. Reader-mode is toggled in
+        // onResume/onPause + the QR open/close handlers so it is active
+        // only while the send sheet is up and the iPhone-link QR panel
+        // (which uses the NDEF HCE) is closed.
+        tapReader = BadaTapReader(this, ::onNfcPeerTapped, ::onNfcTapWake, ::onNfcTapDiagnostic)
 
         binding.sendCancelButton.setOnClickListener { onCancelClicked() }
         binding.sendDoneButton.setOnClickListener { finish() }
@@ -229,6 +303,7 @@ public class SendActivity : AppCompatActivity() {
         binding.sendNetworkHintDismiss.setOnClickListener { peerPickerController.onHintDismissed() }
         wireHelpLink()
         wireCancelButtonBlur()
+        wireBottomSheet()
 
         // Capture the first image attachment URI now so the success
         // terminal can render a preview without re-resolving the intent.
@@ -307,10 +382,210 @@ public class SendActivity : AppCompatActivity() {
         senderGattServer?.stop()
         senderGattServer = null
         connectionJob?.cancel()
+        // Release NFC reader-mode when the Send screen is gone.
+        tapReader?.disable()
+        tapReader = null
+        // Stop NFC link broadcast when the Send screen is gone.
+        NfcLinkHolder.currentUrl = null
         // Lift the gate veto so the receiver-side mDNS record can come
         // back up if any of the gate's existing publish signals
         // (BLE pulse, always-visible override, QR session) call for it.
         OutboundSessionActiveHolder.setOutboundSessionActive(false)
+        // Restore the radios the helper turned on — only when the Send screen is
+        // truly finishing (any terminal: sent / declined / cancelled / dismissed),
+        // NOT on a config-change recreate (would restore mid-transfer; the new
+        // instance re-prepares and the helper's prepare is re-entrant-safe).
+        restoreRadiosAfterSend()
+    }
+
+    /**
+     * Bind the universal `:radio-helper` and force Wi-Fi + Bluetooth ON for the
+     * send (discovery + transfer), via [RadioHelperClient] SESSION mode. The helper
+     * captures the user's original state and restores it on [restoreRadiosAfterSend].
+     * Main-thread + async (no ANR). Best-effort: if the helper isn't installed /
+     * wrong signing key / force-stopped, radios are left as-is (user's own fallback).
+     */
+    private fun requestRadiosForSend() {
+        shareRadios.requestRadiosOn(RadioHelperClient.RADIO_BOTH)
+    }
+
+    /**
+     * On a true terminal (`isFinishing`), tell the helper the send is over so it
+     * restores ONLY the radios it turned on; then always unbind. On a config-change
+     * recreate (`isFinishing` false) we skip the restore (the new instance re-binds
+     * and re-prepares; the helper session is persisted + re-entrant) but still
+     * unbind this dead instance's client to avoid a duplicate binding.
+     */
+    private fun restoreRadiosAfterSend() {
+        // finishSession only on a true terminal; a config-change recreate
+        // (isFinishing == false) just unbinds and leaves the persisted,
+        // re-entrant helper session for the new instance to re-prepare.
+        shareRadios.restoreRadios(finishSession = isFinishing)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Enable NFC reader-mode unless the QR panel (which hands NFC to
+        // the iPhone-link NDEF HCE) is currently showing.
+        if (!binding.sendQrScroll.isVisible) {
+            tapReader?.enable()
+        }
+    }
+
+    override fun onPause() {
+        super.onPause()
+        // Release the NFC controller while we are not the foreground sheet.
+        tapReader?.disable()
+        // Queue the full diagnostics ring for upload now that a tap attempt is over — this
+        // captures the case where the reader's onTag never fired (no tap read), which a
+        // tap-only upload would miss. The uploader holds it until internet is available.
+        DiagnosticUploader.upload(this, reason = "send-leave")
+    }
+
+    /**
+     * Reader-mode tap callback. Builds a discovered [NearbyPeer] from the
+     * tapped HCE's Wi-Fi-LAN endpoint + identity and routes it through the
+     * SAME [onPeerSelected] path a tapped peer-icon uses, so the tap
+     * auto-connects over Wi-Fi-LAN. Marshalled onto the UI thread because
+     * the reader callback runs on a binder thread.
+     */
+    private fun onNfcPeerTapped(tapped: BadaTapReader.TappedPeer) {
+        runOnUiThread {
+            if (isFinishing || isDestroyed) return@runOnUiThread
+            // A tap commits us to a peer; stop reader-mode so a second tag
+            // cannot race a connection that is already starting.
+            tapReader?.disable()
+            logOutboundDiagnostic(
+                "nfc tap: peer endpointId=${tapped.endpointId} " +
+                    "${tapped.address.hostAddress}:${tapped.port} name=${tapped.endpointInfo.deviceName}",
+            )
+            val peer =
+                NearbyPeer(
+                    stableId = "nfc:${tapped.endpointId}:${tapped.address.hostAddress}:${tapped.port}",
+                    endpointId = tapped.endpointId,
+                    endpointInfo = tapped.endpointInfo,
+                    lanEndpoint =
+                        NearbyPeer.LanEndpoint(
+                            instanceNames = emptySet(),
+                            addresses = listOf(tapped.address),
+                            port = tapped.port,
+                        ),
+                )
+            onPeerSelected(peer)
+        }
+    }
+
+    /**
+     * Per-tap outcome from [BadaTapReader] (resolved / woke / failed + raw bytes).
+     * Surfaced as an on-screen Toast AND a diagnostic line so the NFC tap is debuggable
+     * WITHOUT internet/adb (the collector is internet-dependent and unreliable mid-share).
+     * Runs on a binder thread -> marshalled to the UI thread.
+     */
+    private fun onNfcTapDiagnostic(summary: String) {
+        runOnUiThread {
+            if (isFinishing || isDestroyed) return@runOnUiThread
+            logOutboundDiagnostic(summary)
+            nfcTapToast(summary)
+        }
+    }
+
+    /** Long Toast for the NFC-tap debug flow — shown on the send sheet so each tap's
+     * outcome is visible (and screenshot-able) with no internet. */
+    /** Gated by the "Show NFC tap diagnostics" setting (default on). The full DiagnosticLog
+     * trace is always recorded; this only suppresses the on-screen Toasts. */
+    private fun nfcTapToast(message: String) {
+        if (!nfcTapDiagnosticsPreferences.isEnabled()) return
+        Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+    }
+
+    private val nfcTapDiagnosticsPreferences by lazy { NfcTapDiagnosticsPreferences.from(this) }
+
+    /**
+     * Combined discovery-resolved callback wired into [SendPeerPickerController]. Feeds
+     * BOTH the QR-link auto-connect ([onQrPeersResolved]) and the NFC tap-wake
+     * auto-connect ([onNfcTapWakePeersResolved]) off the single discovery stream.
+     */
+    private fun onSendPeersResolved(resolved: List<NearbyPeer>) {
+        onQrPeersResolved(resolved)
+        onNfcTapWakePeersResolved(resolved)
+    }
+
+    /**
+     * NFC tap-wake callback (from [BadaTapReader.onTapWake]). A tap on an IDLE Quick
+     * Share receiver makes its HCE fire the wake — Quick Share opens on the receiver but
+     * returns no endpoint over NFC (`0000`). Exactly as stock Quick Share does, we do NOT
+     * re-poll the NFC; we open a short window during which the already-running discovery's
+     * first matching Quick Share receiver is auto-connected (see [onNfcTapWakePeersResolved]).
+     * A delayed check logs+Toasts at the window end if NOTHING connected (no silent failure).
+     * Marshalled onto the UI thread because the reader callback runs on a binder thread.
+     */
+    private fun onNfcTapWake() {
+        runOnUiThread {
+            if (isFinishing || isDestroyed) return@runOnUiThread
+            val thisWindow = SystemClock.elapsedRealtime() + TAP_WAKE_WINDOW_MS
+            tapWakeWindowUntilMs = thisWindow
+            tapWakeConnectStarted = false
+            val now = peerPickerController.resolvedPeers()
+            logOutboundDiagnostic(
+                "nfc tap-wake: receiver woken; watching discovery ${TAP_WAKE_WINDOW_MS}ms " +
+                    "(${now.size} peer(s) already: ${now.joinToString { it.displayName() }})",
+            )
+            nfcTapToast("NFC tap WOKE receiver — finding it (${now.size} peers now)")
+            // A matching receiver may already be discovered (no new event would fire) -> re-check now.
+            onNfcTapWakePeersResolved(now)
+            // No-silent-failure: if nothing connects within the window, say so on screen.
+            binding.root.postDelayed({
+                if (!tapWakeConnectStarted && tapWakeWindowUntilMs == thisWindow && !isFinishing) {
+                    val peers = peerPickerController.resolvedPeers()
+                    val msg =
+                        "NFC tap-wake: NO Quick Share receiver found in ${TAP_WAKE_WINDOW_MS / 1000}s " +
+                            "(saw ${peers.size}: ${peers.joinToString { "${it.displayName()}" +
+                                "[hidden=${it.endpointInfo?.hidden},lan=${it.lanEndpoint != null}]" }})"
+                    logOutboundDiagnostic(msg)
+                    nfcTapToast(msg)
+                }
+            }, TAP_WAKE_WINDOW_MS)
+        }
+    }
+
+    /**
+     * While a tap-wake window is open, auto-connect to the first discovered Quick Share
+     * receiver via the SAME [onPeerSelected] path the picker/QR use — Wi-Fi-LAN preferred.
+     * Single-shot + time-bounded. Logs EVERY evaluation (peer list + decision) so a failure
+     * to find/connect the woken receiver is never silent.
+     */
+    private fun onNfcTapWakePeersResolved(resolved: List<NearbyPeer>) {
+        if (tapWakeConnectStarted || SystemClock.elapsedRealtime() > tapWakeWindowUntilMs) return
+        logOutboundDiagnostic(
+            "nfc tap-wake eval: ${resolved.size} peer(s): " +
+                resolved.joinToString {
+                    "${it.displayName()}[hidden=${it.endpointInfo?.hidden}," +
+                        "name=${it.endpointInfo?.deviceName},lan=${it.lanEndpoint != null}," +
+                        "connectable=${it.isConnectable}]"
+                },
+        )
+        val candidate =
+            resolved.firstOrNull { it.lanEndpoint != null && isLikelyQuickShareReceiver(it) }
+                ?: resolved.firstOrNull { isLikelyQuickShareReceiver(it) }
+                ?: return // no QS-like peer yet; keep watching (window-end check will report if none)
+        tapWakeConnectStarted = true
+        // A tap commits us to a peer; stop reader-mode so a second tag cannot race the
+        // connection that is now starting (mirrors onNfcPeerTapped).
+        tapReader?.disable()
+        val route = if (candidate.lanEndpoint != null) "wifi-lan" else "ble"
+        logOutboundDiagnostic("nfc tap-wake: auto-connecting to ${candidate.stableId} route=$route")
+        nfcTapToast("NFC tap-wake: connecting to ${candidate.displayName()} over $route")
+        onPeerSelected(candidate)
+    }
+
+    /**
+     * Heuristic for "this discovered peer is the Quick Share receiver we just woke":
+     * stock Quick Share receivers advertise as hidden with no device name (rendered as
+     * "Quick Share device (XXXX)"). Used only to choose the tap-wake auto-connect target.
+     */
+    private fun isLikelyQuickShareReceiver(peer: NearbyPeer): Boolean {
+        val info = peer.endpointInfo ?: return false
+        return info.hidden || info.deviceName.isNullOrBlank()
     }
 
     override fun onResume() {
@@ -489,6 +764,8 @@ public class SendActivity : AppCompatActivity() {
      * connection status panel can take over when a QR match auto-connects.
      */
     private fun dismissQrPanelForConnect() {
+        // A QR match auto-connected; the link no longer needs broadcasting.
+        NfcLinkHolder.currentUrl = null
         binding.sendQrPanel.animate().cancel()
         binding.sendQrScroll.visibility = View.GONE
         binding.sendPickerContent.alpha = 1f
@@ -585,6 +862,15 @@ public class SendActivity : AppCompatActivity() {
                     )
                     return@launch
                 }
+                // NFC-tapped peers are Wi-Fi-LAN-ONLY with no BLE/BT fallback,
+                // and the tap can fire before the radio-helper-forced Wi-Fi has
+                // associated — so they get a Wi-Fi-readiness grace window
+                // instead of the one-shot-then-fallback loop. See
+                // [runTapConnectWithGrace].
+                if (isNfcTapPeer(peer)) {
+                    runTapConnectWithGrace(peer, plan, routes)
+                    return@launch
+                }
                 for ((index, route) in routes.withIndex()) {
                     val primaryRoute = (plan.action as? SendBootstrapPlan.Action.Direct)?.route
                     val attemptPlan =
@@ -641,6 +927,113 @@ public class SendActivity : AppCompatActivity() {
     }
 
     /**
+     * `isNfcTapPeer` — true when [peer] was injected by an NFC tap (the
+     * `"nfc:"` `stableId` prefix set in [onNfcPeerTapped]) rather than
+     * surfaced by mDNS/BLE discovery or a QR match. Used to route tap peers
+     * through [runTapConnectWithGrace] (Wi-Fi-readiness grace) instead of the
+     * normal one-shot-then-transport-fallback loop, because a tapped peer is
+     * Wi-Fi-LAN-only and has no fallback route to cushion an early dial.
+     */
+    private fun isNfcTapPeer(peer: NearbyPeer): Boolean = peer.stableId.startsWith("nfc:")
+
+    /**
+     * WHAT THIS IS
+     * ------------
+     * `runTapConnectWithGrace` — the connect driver for an **NFC-tapped peer**,
+     * with a Wi-Fi-readiness grace window. Reached only from the
+     * [proceedWithPeer] connect coroutine when [isNfcTapPeer] is true.
+     *
+     * WHY IT EXISTS
+     * -------------
+     * A tapped peer is **Wi-Fi-LAN-only**: the receiver's HCE tag carries an
+     * IP:port and an all-zero BT-MAC sentinel (see
+     * [dev.bluehouse.bada.nfc.BadaTapHceService]), so [onNfcPeerTapped] builds
+     * a [NearbyPeer] with a single `lanEndpoint` and no BLE/BT route. The tap
+     * can also land within ~100 ms of the Send screen opening — BEFORE the
+     * radio-helper-forced Wi-Fi has finished associating and obtaining a DHCP
+     * lease ([requestRadiosForSend] runs async in onCreate). A one-shot LAN
+     * dial then fails with `"Initial connect failed: …"`, and because a tap
+     * peer has **no fallback route**, the normal loop would drop straight to a
+     * hard "Transfer failed" terminal.
+     *
+     * WHAT IT DOES
+     * ------------
+     * Retries the LAN dial across [NFC_TAP_LAN_GRACE_MS] while the failure is a
+     * *retryable* pre-secure connect error ([SendBootstrapRetryPolicy]) — i.e.
+     * the "Wi-Fi still settling" case — pausing [NFC_TAP_LAN_RETRY_DELAY_MS]
+     * between attempts. [pendingFallback] is held `true` for the duration so the
+     * StateFlow collector ([renderConnectionState]) does NOT paint the terminal
+     * between attempts; this function renders the failure terminal itself when
+     * the window expires or the failure is non-retryable (peer rejection,
+     * UKEY2, payload I/O — those must surface, not be retried). Completed /
+     * Rejected / Cancelled are rendered by the collector as usual. The
+     * on-screen status shows [R.string.send_status_tap_waiting_wifi]
+     * ("Waiting for Wi-Fi…") on the retry passes.
+     *
+     * THREADING / LIFECYCLE
+     * ---------------------
+     * Runs inside [proceedWithPeer]'s `connectionJob` (lifecycle coroutine on
+     * the main dispatcher); `attemptOutbound` suspends and [delay] is
+     * non-blocking, so no ANR. Cancel during the grace works: `onCancelClicked`
+     * cancels the still-active `connectionJob` (between attempts `activeConnection`
+     * is null), which cancels the [delay] and renders the cancelled terminal.
+     *
+     * STATUS: compile-only / device-UNVERIFIED — no NFC hardware in the build
+     * env. The retry/terminal logic is exercised by build + the existing
+     * connection-state collector; the live tap-with-Wi-Fi-off is the on-device
+     * gap.
+     */
+    private suspend fun runTapConnectWithGrace(
+        peer: NearbyPeer,
+        plan: SendBootstrapPlan,
+        routes: List<NearbyPeerRoute>,
+    ) {
+        val route = routes.first()
+        val deadline = SystemClock.elapsedRealtime() + NFC_TAP_LAN_GRACE_MS
+        var attempt = 0
+        while (true) {
+            val attemptPlan =
+                if (attempt == 0 && (plan.action as? SendBootstrapPlan.Action.Direct)?.route == route) {
+                    plan
+                } else {
+                    SendBootstrapPlan.forRoute(peer, route)
+                }
+            if (attempt > 0) {
+                // Re-paint so the user sees "Waiting for Wi-Fi…" rather than a
+                // frozen "Connecting…" across the silent retry passes.
+                binding.sendStatusPhase.setText(R.string.send_phase_connecting)
+                binding.sendStatusMessage.text = getString(R.string.send_status_tap_waiting_wifi)
+            }
+            // Suppress the collector's terminal render between attempts; this
+            // function owns the terminal decision after the grace window.
+            pendingFallback = true
+            val outcome = attemptOutbound(peer, attemptPlan)
+            pendingFallback = false
+            if (outcome !is OutboundResult.Failed) {
+                // Completed / Rejected / Cancelled already rendered by the collector.
+                return
+            }
+            val retryable = SendBootstrapRetryPolicy.isRetryableBootstrapFailure(outcome.reason)
+            val msLeft = deadline - SystemClock.elapsedRealtime()
+            if (retryable && msLeft > NFC_TAP_LAN_RETRY_DELAY_MS) {
+                logOutboundDiagnostic(
+                    "nfc tap: LAN dial failed (${outcome.reason}); Wi-Fi may be settling, " +
+                        "retry #${attempt + 1} in ${NFC_TAP_LAN_RETRY_DELAY_MS}ms (${msLeft}ms grace left)",
+                )
+                delay(NFC_TAP_LAN_RETRY_DELAY_MS)
+                attempt++
+                continue
+            }
+            logOutboundDiagnostic(
+                "nfc tap: LAN dial failed (${outcome.reason}); " +
+                    if (retryable) "grace window exhausted" else "non-retryable",
+            )
+            renderTerminal(
+                getString(R.string.send_phase_failed),
+                getString(R.string.send_status_failure_reason, outcome.reason),
+            )
+            return
+        }
      * Run one route's connect attempt and, for a LAN route, fold in the
      * re-resolve retry (#203). Keeps [proceedWithPeer]'s fallback loop
      * focused on route ordering: a non-failing attempt is returned as-is,
@@ -1080,6 +1473,109 @@ public class SendActivity : AppCompatActivity() {
         )
     }
 
+    /**
+     * Wire the OShare-style bottom-sheet presentation (Phase 1):
+     *
+     *  - tapping the empty scrim area outside the card dismisses the
+     *    activity (slide-down via the window exit animation),
+     *  - a sufficient drag-down on the card dismisses it,
+     *  - the card slides up and its top edge stretches/snaps back on
+     *    entrance (see [DraggableSheetLayout.playEntrance]),
+     *  - the discovered-device icons are held hidden until that entrance
+     *    finishes, then faded in (see [revealPeerIcons]), so a quickly-found
+     *    device does not pop in mid-animation,
+     *  - the card's bottom padding tracks the navigation-bar inset.
+     *
+     * None of the discovery / OutboundConnection / QR logic is touched —
+     * this only governs how the existing card content is presented.
+     */
+    private fun wireBottomSheet() {
+        binding.sendSheetScrim.setOnClickListener { finish() }
+        binding.sendSheet.setOnDismiss { finish() }
+        DraggableSheetLayout.applyBottomInset(
+            binding.sendSheetRoot,
+            binding.sendSheet,
+            resources.getDimensionPixelSize(R.dimen.send_sheet_base_bottom_padding),
+        )
+        // Bounce only the card BACKGROUND. The content wrapper (pill + the 480dp state
+        // frame) is counter-scaled about its TOP so the elements keep their size and the
+        // device pill rides UP glued to the stretching top edge (send_device_pill is a
+        // CHILD of send_sheet_content, so this wrapper covers it).
+        binding.sendSheet.setBounceContent(binding.sendSheetContent)
+        // ...but keep the BOTTOM action row planted during the bounce: the "Can't find
+        // the device?" help link and the Cancel/Done row ride with the slide-up, not the
+        // bounce, so the stretch opens in the gap above them rather than carrying the
+        // buttons up.
+        binding.sendSheet.setBounceBottomAnchors(binding.sendHelpLink, binding.sendActionRow)
+        // Pre-hide the sheet fully below the screen NOW (before the window is shown) so
+        // there is no flash of it at rest. The actual slide-up is kicked LATER from
+        // onEnterAnimationComplete() (see [startSendSheetEntrance]) — AFTER the window's
+        // own open transition — so it isn't masked by the window animation.
+        binding.sendSheet.prepareOffscreen()
+        // Hold the device-icon row hidden during the entrance so a fast-found
+        // device does not appear mid-slide. Discovery keeps running; only the
+        // icons' APPEARANCE is delayed (alpha gate, revealed on completion).
+        binding.sendPeerList.alpha = 0f
+        // Fallback: if onEnterAnimationComplete() never fires (some OEM launch paths),
+        // still kick the entrance after a short delay so the pre-hidden sheet can't get
+        // stuck off-screen. Idempotent with onEnterAnimationComplete via the guard.
+        binding.sendSheet.postDelayed(
+            { startSendSheetEntrance("fallback-timer") },
+            ENTRANCE_TRIGGER_FALLBACK_MS,
+        )
+        // Safety net: reveal the icons even if the entrance never runs / is cut short.
+        // The entrance only STARTS at onEnterAnimationComplete (or the fallback timer),
+        // so allow for that trigger delay PLUS the entrance length.
+        binding.root.postDelayed(
+            { revealPeerIcons() },
+            ENTRANCE_TRIGGER_FALLBACK_MS + DraggableSheetLayout.ENTRANCE_TOTAL_MS +
+                PEER_ICON_REVEAL_FALLBACK_BUFFER_MS,
+        )
+    }
+
+    /**
+     * Trigger the sheet's slide-up entrance. The framework calls this when the
+     * activity's window OPEN transition has finished — the documented "safe to draw"
+     * point — so the VIEW slide runs in the already-visible window instead of being
+     * masked by the window's own open animation (the OnePlus "appears already settled,
+     * fade only" bug). Defers to [startSendSheetEntrance], which guards against running
+     * twice (it is also reachable from the wireBottomSheet fallback timer).
+     */
+    override fun onEnterAnimationComplete() {
+        super.onEnterAnimationComplete()
+        startSendSheetEntrance("onEnterAnimationComplete")
+    }
+
+    /**
+     * Run the sheet entrance exactly ONCE: [DraggableSheetLayout.playEntrance] slides
+     * the pre-hidden sheet up from below the screen, then plays the top-edge bounce,
+     * then reveals the peer icons. Reached from BOTH [onEnterAnimationComplete]
+     * (primary, after the window is shown) and the wireBottomSheet fallback timer (in
+     * case onEnterAnimationComplete never fires on some OEM launch path); the
+     * [sendSheetEntranceStarted] guard makes whichever fires first win. A single
+     * [android.view.View.post] defers one more frame so the window has actually
+     * painted before the slide starts.
+     */
+    private fun startSendSheetEntrance(via: String) {
+        if (sendSheetEntranceStarted) return
+        sendSheetEntranceStarted = true
+        DiagnosticLog.e(OUTBOUND_TAG, "SendActivity: start sheet entrance via=$via")
+        binding.sendSheet.post { binding.sendSheet.playEntrance { revealPeerIcons() } }
+    }
+
+    /**
+     * Fade the discovered-device icon row ([R.id.send_peer_list]) in once, after
+     * the sheet's entrance animation. The alpha gate set in [wireBottomSheet]
+     * holds the icons hidden during the slide + top-stretch so a fast-found
+     * device does not appear mid-animation; this reveals them. Idempotent — both
+     * the entrance-completion callback and the safety-net timer call it.
+     */
+    private fun revealPeerIcons() {
+        val list = binding.sendPeerList
+        if (list.alpha >= 1f) return
+        list.animate().alpha(1f).setDuration(PEER_ICON_REVEAL_MS).start()
+    }
+
     private fun showHelpSheet() {
         val sheet = BottomSheetDialog(this)
         sheet.setContentView(R.layout.bottom_sheet_send_help)
@@ -1474,6 +1970,11 @@ public class SendActivity : AppCompatActivity() {
     private fun onShowQrClicked() {
         if (binding.sendQrScroll.isVisible) return
 
+        // The QR panel hands the NFC controller to the iPhone-link NDEF
+        // HCE (NfcLinkHolder.currentUrl below), so leave reader-mode now —
+        // reader-mode and HCE are mutually exclusive on one radio.
+        tapReader?.disable()
+
         val generated = QrKeyData.generate()
         // Persist the keypair for this QR session: the discovery callback
         // matches resolved peers against the derived keys and the matched
@@ -1484,6 +1985,10 @@ public class SendActivity : AppCompatActivity() {
         qrFirstBleOnlyMatchAtMs = 0L
         val url = QrUrl.build(generated.qrKeyData)
         binding.sendQrUrl.text = url
+        // Publish the pairing link for the NFC HCE service so an iPhone
+        // tapped to the back of this phone reads this same URL and opens
+        // it in Safari (Phase 4). Cleared when the QR session ends.
+        NfcLinkHolder.currentUrl = url
 
         // Render the bitmap at a high pixel resolution
         // (`QR_SCREEN_FRACTION × min(screenW, screenH)`) so the
@@ -1562,6 +2067,11 @@ public class SendActivity : AppCompatActivity() {
         // so the discovery callback stops auto-matching resolved peers.
         qrDerivedKeys = null
         qrSession = null
+        // Stop broadcasting the link over NFC now that the QR panel is gone.
+        NfcLinkHolder.currentUrl = null
+        // The NDEF HCE is no longer needed; resume tap-to-share reader-mode
+        // so the picker can be NFC-tapped again.
+        tapReader?.enable()
         val panel = binding.sendQrPanel
         panel
             .animate()
@@ -1755,6 +2265,23 @@ public class SendActivity : AppCompatActivity() {
         private const val OUTBOUND_TAG: String = "BadaOutbound"
         private const val PERCENT_SCALE = 100
 
+        /** Fallback delay (from wireBottomSheet) to kick the sheet entrance if
+         *  [onEnterAnimationComplete] never fires on some OEM launch path, so the
+         *  pre-hidden sheet can't get stuck off-screen. Long enough that
+         *  onEnterAnimationComplete (after the now ~120ms fast window fade —
+         *  WindowAnimation.Bada.SendSheet.Fast) normally wins, but shorter than
+         *  the old 450ms so a missed callback recovers sooner too. */
+        private const val ENTRANCE_TRIGGER_FALLBACK_MS: Long = 260L
+
+        /** Fade-in duration for the device-icon row once the sheet entrance
+         *  animation finishes ([revealPeerIcons]). */
+        private const val PEER_ICON_REVEAL_MS: Long = 180L
+
+        /** Extra margin past [DraggableSheetLayout.ENTRANCE_TOTAL_MS] for the
+         *  safety-net reveal, so the icons are shown even if the entrance
+         *  animation callback is skipped (e.g. entrance cut short). */
+        private const val PEER_ICON_REVEAL_FALLBACK_BUFFER_MS: Long = 150L
+
         /**
          * How long to wait for a QR-matched peer's Wi-Fi LAN route to
          * surface before falling back to a BLE connection (#28). Stock
@@ -1762,6 +2289,27 @@ public class SendActivity : AppCompatActivity() {
          * the same endpoint to Wi-Fi LAN a beat later.
          */
         private const val QR_LAN_WAIT_GRACE_MS: Long = 5000L
+
+        /**
+         * Total Wi-Fi-readiness grace window for an NFC-tapped peer's LAN dial
+         * ([runTapConnectWithGrace]). A tap can fire before the radio-helper-
+         * forced Wi-Fi has associated + got a DHCP lease; we keep retrying the
+         * (fallback-less) LAN connect for this long before failing. 12 s covers
+         * a Wi-Fi-from-off bring-up with margin without leaving the user staring
+         * at "Waiting for Wi-Fi…" indefinitely.
+         */
+        private const val NFC_TAP_LAN_GRACE_MS: Long = 12_000L
+
+        /** Pause between LAN dial retries inside the [NFC_TAP_LAN_GRACE_MS] window. */
+        private const val NFC_TAP_LAN_RETRY_DELAY_MS: Long = 700L
+
+        /**
+         * How long after an NFC tap WOKE an idle Quick Share receiver we keep watching
+         * discovery to auto-connect to it ([onNfcTapWakePeersResolved]). Covers the
+         * receiver's cold app launch + becoming discoverable. Single-shot; closes as soon
+         * as we start a connect.
+         */
+        private const val TAP_WAKE_WINDOW_MS: Long = 15_000L
 
         // In-card QR panel animation tunables. Entry uses an
         // overshoot easing so the panel briefly scales past 1.0 before

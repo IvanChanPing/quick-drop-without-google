@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  No-op window animation. Used for Theme.Bada.SendSheet's activity OPEN
+  enter so the activity window does NOT slide/scale on open: the slide-up "from
+  the bottom of the screen" is done instead by the inner DraggableSheetLayout's
+  own view-level entrance (playEntrance), which is the single, controllable, and
+  (unlike a window transition) screen-capture-verifiable slide. The soft 0.2 dim
+  scrim simply appears; the sheet view slides up over it.
+-->
+<alpha xmlns:android="http://schemas.android.com/apk/res/android"
+    android:duration="0"
+    android:fromAlpha="1.0"
+    android:toAlpha="1.0" />

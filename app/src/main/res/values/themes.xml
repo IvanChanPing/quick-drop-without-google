@@ -257,6 +257,118 @@
     </style>
 
     <!--
+      Translucent bottom-sheet theme for SendActivity (Phase 1 OShare
+      port). The activity window is made transparent and non-fullscreen
+      so its layout — a transparent FrameLayout scrim hosting a
+      bottom-anchored DraggableSheetLayout card — can float over the
+      app/launcher behind it like the OShare send sheet:
+
+        * windowIsTranslucent / transparent windowBackground /
+          windowContentOverlay=null — the window has no opaque surface;
+          only the sheet card and a light dim layer paint.
+        * windowNoTitle — no action-bar title strip above the sheet.
+        * backgroundDimEnabled + backgroundDimAmount=0.2 — a soft
+          (not heavy) scrim behind the sheet, matching the OShare
+          "light scrim, not fully dark" look.
+        * windowAnimationStyle — slide-up enter / slide-down exit
+          (see WindowAnimation.Bada.SendSheet) so the window rises
+          from the bottom edge in step with the sheet's own overshoot
+          entrance.
+
+      Inherits Theme.Bada so the brand font, button styling and color
+      tokens stay identical to the rest of the app.
+    -->
+    <style name="Theme.Bada.SendSheet" parent="Theme.Bada">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="windowNoTitle">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:backgroundDimAmount">0.2</item>
+        <!-- FAST open fade (~120ms) so the view slide-up starts sooner; see
+             WindowAnimation.Bada.SendSheet.Fast. Consent sheet stays on the 200ms one. -->
+        <item name="android:windowAnimationStyle">@style/WindowAnimation.Bada.SendSheet.Fast</item>
+    </style>
+
+    <!--
+      Window enter/exit animation pair for Theme.Bada.SendSheet.
+      OPEN = a soft FADE only (popup_fade_in: alpha 0->1 + a tiny scale, 200ms) —
+      deliberately NOT a vertical slide. The slide-up is done as a VIEW-level
+      animation INSIDE the window by DraggableSheetLayout.playEntrance, which
+      SendActivity triggers from onEnterAnimationComplete() — i.e. AFTER this window
+      fade has finished — so the view slide is no longer masked by / racing with the
+      window's own open transition. That race is the timing bug that made the sheet
+      "appear already settled" (fade only, no slide) on OnePlus. A fade here (no
+      translate) lets the 0.2 dim scrim appear smoothly WITHOUT competing with the
+      view slide. CLOSE keeps slide_down_out. (Style is also reused by
+      Theme.Bada.ReceiveSheet.)
+    -->
+    <style name="WindowAnimation.Bada.SendSheet" parent="@android:style/Animation.Activity">
+        <item name="android:activityOpenEnterAnimation">@anim/popup_fade_in</item>
+        <item name="android:activityCloseExitAnimation">@anim/slide_down_out</item>
+        <item name="android:taskOpenEnterAnimation">@anim/popup_fade_in</item>
+        <item name="android:taskCloseExitAnimation">@anim/slide_down_out</item>
+    </style>
+
+    <!--
+      FAST window enter/exit pair — used ONLY by Theme.Bada.SendSheet (the
+      send picker). Identical to WindowAnimation.Bada.SendSheet except the
+      OPEN enter uses the ~120ms popup_fade_in_fast instead of the 200ms
+      popup_fade_in, so onEnterAnimationComplete() fires sooner and the
+      DraggableSheetLayout view slide-up STARTS sooner — the "bridge starts the
+      animation sooner / over the still-fading chooser" feel. CLOSE is unchanged
+      (slide_down_out). The consent sheet (Theme.Bada.ReceiveSheet) keeps the
+      original 200ms WindowAnimation.Bada.SendSheet above, so only the send
+      sheet's entrance speeds up.
+    -->
+    <style name="WindowAnimation.Bada.SendSheet.Fast" parent="@android:style/Animation.Activity">
+        <item name="android:activityOpenEnterAnimation">@anim/popup_fade_in_fast</item>
+        <item name="android:activityCloseExitAnimation">@anim/slide_down_out</item>
+        <item name="android:taskOpenEnterAnimation">@anim/popup_fade_in_fast</item>
+        <item name="android:taskCloseExitAnimation">@anim/slide_down_out</item>
+    </style>
+
+    <!--
+      Translucent bottom-sheet theme for ConsentTrampolineActivity
+      (Phase 2 OShare receive port). Mirrors Theme.Bada.SendSheet:
+      the activity window is made transparent and non-fullscreen so its
+      layout — a transparent FrameLayout scrim hosting a bottom-anchored
+      DraggableSheetLayout card — floats over whatever is behind it like
+      the OShare receive sheet:
+
+        * windowIsTranslucent / transparent windowBackground /
+          windowContentOverlay=null — the window has no opaque surface;
+          only the sheet card and a light dim layer paint. This replaces
+          the old centered Theme.Bada.ConsentDialog (windowIsFloating
+          dialog) so the consent surface reads as a bottom sheet.
+        * windowNoTitle — no action-bar title strip above the sheet.
+        * backgroundDimEnabled + backgroundDimAmount=0.2 — a soft scrim
+          behind the sheet, matching the OShare "light scrim" look and
+          the sender sheet's dim.
+        * windowAnimationStyle — slide-up enter / slide-down exit
+          (reuses WindowAnimation.Bada.SendSheet) so the window
+          rises from the bottom edge in step with the sheet's own
+          overshoot entrance.
+
+      Inherits Theme.Bada so the brand font, button styling and color
+      tokens (including the Widget.Bada.Button frosted style the consent
+      / completed panels rely on) stay identical to the rest of the app
+      — no need to re-declare them here as the old Dialog theme did,
+      because Theme.Bada already carries them.
+    -->
+    <style name="Theme.Bada.ReceiveSheet" parent="Theme.Bada">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="windowNoTitle">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:backgroundDimAmount">0.2</item>
+        <item name="android:windowAnimationStyle">@style/WindowAnimation.Bada.SendSheet</item>
+    </style>
+
+    <!--
       Toolbar title text style — larger and bolder than the platform
       default to match the vivo / OriginOS native header pattern (the
       "연락처" title on a vivo Contacts screen sits at ~26sp bold,
