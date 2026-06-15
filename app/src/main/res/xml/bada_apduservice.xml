@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  HCE descriptor for the Bada NFC link broadcast.
+
+  Declares the NFC Forum NDEF Type-4 Tag Application AID D2760000850101
+  that a tapping iPhone SELECTs to read our NDEF URI record. The served URI
+  is the current Bada pairing link (the QR URL), so an iPhone tapped
+  to the back of this phone opens that link in Safari.
+
+  category="other"   -> no default-payment role required.
+  requireDeviceUnlock="false" -> a tap is answered from the lock screen too,
+  matching the iOS background NDEF read. (The iPhone, not this phone, must
+  be unlocked for iOS to act on the URI.)
+-->
+<host-apdu-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/nfc_hce_service_description"
+    android:requireDeviceUnlock="false">
+    <aid-group android:description="@string/nfc_hce_service_description"
+        android:category="other">
+        <aid-filter android:name="D2760000850101" />
+    </aid-group>
+</host-apdu-service>
