@@ -11,45 +11,34 @@ import android.util.Log
 import java.nio.charset.StandardCharsets
 
 /**
- * Host Card Emulation service that exposes the current Bada pairing
- * link (the QR URL) as an NFC Forum **Type-4 Tag** carrying a single NDEF
- * **URI** record. When an iPhone (XS+/iOS 13+, screen-on/unlocked) is
- * tapped to the back of this phone, iOS CoreNFC background-reads the NDEF
- * URI and offers to open it — and because the URI is an ordinary
- * `https://quickshare.google/qrcode#…` web link (not an App Store /
- * universal link), iOS opens it **in Safari**, not the App Store.
+ * Host Card Emulation service that exposes the current Bada pairing link
+ * (the QR URL) as an NFC Forum **Type-4 Tag** carrying a single NDEF **URI**
+ * record. When a phone is tapped to the back of this device, it
+ * background-reads the NDEF URI and offers to open it — so a phone that does
+ * not run the app can open the pairing link by tapping, without scanning the
+ * QR code.
  *
- * Ported from `oshare-nfc-tap`'s `NdefAppStoreApduService`, which emulated
- * the OnePlus Share iOS tap with a *static* App-Store universal link. The
- * Type-4 state machine (SELECT AID / SELECT CC / READ CC / SELECT NDEF /
- * READ BINARY) is identical; the only change is that the served URI is
- * **dynamic** — read from [NfcLinkHolder.currentUrl] at the moment the
- * reader SELECTs the NDEF application, so each tap broadcasts whatever
- * pairing link the Send screen is currently showing. When the holder is
- * `null` (no QR session active) we serve an empty NDEF message (NLEN = 0)
- * so a stray tap does nothing rather than opening a stale link.
+ * The served URI is read from [NfcLinkHolder.currentUrl] at the moment the
+ * reader SELECTs the NDEF application, so each tap serves whatever pairing
+ * link the Send/QR screen is currently showing. When the holder is `null`
+ * (no QR on screen) an empty NDEF message (NLEN = 0) is served, so a stray
+ * tap does nothing rather than opening a stale link.
  *
  * Implemented with only public `android.nfc.cardemulation` APIs + the
  * auto-granted `BIND_NFC_SERVICE` permission — no OEM privilege.
  *
  * ## Type-4 Tag protocol (NFC Forum T4T Operation + ISO 7816-4)
- * A Type-4 reader (the iPhone) runs, and we answer, this sequence:
+ * The reader runs, and this service answers, the standard T4T sequence:
  *
- *  1. SELECT by name, NDEF Tag App AID `D2760000850101` -> `90 00`.
- *     We snapshot [NfcLinkHolder.currentUrl] here and build the NDEF +
- *     CC files for this read session.
+ *  1. SELECT by name, NDEF Tag App AID `D2760000850101` -> `90 00`
+ *     (the URL is snapshotted here and the NDEF + CC files built for this
+ *     read session).
  *  2. SELECT (by file id) the Capability Container `E103` -> `90 00`.
  *  3. READ_BINARY the CC -> 15-byte CC describing the NDEF file
  *     (id `E104`, max read, max NDEF len) + `90 00`.
  *  4. SELECT the NDEF file `E104` -> `90 00`.
  *  5. READ_BINARY offset 0, len 2 -> the 2-byte NLEN.
  *  6. READ_BINARY offset 2.. -> the NDEF message bytes.
- *
- * VERIFIED-vs-ASSUMED: the NDEF byte layout is built per the public NFC
- * Forum Type-4 Tag + NDEF URI RTD specs, and the AID is the NFC Forum NDEF
- * Tag Application AID. Whether a real iPhone tapping a real device performs
- * exactly this T4T read sequence and follows the URI into Safari is NOT
- * proven here (needs an actual iPhone + NFC hardware to confirm).
  */
 public class BadaNdefApduService : HostApduService() {
     /** Which file the reader currently has selected. */
@@ -242,9 +231,7 @@ public class BadaNdefApduService : HostApduService() {
          * Payload[0] = URI identifier code (prefix), Payload[1..] = URI body
          * ```
          * We pick the longest matching NFC Forum URI prefix to shorten the
-         * body; `https://` maps to identifier code 0x04. The Bada
-         * pairing link is a normal `https://quickshare.google/qrcode#…`
-         * web URL, so iOS opens it in Safari rather than the App Store.
+         * body; `https://` maps to identifier code 0x04.
          */
         internal fun buildUriNdefMessage(uri: String): ByteArray {
             var prefixCode = 0x00
