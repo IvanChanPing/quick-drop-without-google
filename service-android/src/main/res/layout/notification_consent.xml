@@ -1,0 +1,104 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Custom heads-up content for the incoming-transfer consent notification,
+  shown via NotificationCompat.DecoratedCustomViewStyle (the system keeps the
+  native frame: small icon + app name + time; this controls the body). Bound +
+  wired with PendingIntents at runtime in ConsentNotification.build().
+
+  Layout: a top row (title + one-line summary on the LEFT, a small rounded
+  placeholder thumbnail on the RIGHT — notif_consent_thumb), then the two consent
+  buttons as a centered pair with a small gap (Decline left / Accept right,
+  recolored). The LEFT-side icon is the DecoratedCustomViewStyle small-icon
+  circle (tinted via setColor in ConsentNotification.build). Only
+  RemoteViews-supported views are used (LinearLayout/TextView/Button/ImageView).
+
+  NOTE: the dismiss animation is system-owned — an app cannot make a heads-up
+  "slide away" on tap. For a slide-away popup, use the bottom sheet / overlay
+  surface (our own windows), not the notification.
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:gravity="center_vertical"
+    android:minHeight="108dp"
+    android:orientation="vertical"
+    android:paddingTop="8dp"
+    android:paddingBottom="10dp">
+
+    <!-- Top row: title+summary column (left, stretches) + thumbnail (right). -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:gravity="center_vertical"
+        android:orientation="horizontal">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/notif_consent_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/notif_consent_body"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="3dp"
+                android:ellipsize="end"
+                android:maxLines="2"
+                android:textSize="14sp" />
+        </LinearLayout>
+
+        <!-- notif_consent_thumb — small rounded placeholder thumbnail of the
+             incoming file(s) on the RIGHT (44dp square; bitmap set at runtime
+             via setImageViewBitmap with ConsentThumbnail.photo()). -->
+        <ImageView
+            android:id="@+id/notif_consent_thumb"
+            android:layout_width="52dp"
+            android:layout_height="52dp"
+            android:layout_marginStart="12dp"
+            android:scaleType="fitCenter"
+            tools:ignore="ContentDescription" />
+    </LinearLayout>
+
+    <!-- Buttons as a centered pair with a small gap (moved closer together,
+         no longer pinned to the opposite edges). -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:gravity="center"
+        android:orientation="horizontal">
+
+        <Button
+            android:id="@+id/notif_consent_decline"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginEnd="8dp"
+            android:background="@drawable/notif_btn_decline_bg"
+            android:minWidth="112dp"
+            android:textAllCaps="false"
+            android:textColor="#FFD93025"
+            android:textStyle="bold" />
+
+        <Button
+            android:id="@+id/notif_consent_accept"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="8dp"
+            android:background="@drawable/notif_btn_accept_bg"
+            android:minWidth="112dp"
+            android:textAllCaps="false"
+            android:textColor="#FFFFFFFF"
+            android:textStyle="bold" />
+    </LinearLayout>
+</LinearLayout>

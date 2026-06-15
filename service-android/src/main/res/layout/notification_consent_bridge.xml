@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  BRIDGE-style custom heads-up content (option 2) — a heavily restyled heads-up
+  (NO overlay) made to resemble the shareit-bridge receive card more strongly
+  than option 1: a DARK rounded card with a slight white outline, a placeholder
+  thumbnail, the text moved beside it, and a Decline | Accept button row.
+
+  Rendered via NotificationCompat.DecoratedCustomViewStyle (system keeps the
+  native frame; this is the body). RemoteViews-safe views only (LinearLayout /
+  ImageView / TextView / View + shape drawables). The four ids
+  (notif_consent_title/body/accept/decline) are bound + wired with the
+  accept/reject PendingIntents in ConsentNotification.build().
+
+  NOTE: a real file thumbnail isn't available before the user accepts an
+  incoming transfer, so the thumbnail is a static placeholder square. A dark
+  custom body inside the system notification frame can render slightly
+  differently across OEMs / light-dark; this is a best-effort RemoteViews
+  approximation and only appears on a real transfer (device-unverified).
+-->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:background="@drawable/notif_consent_bridge_card_bg"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <!-- Top row: placeholder thumbnail + title/subtitle column beside it. -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal">
+
+        <ImageView
+            android:id="@+id/notif_consent_thumb"
+            android:layout_width="52dp"
+            android:layout_height="52dp"
+            android:background="@drawable/notif_consent_thumb_bg"
+            android:contentDescription="@null" />
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center_vertical"
+            android:layout_marginStart="14dp"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/notif_consent_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:maxLines="1"
+                android:textColor="#FFFFFFFF"
+                android:textSize="16sp"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/notif_consent_body"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="3dp"
+                android:ellipsize="end"
+                android:maxLines="2"
+                android:textColor="#FFB4B4BC"
+                android:textSize="13sp" />
+        </LinearLayout>
+    </LinearLayout>
+
+    <!-- Thin light divider above the button row (light, so it shows on dark).
+         A bare <View> is NOT in the RemoteViews whitelist (it throws
+         "Class not allowed to be inflated android.view.View", which blanks the
+         whole notification), so the divider is a zero-text TextView — a
+         RemoteViews-allowed view used purely as a 1dp colored bar. -->
+    <TextView
+        android:layout_width="match_parent"
+        android:layout_height="1dp"
+        android:layout_marginTop="14dp"
+        android:background="#26FFFFFF" />
+
+    <!-- Button row: Decline | vertical divider | Accept. -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="4dp"
+        android:orientation="horizontal">
+
+        <TextView
+            android:id="@+id/notif_consent_decline"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:paddingTop="14dp"
+            android:paddingBottom="6dp"
+            android:textColor="#FFB4B4BC"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+
+        <!-- Vertical divider: TextView (RemoteViews-safe), not a bare <View>. -->
+        <TextView
+            android:layout_width="1dp"
+            android:layout_height="match_parent"
+            android:background="#26FFFFFF" />
+
+        <TextView
+            android:id="@+id/notif_consent_accept"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:gravity="center"
+            android:paddingTop="14dp"
+            android:paddingBottom="6dp"
+            android:textColor="#FF4FA3FF"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+    </LinearLayout>
+</LinearLayout>
