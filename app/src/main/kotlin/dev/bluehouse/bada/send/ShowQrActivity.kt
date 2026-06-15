@@ -9,6 +9,7 @@ import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
 import dev.bluehouse.bada.bugreport.BugReportFlowSupport
 import dev.bluehouse.bada.databinding.ActivityShowQrBinding
+import dev.bluehouse.bada.nfc.NfcLinkHolder
 import dev.bluehouse.bada.protocol.qr.QrKeyData
 import dev.bluehouse.bada.protocol.qr.QrUrl
 import kotlin.math.min
@@ -45,6 +46,14 @@ public class ShowQrActivity : AppCompatActivity() {
     private lateinit var binding: ActivityShowQrBinding
     private lateinit var bugReportFlowSupport: BugReportFlowSupport
 
+    /**
+     * The pairing URL currently shown as the QR code. Also published to the NDEF
+     * Host Card Emulation tag ([NfcLinkHolder.currentUrl], served by
+     * [dev.bluehouse.bada.nfc.BadaNdefApduService]) while this screen is in the
+     * foreground, so the in-app QR works as an NFC tag too — not just the send sheet.
+     */
+    private var pairingUrl: String? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         binding = ActivityShowQrBinding.inflate(layoutInflater)
@@ -53,6 +62,7 @@ public class ShowQrActivity : AppCompatActivity() {
 
         val generated = QrKeyData.generate()
         val url = QrUrl.build(generated.qrKeyData)
+        pairingUrl = url
         binding.showQrUrl.text = url
 
         // Size the QR bitmap to ~75% of the shorter screen edge so it
@@ -70,6 +80,25 @@ public class ShowQrActivity : AppCompatActivity() {
             }
 
         binding.showQrDone.setOnClickListener { finish() }
+    }
+
+    /**
+     * Arm the NDEF Host Card Emulation tag with the displayed pairing URL while this
+     * QR screen is in the foreground, so tapping an iPhone (or any phone) to the back
+     * opens the same link in its browser — the in-app QR works as an NFC tag, not just
+     * the send sheet. [dev.bluehouse.bada.nfc.BadaNdefApduService] reads
+     * [NfcLinkHolder.currentUrl] on each NFC SELECT; no scanning needed.
+     */
+    override fun onResume() {
+        super.onResume()
+        NfcLinkHolder.currentUrl = pairingUrl
+    }
+
+    /** Disarm the NDEF tag when the QR screen leaves the foreground, so it only ever
+     * carries the URL while the QR is actually on screen. */
+    override fun onPause() {
+        super.onPause()
+        NfcLinkHolder.currentUrl = null
     }
 
     private companion object {
