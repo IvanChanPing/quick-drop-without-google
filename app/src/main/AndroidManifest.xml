@@ -326,6 +326,19 @@
         </activity>
 
         <!--
+          In-app sender screen. Launched ONLY from inside the app
+          (SendReceiveFragment "Send files" / "Send folder") — the original
+          full-screen Bada presentation, NOT the bottom sheet. exported=false +
+          no intent-filter so the system share sheet never routes here; the
+          external ACTION_SEND path stays on the bottom-sheet SendActivity above.
+        -->
+        <activity
+            android:name=".send.SendActivityInApp"
+            android:exported="false"
+            android:label="@string/send_activity_label"
+            android:theme="@style/Theme.Bada" />
+
+        <!--
           QR-code display screen launched from SendActivity (#24 + #20).
 
           Internal — only SendActivity launches it, so exported=false.
