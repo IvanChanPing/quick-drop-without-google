@@ -341,7 +341,7 @@
             android:name=".send.SendActivityInApp"
             android:exported="false"
             android:label="@string/send_activity_label"
-            android:theme="@style/Theme.Bada" />
+            android:theme="@style/Theme.SuperDrop.SendInApp" />
 
         <!--
           QR-code display screen launched from SendActivity (#24 + #20).

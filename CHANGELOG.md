@@ -1,3 +1,17 @@
+## [2026-06-16] In-app send screen: fade/morph open transition (instead of the OEM slide)
+The in-app send flow (SendReceiveFragment "Send files"/"Send folder" → file picker → `SendActivityInApp`)
+now opens with a soft fade + gentle scale-up so the sending screen DISSOLVES in over the main screen
+("morph" feel) rather than the default OEM slide.
+- New `Theme.SuperDrop.SendInApp` (parent `Theme.Bada`) + `WindowAnimation.SuperDrop.SendInApp` in
+  `app/src/main/res/values/themes.xml`: open enter `popup_fade_in` (alpha 0→1 + 0.94→1.0 scale, 200ms
+  decelerate), open exit `no_anim` (main screen holds underneath → cross-dissolve), close exit
+  `popup_fade_out`. Same `windowAnimationStyle` mechanism the send sheet already uses (no API gating).
+- Manifest: `SendActivityInApp` theme `Theme.Bada` → `Theme.SuperDrop.SendInApp`. External share-sheet
+  `SendActivity` is unchanged.
+- `:app:assembleDebug` builds clean. UI behavior DEVICE-UNVERIFIED (cross-dissolve over the opaque window is
+  OEM-dependent; needs an on-device look). FUTURE (not this change): embed the send flow into the main screen
+  between the top title card and the bottom nav.
+
 ## [2026-06-16] Split in-app send/receive (original full-screen / dialog) from external (sheets)
 The send & receive bottom SHEETS now appear ONLY for EXTERNAL use; IN-APP send/receive use the ORIGINAL
 Bada full-screen send screen / centered floating dialog. Two activities share the engine; the sheet
