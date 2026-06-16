@@ -343,6 +343,11 @@ public class ConsentCoordinator(
         when (target) {
             Surface.Modal -> {
                 sink.dismissConsent(connectionId)
+                // Also finish any modal surface raised under the prior state — a
+                // BACKGROUND arrival can pop the bottom SHEET directly; switching to
+                // the foreground modal opens a DIFFERENT activity (the in-app dialog),
+                // so the popped sheet must be dismissed or it lingers behind the dialog.
+                sink.dismissModal(connectionId)
                 sink.launchModal(connectionId, entry)
             }
             Surface.Notification -> {

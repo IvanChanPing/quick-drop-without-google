@@ -324,6 +324,26 @@
         </activity>
 
         <!--
+          In-app full-screen send screen (the "in-app vs external" split).
+
+          Launched ONLY from inside the app (SendReceiveFragment's
+          file-picker / folder-picker buttons) — never from the system
+          share sheet — so it has NO intent-filter and is not exported.
+          It inflates the ORIGINAL full-screen send layout
+          (activity_send_fullscreen.xml -> ActivitySendFullscreenBinding)
+          instead of the bottom-sheet layout used by the external
+          .send.SendActivity. Uses the normal full-screen app theme
+          (@style/Theme.Bada, the same theme MainActivity inherits from
+          the application) rather than the SendSheet theme, since this
+          screen is NOT a sheet.
+        -->
+        <activity
+            android:name=".send.SendActivityInApp"
+            android:exported="false"
+            android:label="@string/send_activity_label"
+            android:theme="@style/Theme.Bada" />
+
+        <!--
           QR-code display screen launched from SendActivity (#24 + #20).
 
           Internal — only SendActivity launches it, so exported=false.
@@ -420,6 +440,30 @@
             android:showOnLockScreen="true"
             android:turnScreenOn="true"
             android:theme="@style/Theme.SuperDrop.ReceiveSheet"
+            android:label="@string/consent_activity_label" />
+
+        <!--
+          In-app (foreground) incoming-transfer consent surface (the
+          "in-app vs external" receive split).
+
+          The ORIGINAL centered floating DIALOG (Theme.Bada.ConsentDialog,
+          windowIsFloating) inflating activity_consent_dialog.xml. Opened by
+          ReceiverForegroundService's foreground launchModal path (target wired
+          via ReceiverForegroundService.consentDialogTarget in BadaApplication)
+          when a transfer arrives while the app is foregrounded; background /
+          external arrivals keep using the bottom-sheet
+          .consent.ConsentTrampolineActivity above. Same screen-on /
+          lock-bypass behaviour, so it carries the same recents/keyguard hints.
+        -->
+        <activity
+            android:name=".consent.ConsentDialogActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:launchMode="singleTop"
+            android:showOnLockScreen="true"
+            android:turnScreenOn="true"
+            android:theme="@style/Theme.Bada.ConsentDialog"
             android:label="@string/consent_activity_label" />
 
         <!--

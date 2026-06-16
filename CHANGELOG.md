@@ -1,3 +1,22 @@
+## [2026-06-16] Split in-app send/receive (original full-screen / dialog) from external (sheets)
+The send & receive bottom SHEETS now appear ONLY for EXTERNAL use; IN-APP send/receive use the ORIGINAL
+Bada full-screen send screen / centered floating dialog. Two activities share the engine; the sheet
+activities are behavior-unchanged for external use.
+- SEND: new `SendActivityInApp` (full-screen, `@style/Theme.Bada`) + new `activity_send_fullscreen.xml`
+  (= original Bada full-screen layout, renamed dev.bluehouse.bada->dev.superdrop). `SendReceiveFragment`
+  launches `SendActivityInApp` in-app; external `ACTION_SEND*` stays on the sheet `SendActivity`.
+  `SendPeerPickerController` gained a view-based primary ctor + delegating binding-based secondary so the
+  sheet call is unchanged. Manifest: added the `SendActivityInApp` entry.
+- RECEIVE: new `ConsentDialogActivity` (`@style/Theme.Bada.ConsentDialog`) + new `activity_consent_dialog.xml`
+  (= original Bada dialog layout; `consent_receiving_progress` kept as `dev.superdrop.ui.sheet.RoundedProgressBar`
+  to match our render path). Derived from our OWN `ConsentTrampolineActivity` (upstream's references
+  expert-view/keep-screen-on classes we don't have); sheet wiring stripped; tile-`consent_waiting_panel`
+  refs made null-safe (dialog layout has no waiting panel). `ReceiverForegroundService` foreground
+  `launchModal` -> `consentDialogTarget` (dialog), background sheet-pop -> `consentTrampolineTarget` (sheet);
+  `consentDialogTarget` wired in `BadaApplication`. `ConsentCoordinator.applySurfaceSwitch(Modal)` also
+  dismisses a prior modal so a background-popped sheet can't linger behind the dialog.
+- `:app:assembleDebug` builds clean (verified). UI behavior is DEVICE-UNVERIFIED (no emulator).
+
 ## [2026-06-15] SUPERDROP-CHANGES.txt: apply the user's phone edits + cleanup pass
 The user downloaded `SUPERDROP-CHANGES.txt` via the on-box File Manager (upload_server.py,
 :8080, serves `/mnt/HC_Volume_105518598/uploads/`), edited it on the phone, and re-uploaded it.

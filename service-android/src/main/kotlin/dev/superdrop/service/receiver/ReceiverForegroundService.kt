@@ -848,7 +848,9 @@ public class ReceiverForegroundService : Service() {
                             if (ConsentNotificationStylePreferences.from(ctx).mode() ==
                                 ConsentNotificationStylePreferences.Style.SHEET
                             ) {
-                                launchConsentTrampolineAsModal(connectionId)
+                                // BACKGROUND arrival -> the bottom SHEET surface
+                                // (external). Never the in-app dialog here.
+                                launchConsentTrampolineAsModal(connectionId, consentTrampolineTarget)
                             }
                         }
 
@@ -860,7 +862,14 @@ public class ReceiverForegroundService : Service() {
                             connectionId: Long,
                             entry: ConsentRegistry.Entry,
                         ) {
-                            launchConsentTrampolineAsModal(connectionId)
+                            // FOREGROUND (in-app) arrival -> the original centered
+                            // floating DIALOG (ConsentDialogActivity). Falls back to
+                            // the sheet target when the dialog target is unregistered
+                            // so consent is never lost.
+                            launchConsentTrampolineAsModal(
+                                connectionId,
+                                consentDialogTarget ?: consentTrampolineTarget,
+                            )
                         }
 
                         override fun dismissModal(connectionId: Long) {
@@ -909,8 +918,10 @@ public class ReceiverForegroundService : Service() {
      * (heads-up notification) when only the activity launch is
      * unavailable.
      */
-    private fun launchConsentTrampolineAsModal(connectionId: Long) {
-        val target = consentTrampolineTarget
+    private fun launchConsentTrampolineAsModal(
+        connectionId: Long,
+        target: Class<*>?,
+    ) {
         if (target == null) {
             ConsentDiagnostic.log(this, "service.launchModal id=$connectionId target=null skip=true")
             return
@@ -1233,6 +1244,19 @@ public class ReceiverForegroundService : Service() {
         @JvmStatic
         @Volatile
         public var consentTrampolineTarget: Class<*>? = null
+
+        /**
+         * The IN-APP (foreground) consent surface — the centered floating
+         * `ConsentDialogActivity`. Used by the foreground modal path
+         * ([ConsentCoordinator.Sink.launchModal]) so an in-app arrival shows the
+         * original dialog instead of the bottom sheet, while external / background
+         * arrivals keep using [consentTrampolineTarget] (the sheet). Set by `:app`
+         * in `Application.onCreate`. When `null`, the foreground path falls back to
+         * [consentTrampolineTarget] (the sheet) so consent is never lost.
+         */
+        @JvmStatic
+        @Volatile
+        public var consentDialogTarget: Class<*>? = null
 
         /**
          * Process-wide override of the [SessionFactory]. Tests install

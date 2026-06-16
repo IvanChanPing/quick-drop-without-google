@@ -7,6 +7,8 @@ package dev.superdrop.send
 
 import android.content.Context
 import android.view.View
+import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import dev.superdrop.R
@@ -29,7 +31,10 @@ import dev.superdrop.discovery.diagnostics.DiagnosticLog as Log
 @Suppress("LongParameterList") // Every collaborator (UI, lifecycle, callbacks, sender id) is needed.
 internal class SendPeerPickerController(
     private val context: Context,
-    private val binding: ActivitySendBinding,
+    private val peerList: LinearLayout,
+    private val emptyState: TextView,
+    private val networkHint: View,
+    private val subtitle: TextView,
     private val lifecycle: Lifecycle,
     private val scope: CoroutineScope,
     private val onPeerSelected: (NearbyPeer) -> Unit,
@@ -49,6 +54,36 @@ internal class SendPeerPickerController(
      */
     private val senderEndpointId: String,
 ) {
+    /**
+     * Binding-based convenience constructor — the UNCHANGED call site for the external
+     * send SHEET ([SendActivity]). Extracts the 4 views the picker drives from the
+     * sheet's [ActivitySendBinding] and delegates to the view-based primary constructor,
+     * which the in-app full-screen [SendActivityInApp] uses directly with its own
+     * `ActivitySendFullscreenBinding` (identical view IDs).
+     */
+    internal constructor(
+        context: Context,
+        binding: ActivitySendBinding,
+        lifecycle: Lifecycle,
+        scope: CoroutineScope,
+        onPeerSelected: (NearbyPeer) -> Unit,
+        onPeersResolved: (List<NearbyPeer>) -> Unit = {},
+        logDiagnostic: (String) -> Unit,
+        senderEndpointId: String,
+    ) : this(
+        context,
+        binding.sendPeerList,
+        binding.sendEmptyState,
+        binding.sendNetworkHint,
+        binding.sendSubtitle,
+        lifecycle,
+        scope,
+        onPeerSelected,
+        onPeersResolved,
+        logDiagnostic,
+        senderEndpointId,
+    )
+
     private val peers: MutableList<NearbyPeer> = mutableListOf()
 
     private var outboundPresenceJob: Job? = null
@@ -122,7 +157,7 @@ internal class SendPeerPickerController(
         discoveryJob = null
         emptyPeerHintJob?.cancel()
         emptyPeerHintJob = null
-        binding.sendNetworkHint.visibility = View.GONE
+        networkHint.visibility = View.GONE
     }
 
     fun stopBleAdvertise() {
@@ -133,7 +168,7 @@ internal class SendPeerPickerController(
 
     fun onHintDismissed() {
         emptyPeerHintTimer.markDismissed()
-        binding.sendNetworkHint.visibility = View.GONE
+        networkHint.visibility = View.GONE
     }
 
     /** Current resolved peers (snapshot) — used by the NFC tap-wake auto-connect. */
@@ -257,7 +292,7 @@ internal class SendPeerPickerController(
     }
 
     private fun renderPeerList() {
-        val container = binding.sendPeerList
+        val container = peerList
 
         // Build the target row payloads up-front so we can compare
         // against the last rendered snapshot before deciding whether
@@ -298,7 +333,7 @@ internal class SendPeerPickerController(
         // is cheap and depends only on whether peers exist, so we
         // refresh it unconditionally — re-applying the same string is
         // a no-op at the TextView layer.
-        binding.sendSubtitle.setText(
+        subtitle.setText(
             when {
                 peers.isEmpty() -> R.string.send_subtitle_discovering
                 else -> R.string.send_subtitle_pick_peer
@@ -368,7 +403,7 @@ internal class SendPeerPickerController(
         // expires with no peers found.
         val now = System.currentTimeMillis()
         val isEmpty = peers.isEmpty()
-        binding.sendEmptyState.visibility =
+        emptyState.visibility =
             if (emptyPeerHintTimer.shouldShowEmptyState(now, isEmpty)) {
                 View.VISIBLE
             } else {
@@ -383,7 +418,7 @@ internal class SendPeerPickerController(
         // dismiss button on the card. The bottom sheet covers the same
         // guidance (and adds the QR fallback section), so the inline
         // card is kept in the layout for now but never raised.
-        binding.sendNetworkHint.visibility = View.GONE
+        networkHint.visibility = View.GONE
     }
 
     @Suppress("MissingPermission")

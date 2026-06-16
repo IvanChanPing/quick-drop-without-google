@@ -6,6 +6,7 @@
 package dev.superdrop
 
 import android.app.Application
+import dev.superdrop.consent.ConsentDialogActivity
 import dev.superdrop.consent.ConsentTrampolineActivity
 import dev.superdrop.discovery.diagnostics.DiagnosticLog
 import dev.superdrop.service.receiver.ReceiverForegroundService
@@ -36,6 +37,9 @@ class BadaApplication : Application() {
         super.onCreate()
         ReceiverForegroundService.openAppTarget = MainActivity::class.java
         ReceiverForegroundService.consentTrampolineTarget = ConsentTrampolineActivity::class.java
+        // In-app (foreground) consent surface = the original centered floating
+        // dialog; external/background arrivals keep using the sheet trampoline.
+        ReceiverForegroundService.consentDialogTarget = ConsentDialogActivity::class.java
         // Must match where BugReportCollector reads the log back from
         // (getExternalFilesDir(null)); a filesDir fallback would write logs
         // the collector never picks up.
