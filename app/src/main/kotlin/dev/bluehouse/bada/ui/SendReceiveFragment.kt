@@ -36,7 +36,7 @@ import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
 import dev.bluehouse.bada.R
 import dev.bluehouse.bada.migration.LegacyPackageDetectorAndroid
-import dev.bluehouse.bada.send.SendActivity
+import dev.bluehouse.bada.send.SendActivityInApp
 import dev.bluehouse.bada.service.receiver.MdnsVisibilityOverrideHolder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -54,11 +54,11 @@ import kotlinx.coroutines.withContext
  *     GATT service breaks BLE bootstrap. Auto-hides on resume once the
  *     legacy package is gone.
  *   * "Send files" entry point — `ACTION_OPEN_DOCUMENT` with multi-select
- *     enabled, forwards the picked URIs to [SendActivity] as
+ *     enabled, forwards the picked URIs to [SendActivityInApp] as
  *     `ACTION_SEND_MULTIPLE` (or `ACTION_SEND` when exactly one file was
  *     picked).
  *   * "Send folder" entry point (#38) — `ACTION_OPEN_DOCUMENT_TREE`
- *     forwarded to [SendActivity] via `ACTION_SEND_FOLDER`.
+ *     forwarded to [SendActivityInApp] via `ACTION_SEND_FOLDER`.
  *   * #34 always-visible override toggle — process-wide receiver
  *     visibility switch.
  *
@@ -74,7 +74,7 @@ internal class SendReceiveFragment : Fragment(R.layout.fragment_send_receive) {
     /**
      * Launcher for the multi-file system picker. Returns a `List<Uri>`
      * with read permissions for the calling process; the fragment
-     * forwards them to [SendActivity] via `ACTION_SEND` /
+     * forwards them to [SendActivityInApp] via `ACTION_SEND` /
      * `ACTION_SEND_MULTIPLE` so the existing share-intent pipeline does
      * the discovery + connection work without duplication here.
      *
@@ -86,7 +86,7 @@ internal class SendReceiveFragment : Fragment(R.layout.fragment_send_receive) {
     /**
      * Launcher for SAF's `ACTION_OPEN_DOCUMENT_TREE` (#38). On a
      * successful pick the resolved tree URI is forwarded to
-     * [SendActivity] via [SendActivity.ACTION_SEND_FOLDER]; the activity
+     * [SendActivityInApp] via [SendActivityInApp.ACTION_SEND_FOLDER]; the activity
      * walks the tree, builds one
      * [dev.bluehouse.bada.protocol.connection.FileSource] per
      * descendant file, and runs the existing peer-discovery /
@@ -137,8 +137,8 @@ internal class SendReceiveFragment : Fragment(R.layout.fragment_send_receive) {
                     return@registerForActivityResult
                 }
                 val intent =
-                    Intent(requireContext(), SendActivity::class.java).apply {
-                        // Single-file picks degrade to ACTION_SEND so SendActivity's
+                    Intent(requireContext(), SendActivityInApp::class.java).apply {
+                        // Single-file picks degrade to ACTION_SEND so SendActivityInApp's
                         // ShareIntentRouter takes the SingleUri branch unchanged.
                         // Multi-file picks ride ACTION_SEND_MULTIPLE / EXTRA_STREAM
                         // as an ArrayList<Uri>, matching the system share-sheet shape.
@@ -165,11 +165,11 @@ internal class SendReceiveFragment : Fragment(R.layout.fragment_send_receive) {
             registerForActivityResult(ActivityResultContracts.OpenDocumentTree()) { treeUri: Uri? ->
                 if (treeUri != null) {
                     val intent =
-                        Intent(requireContext(), SendActivity::class.java).apply {
-                            action = SendActivity.ACTION_SEND_FOLDER
+                        Intent(requireContext(), SendActivityInApp::class.java).apply {
+                            action = SendActivityInApp.ACTION_SEND_FOLDER
                             data = treeUri
                             // FLAG_GRANT_READ_URI_PERMISSION propagates the
-                            // SAF read grant to SendActivity. Without it,
+                            // SAF read grant to SendActivityInApp. Without it,
                             // the receiving activity can read top-level
                             // children but `openInputStream` on individual
                             // file URIs throws SecurityException. The

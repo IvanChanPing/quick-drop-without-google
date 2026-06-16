@@ -6,14 +6,16 @@
 package dev.bluehouse.bada.send
 
 import android.content.Context
-import android.view.LayoutInflater
 import android.view.View
+import android.widget.LinearLayout
+import android.widget.TextView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import dev.bluehouse.bada.R
 import dev.bluehouse.bada.databinding.ActivitySendBinding
-import dev.bluehouse.bada.databinding.ItemPeerRowBinding
 import dev.bluehouse.bada.discovery.NearbyPeer
+import dev.bluehouse.bada.protocol.endpoint.hasBadaMarker
+import dev.bluehouse.bada.ui.sheet.DeviceIconView
 import dev.bluehouse.bada.discovery.NearbyPeerDiscovery
 import dev.bluehouse.bada.discovery.NearbyPeerEvent
 import dev.bluehouse.bada.discovery.NearbyPeerRoute
@@ -31,7 +33,10 @@ import dev.bluehouse.bada.discovery.diagnostics.DiagnosticLog as Log
 @Suppress("LongParameterList") // Every collaborator (UI, lifecycle, callbacks, sender id) is needed.
 internal class SendPeerPickerController(
     private val context: Context,
-    private val binding: ActivitySendBinding,
+    private val peerList: LinearLayout,
+    private val emptyState: TextView,
+    private val networkHint: View,
+    private val subtitle: TextView,
     private val lifecycle: Lifecycle,
     private val scope: CoroutineScope,
     private val onPeerSelected: (NearbyPeer) -> Unit,
@@ -57,6 +62,38 @@ internal class SendPeerPickerController(
      */
     private val radioStateReader: RadioStateReader = RadioStateReader(context),
 ) {
+    /**
+     * Binding-based convenience constructor — the UNCHANGED call site for the external
+     * send SHEET ([SendActivity]). Extracts the 4 views the picker drives from the
+     * sheet's [ActivitySendBinding] and delegates to the view-based primary constructor,
+     * which the in-app full-screen [SendActivityInApp] uses directly with its own
+     * `ActivitySendFullscreenBinding` (identical view IDs).
+     */
+    internal constructor(
+        context: Context,
+        binding: ActivitySendBinding,
+        lifecycle: Lifecycle,
+        scope: CoroutineScope,
+        onPeerSelected: (NearbyPeer) -> Unit,
+        onPeersResolved: (List<NearbyPeer>) -> Unit = {},
+        logDiagnostic: (String) -> Unit,
+        senderEndpointId: String,
+        radioStateReader: RadioStateReader = RadioStateReader(context),
+    ) : this(
+        context,
+        binding.sendPeerList,
+        binding.sendEmptyState,
+        binding.sendNetworkHint,
+        binding.sendSubtitle,
+        lifecycle,
+        scope,
+        onPeerSelected,
+        onPeersResolved,
+        logDiagnostic,
+        senderEndpointId,
+        radioStateReader,
+    )
+
     private val peers: MutableList<NearbyPeer> = mutableListOf()
 
     private var outboundPresenceJob: Job? = null
@@ -89,6 +126,10 @@ internal class SendPeerPickerController(
         val stableId: String,
         val title: String,
         val subtitle: String,
+        // Whether the peer is a Bada device (advertises the marker TLV). Part of the
+        // snapshot so a peer flipping false->true mid-discovery (full EndpointInfo resolved
+        // after an initial pulse-only sighting) forces the chip to redraw with its badge.
+        val isBada: Boolean,
     )
 
     fun start() {
@@ -126,7 +167,7 @@ internal class SendPeerPickerController(
         discoveryJob = null
         emptyPeerHintJob?.cancel()
         emptyPeerHintJob = null
-        binding.sendNetworkHint.visibility = View.GONE
+        networkHint.visibility = View.GONE
     }
 
     fun stopBleAdvertise() {
@@ -137,9 +178,11 @@ internal class SendPeerPickerController(
 
     fun onHintDismissed() {
         emptyPeerHintTimer.markDismissed()
-        binding.sendNetworkHint.visibility = View.GONE
+        networkHint.visibility = View.GONE
     }
 
+    /** Current resolved peers (snapshot) — used by the NFC tap-wake auto-connect. */
+    fun resolvedPeers(): List<NearbyPeer> = peers.toList()
     /**
      * Re-resolve [peer]'s current LAN address by running a short,
      * transient discovery session, and return the fresh LAN route — or
@@ -321,32 +364,48 @@ internal class SendPeerPickerController(
     }
 
     private fun renderPeerList() {
-        val container = binding.sendPeerList
+        val container = peerList
 
         // Build the target row payloads up-front so we can compare
         // against the last rendered snapshot before deciding whether
         // the row container needs a rebuild.
+        //
+        // Each connectable peer is
+        // drawn as a circular [DeviceIconView] in a horizontal row, and
+        // peers are DEDUPED BY DISPLAY NAME — a receiver's BLE MAC
+        // rotates for privacy, so the same phone is otherwise seen under
+        // several stableIds and would show as several identical circles
+        // (the "two CPH2583" duplicate). We collapse to one chip per name
+        // and keep the first peer seen under that name as the chip's tap
+        // target; the snapshot picks up a later peer for the same name on
+        // the next render if the first is lost.
         data class TargetRow(
             val peer: NearbyPeer,
             val title: String,
             val subtitle: String,
+            val isBada: Boolean,
         )
+        val seenNames = HashSet<String>()
         val targetRows =
             peers.mapNotNull { peer ->
                 val plan = planFor(peer)
                 if (!plan.isConnectable) return@mapNotNull null
-                TargetRow(peer, peerLabel(peer), plan.subtitle)
+                val label = peerLabel(peer)
+                if (!seenNames.add(label)) return@mapNotNull null
+                // A peer is "Bada" if its advertised EndpointInfo carries our marker TLV.
+                val isBada = peer.endpointInfo?.hasBadaMarker() == true
+                TargetRow(peer, label, plan.subtitle, isBada)
             }
         val targetSnapshot =
             targetRows.map { row ->
-                RenderedRowSnapshot(row.peer.stableId, row.title, row.subtitle)
+                RenderedRowSnapshot(row.peer.stableId, row.title, row.subtitle, row.isBada)
             }
 
         // Subtitle ("Looking for nearby devices…" vs "Pick a device")
         // is cheap and depends only on whether peers exist, so we
         // refresh it unconditionally — re-applying the same string is
         // a no-op at the TextView layer.
-        binding.sendSubtitle.setText(
+        subtitle.setText(
             when {
                 peers.isEmpty() -> R.string.send_subtitle_discovering
                 else -> R.string.send_subtitle_pick_peer
@@ -367,18 +426,24 @@ internal class SendPeerPickerController(
         lastRenderedRowSnapshot = targetSnapshot
 
         container.removeAllViews()
-        val inflater = LayoutInflater.from(context)
         for (target in targetRows) {
-            val row = ItemPeerRowBinding.inflate(inflater, container, false)
-            row.peerRowTitle.text = target.title
-            row.peerRowSubtitle.text = target.subtitle
-            row.root.isEnabled = true
-            row.root.alpha = 1f
             val stableId = target.peer.stableId
-            row.root.setOnClickListener {
+            val icon = DeviceIconView(context, stableId, target.title)
+            icon.isEnabled = true
+            icon.alpha = 1f
+            // Badge the chip "Bada" when the peer advertises our marker TLV, so the
+            // user can tell a Bada device from a stock Quick Share one at a glance.
+            icon.setBada(target.isBada)
+            icon.setOnClickListener {
+                // Acknowledge the tap with the bounce, then route
+                // through the SAME selection path the old row click used
+                // (resolve a current peer by stableId so a rotated-MAC
+                // re-resolve picks the freshest route). Discovery /
+                // OutboundConnection wiring is unchanged.
+                icon.bounce()
                 peers.firstOrNull { it.stableId == stableId }?.let(onPeerSelected)
             }
-            container.addView(row.root)
+            container.addView(icon)
         }
         // Empty-state visibility is gated on [EmptyPeerHintTimer] inside
         // [updateEmptyPeerHintVisibility] so the "no devices nearby yet"
@@ -418,10 +483,10 @@ internal class SendPeerPickerController(
                     bluetoothEnabled = radioStateReader.isBluetoothEnabled(),
                     wifiConnected = radioStateReader.isWifiConnected(),
                 )
-            binding.sendEmptyState.setText(hintRes)
-            binding.sendEmptyState.visibility = View.VISIBLE
+            emptyState.setText(hintRes)
+            emptyState.visibility = View.VISIBLE
         } else {
-            binding.sendEmptyState.visibility = View.GONE
+            emptyState.visibility = View.GONE
         }
 
         // The "Same Wi-Fi network required" inline card is intentionally
@@ -432,7 +497,7 @@ internal class SendPeerPickerController(
         // dismiss button on the card. The bottom sheet covers the same
         // guidance (and adds the QR fallback section), so the inline
         // card is kept in the layout for now but never raised.
-        binding.sendNetworkHint.visibility = View.GONE
+        networkHint.visibility = View.GONE
     }
 
     /**

@@ -40,7 +40,7 @@ import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import dev.bluehouse.bada.R
 import dev.bluehouse.bada.bugreport.BugReportFlowSupport
-import dev.bluehouse.bada.databinding.ActivitySendBinding
+import dev.bluehouse.bada.databinding.ActivitySendFullscreenBinding
 import dev.bluehouse.bada.discovery.NearbyPeer
 import dev.bluehouse.bada.discovery.NearbyPeerRoute
 import dev.bluehouse.bada.discovery.UserFacingMediumFeatures
@@ -77,7 +77,6 @@ import dev.bluehouse.bada.transfer.KeepScreenOnPreferences
 import dev.bluehouse.bada.transfer.TransferExpertDetailsFormatter
 import dev.bluehouse.bada.transfer.TransferExpertViewPreferences
 import dev.bluehouse.bada.ui.BackdropBlurView
-import dev.bluehouse.bada.ui.sheet.DraggableSheetLayout
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -122,8 +121,8 @@ import kotlin.math.min
  * coroutine plumbing and is out of scope for the Galaxy interop fix.
  */
 @Suppress("TooManyFunctions", "LargeClass")
-public class SendActivity : AppCompatActivity() {
-    private lateinit var binding: ActivitySendBinding
+public class SendActivityInApp : AppCompatActivity() {
+    private lateinit var binding: ActivitySendFullscreenBinding
     private lateinit var bugReportFlowSupport: BugReportFlowSupport
     private lateinit var fileSourceFactory: UriFileSourceFactory
     private lateinit var documentTreeFactory: DocumentTreeFileSourceFactory
@@ -220,34 +219,8 @@ public class SendActivity : AppCompatActivity() {
      */
     private var sentImagePreviewUri: Uri? = null
 
-    /**
-     * Guard so the sheet slide-up entrance ([startSendSheetEntrance]) runs exactly
-     * once, whether it is triggered by [onEnterAnimationComplete] (primary) or the
-     * wireBottomSheet fallback timer.
-     */
-    private var sendSheetEntranceStarted: Boolean = false
-
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        // Entrance = a VIEW-level slide-up of the sheet (DraggableSheetLayout
-        // .playEntrance), triggered from onEnterAnimationComplete() — i.e. AFTER the
-        // activity window's own OPEN transition finishes — so the slide is NOT masked
-        // by / racing with the window animation. That race is the timing bug that made
-        // the sheet "appear already settled" (fade only, no slide) on OnePlus. The
-        // window OPEN animation is a soft FADE only (Theme.Bada.SendSheet ->
-        // WindowAnimation.Bada.SendSheet.Fast `popup_fade_in_fast`, ~120ms, no
-        // vertical translate) — shortened from the old 200ms so onEnterAnimationComplete
-        // fires (and the slide STARTS) sooner, so the sheet animates over the
-        // still-fading chooser. The fade still completes BEFORE the slide starts, so
-        // the slide is not masked. The 0.2 dim fades in without competing with it. We do NOT
-        // override the window transition here (overrideActivityTransition was not
-        // honored on the OnePlus chooser launch path anyway) — the theme carries the
-        // fade, and the visible slide is the view animation.
-        DiagnosticLog.e(
-            OUTBOUND_TAG,
-            "SendActivity.onCreate: view-slide entrance (fires at onEnterAnimationComplete); " +
-                "sdk=${Build.VERSION.SDK_INT}",
-        )
         // Veto receiver-side mDNS publish for the duration of this
         // activity. When Bada concurrently publishes its receiver-side
         // mDNS record AND opens an outbound `OutboundConnection` to the
@@ -256,13 +229,13 @@ public class SendActivity : AppCompatActivity() {
         // fails `securegcm::UKey2Handshake::ParseHandshakeMessage` on
         // our incoming `client_finished` (verified ~73-267 ms after the
         // peer writes server_init). Pausing the gate for the lifetime
-        // of `SendActivity` clears that race window.
+        // of `SendActivityInApp` clears that race window.
         OutboundSessionActiveHolder.setOutboundSessionActive(true)
         // Force Wi-Fi + Bluetooth ON for the send (discovery needs BT, transfer
         // needs Wi-Fi) via the universal radio-helper. Symmetric to the receiver
         // wake. Restored in onDestroy (when finishing). Async — safe on main.
         requestRadiosForSend()
-        binding = ActivitySendBinding.inflate(layoutInflater)
+        binding = ActivitySendFullscreenBinding.inflate(layoutInflater)
         setContentView(binding.root)
         bugReportFlowSupport = BugReportFlowSupport.install(this)
 
@@ -280,7 +253,10 @@ public class SendActivity : AppCompatActivity() {
         peerPickerController =
             SendPeerPickerController(
                 context = this,
-                binding = binding,
+                peerList = binding.sendPeerList,
+                emptyState = binding.sendEmptyState,
+                networkHint = binding.sendNetworkHint,
+                subtitle = binding.sendSubtitle,
                 lifecycle = lifecycle,
                 scope = lifecycleScope,
                 onPeerSelected = ::onPeerSelected,
@@ -303,7 +279,6 @@ public class SendActivity : AppCompatActivity() {
         binding.sendNetworkHintDismiss.setOnClickListener { peerPickerController.onHintDismissed() }
         wireHelpLink()
         wireCancelButtonBlur()
-        wireBottomSheet()
 
         // Capture the first image attachment URI now so the success
         // terminal can render a preview without re-resolving the intent.
@@ -1472,109 +1447,6 @@ public class SendActivity : AppCompatActivity() {
         )
     }
 
-    /**
-     * Wire the bottom-sheet presentation:
-     *
-     *  - tapping the empty scrim area outside the card dismisses the
-     *    activity (slide-down via the window exit animation),
-     *  - a sufficient drag-down on the card dismisses it,
-     *  - the card slides up and its top edge stretches/snaps back on
-     *    entrance (see [DraggableSheetLayout.playEntrance]),
-     *  - the discovered-device icons are held hidden until that entrance
-     *    finishes, then faded in (see [revealPeerIcons]), so a quickly-found
-     *    device does not pop in mid-animation,
-     *  - the card's bottom padding tracks the navigation-bar inset.
-     *
-     * None of the discovery / OutboundConnection / QR logic is touched —
-     * this only governs how the existing card content is presented.
-     */
-    private fun wireBottomSheet() {
-        binding.sendSheetScrim.setOnClickListener { finish() }
-        binding.sendSheet.setOnDismiss { finish() }
-        DraggableSheetLayout.applyBottomInset(
-            binding.sendSheetRoot,
-            binding.sendSheet,
-            resources.getDimensionPixelSize(R.dimen.send_sheet_base_bottom_padding),
-        )
-        // Bounce only the card BACKGROUND. The content wrapper (pill + the 480dp state
-        // frame) is counter-scaled about its TOP so the elements keep their size and the
-        // device pill rides UP glued to the stretching top edge (send_device_pill is a
-        // CHILD of send_sheet_content, so this wrapper covers it).
-        binding.sendSheet.setBounceContent(binding.sendSheetContent)
-        // ...but keep the BOTTOM action row planted during the bounce: the "Can't find
-        // the device?" help link and the Cancel/Done row ride with the slide-up, not the
-        // bounce, so the stretch opens in the gap above them rather than carrying the
-        // buttons up.
-        binding.sendSheet.setBounceBottomAnchors(binding.sendHelpLink, binding.sendActionRow)
-        // Pre-hide the sheet fully below the screen NOW (before the window is shown) so
-        // there is no flash of it at rest. The actual slide-up is kicked LATER from
-        // onEnterAnimationComplete() (see [startSendSheetEntrance]) — AFTER the window's
-        // own open transition — so it isn't masked by the window animation.
-        binding.sendSheet.prepareOffscreen()
-        // Hold the device-icon row hidden during the entrance so a fast-found
-        // device does not appear mid-slide. Discovery keeps running; only the
-        // icons' APPEARANCE is delayed (alpha gate, revealed on completion).
-        binding.sendPeerList.alpha = 0f
-        // Fallback: if onEnterAnimationComplete() never fires (some OEM launch paths),
-        // still kick the entrance after a short delay so the pre-hidden sheet can't get
-        // stuck off-screen. Idempotent with onEnterAnimationComplete via the guard.
-        binding.sendSheet.postDelayed(
-            { startSendSheetEntrance("fallback-timer") },
-            ENTRANCE_TRIGGER_FALLBACK_MS,
-        )
-        // Safety net: reveal the icons even if the entrance never runs / is cut short.
-        // The entrance only STARTS at onEnterAnimationComplete (or the fallback timer),
-        // so allow for that trigger delay PLUS the entrance length.
-        binding.root.postDelayed(
-            { revealPeerIcons() },
-            ENTRANCE_TRIGGER_FALLBACK_MS + DraggableSheetLayout.ENTRANCE_TOTAL_MS +
-                PEER_ICON_REVEAL_FALLBACK_BUFFER_MS,
-        )
-    }
-
-    /**
-     * Trigger the sheet's slide-up entrance. The framework calls this when the
-     * activity's window OPEN transition has finished — the documented "safe to draw"
-     * point — so the VIEW slide runs in the already-visible window instead of being
-     * masked by the window's own open animation (the OnePlus "appears already settled,
-     * fade only" bug). Defers to [startSendSheetEntrance], which guards against running
-     * twice (it is also reachable from the wireBottomSheet fallback timer).
-     */
-    override fun onEnterAnimationComplete() {
-        super.onEnterAnimationComplete()
-        startSendSheetEntrance("onEnterAnimationComplete")
-    }
-
-    /**
-     * Run the sheet entrance exactly ONCE: [DraggableSheetLayout.playEntrance] slides
-     * the pre-hidden sheet up from below the screen, then plays the top-edge bounce,
-     * then reveals the peer icons. Reached from BOTH [onEnterAnimationComplete]
-     * (primary, after the window is shown) and the wireBottomSheet fallback timer (in
-     * case onEnterAnimationComplete never fires on some OEM launch path); the
-     * [sendSheetEntranceStarted] guard makes whichever fires first win. A single
-     * [android.view.View.post] defers one more frame so the window has actually
-     * painted before the slide starts.
-     */
-    private fun startSendSheetEntrance(via: String) {
-        if (sendSheetEntranceStarted) return
-        sendSheetEntranceStarted = true
-        DiagnosticLog.e(OUTBOUND_TAG, "SendActivity: start sheet entrance via=$via")
-        binding.sendSheet.post { binding.sendSheet.playEntrance { revealPeerIcons() } }
-    }
-
-    /**
-     * Fade the discovered-device icon row ([R.id.send_peer_list]) in once, after
-     * the sheet's entrance animation. The alpha gate set in [wireBottomSheet]
-     * holds the icons hidden during the slide + top-stretch so a fast-found
-     * device does not appear mid-animation; this reveals them. Idempotent — both
-     * the entrance-completion callback and the safety-net timer call it.
-     */
-    private fun revealPeerIcons() {
-        val list = binding.sendPeerList
-        if (list.alpha >= 1f) return
-        list.animate().alpha(1f).setDuration(PEER_ICON_REVEAL_MS).start()
-    }
-
     private fun showHelpSheet() {
         val sheet = BottomSheetDialog(this)
         sheet.setContentView(R.layout.bottom_sheet_send_help)
@@ -2257,29 +2129,12 @@ public class SendActivity : AppCompatActivity() {
          * propagated via [Intent.FLAG_GRANT_READ_URI_PERMISSION] on the
          * launcher side. This action is intentionally NOT exported in
          * the manifest — it is an internal contract between MainActivity
-         * and SendActivity.
+         * and SendActivityInApp.
          */
         public const val ACTION_SEND_FOLDER: String = "dev.bluehouse.bada.action.SEND_FOLDER"
 
         private const val OUTBOUND_TAG: String = "BadaOutbound"
         private const val PERCENT_SCALE = 100
-
-        /** Fallback delay (from wireBottomSheet) to kick the sheet entrance if
-         *  [onEnterAnimationComplete] never fires on some OEM launch path, so the
-         *  pre-hidden sheet can't get stuck off-screen. Long enough that
-         *  onEnterAnimationComplete (after the now ~120ms fast window fade —
-         *  WindowAnimation.Bada.SendSheet.Fast) normally wins, but shorter than
-         *  the old 450ms so a missed callback recovers sooner too. */
-        private const val ENTRANCE_TRIGGER_FALLBACK_MS: Long = 260L
-
-        /** Fade-in duration for the device-icon row once the sheet entrance
-         *  animation finishes ([revealPeerIcons]). */
-        private const val PEER_ICON_REVEAL_MS: Long = 180L
-
-        /** Extra margin past [DraggableSheetLayout.ENTRANCE_TOTAL_MS] for the
-         *  safety-net reveal, so the icons are shown even if the entrance
-         *  animation callback is skipped (e.g. entrance cut short). */
-        private const val PEER_ICON_REVEAL_FALLBACK_BUFFER_MS: Long = 150L
 
         /**
          * How long to wait for a QR-matched peer's Wi-Fi LAN route to
