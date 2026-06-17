@@ -292,6 +292,37 @@
     </style>
 
     <!--
+      In-app full-screen send screen (SendActivityInApp). Same as Theme.Bada but
+      with a fade/morph window OPEN so the sending screen DISSOLVES in over the main
+      screen (per the "first screen morphs into the sending screen" design) instead
+      of the default OEM slide. CLOSE fades back out. The EXTERNAL share-sheet
+      SendActivity keeps Theme.Bada.SendSheet (unchanged).
+    -->
+    <style name="Theme.Bada.SendInApp" parent="Theme.Bada">
+        <item name="android:windowAnimationStyle">@style/WindowAnimation.Bada.SendInApp</item>
+    </style>
+
+    <!--
+      Window enter/exit for the IN-APP full-screen send (Theme.Bada.SendInApp).
+      OPEN enter = popup_fade_in (alpha 0->1 + a gentle 0.94->1.0 scale, 200ms
+      decelerate) so the sending screen fades/morphs into place; OPEN exit = no_anim
+      so the main screen holds underneath and the new screen dissolves OVER it (the
+      "morph" look). CLOSE exit = popup_fade_out (reverse) so it dissolves back out;
+      CLOSE enter = no_anim so the main screen is simply revealed. Unlike the sheet,
+      there is no inner view-slide here — the window fade IS the entrance.
+    -->
+    <style name="WindowAnimation.Bada.SendInApp" parent="@android:style/Animation.Activity">
+        <item name="android:activityOpenEnterAnimation">@anim/popup_fade_in</item>
+        <item name="android:activityOpenExitAnimation">@anim/no_anim</item>
+        <item name="android:activityCloseEnterAnimation">@anim/no_anim</item>
+        <item name="android:activityCloseExitAnimation">@anim/popup_fade_out</item>
+        <item name="android:taskOpenEnterAnimation">@anim/popup_fade_in</item>
+        <item name="android:taskOpenExitAnimation">@anim/no_anim</item>
+        <item name="android:taskCloseEnterAnimation">@anim/no_anim</item>
+        <item name="android:taskCloseExitAnimation">@anim/popup_fade_out</item>
+    </style>
+
+    <!--
       Window enter/exit animation pair for Theme.Bada.SendSheet.
       OPEN = a soft FADE only (popup_fade_in: alpha 0->1 + a tiny scale, 200ms) —
       deliberately NOT a vertical slide. The slide-up is done as a VIEW-level
