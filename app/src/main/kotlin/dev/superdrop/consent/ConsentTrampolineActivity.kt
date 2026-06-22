@@ -25,6 +25,7 @@ import android.util.Log
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.view.animation.DecelerateInterpolator
 import android.widget.Button
 import android.widget.FrameLayout
@@ -45,6 +46,8 @@ import dev.superdrop.protocol.connection.InboundConnectionState
 import dev.superdrop.protocol.connection.ReceivedItem
 import dev.superdrop.protocol.connection.TransferItem
 import dev.superdrop.service.receiver.TileVisibilityElevationHolder
+import dev.superdrop.protocol.connection.TransferProgress
+import dev.superdrop.protocol.medium.Medium
 import dev.superdrop.service.receiver.consent.ConsentBroadcastReceiver
 import dev.superdrop.service.receiver.consent.ConsentDiagnostic
 import dev.superdrop.service.receiver.consent.ConsentIntents
@@ -53,8 +56,12 @@ import dev.superdrop.service.receiver.consent.ConsentNotificationContent
 import dev.superdrop.service.receiver.consent.ConsentRegistry
 import dev.superdrop.ui.sheet.DraggableSheetLayout
 import dev.superdrop.ui.sheet.RoundedProgressBar
+import dev.superdrop.transfer.KeepScreenOnPreferences
+import dev.superdrop.transfer.TransferExpertDetailsFormatter
+import dev.superdrop.transfer.TransferExpertViewPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -360,6 +367,7 @@ class ConsentTrampolineActivity : AppCompatActivity() {
         // system kill while finishing). Idempotent with finish()'s call
         // (restoreIfArmed compare-and-sets the armed flag).
         TileVisibilityElevationHolder.restoreIfArmed(applicationContext)
+        setTransferKeepScreenOn(active = false)
         // If the user dismissed the activity without an explicit
         // decision (e.g. swipe-back, screen lock), DO NOT auto-reject —
         // the issue's acceptance criteria explicitly call out that
@@ -629,7 +637,16 @@ class ConsentTrampolineActivity : AppCompatActivity() {
         // Seed the running counter with the announced totals so the
         // user sees "0 B / 100 MB" immediately rather than empty
         // space until the first Receiving event lands.
-        renderProgress(bytesReceived = 0, totalBytes = totalAnnouncedBytes)
+        renderProgress(
+            progress =
+                TransferProgress.of(
+                    bytesTransferred = 0,
+                    totalSize = totalAnnouncedBytes,
+                    bytesPerSecond = 0,
+                ),
+            activeMedium = observedConnection?.activeMedium?.value ?: Medium.WIFI_LAN,
+            wifiFrequencyMhz = observedConnection?.activeWifiFrequencyMhz?.value,
+        )
     }
 
     /**
@@ -643,38 +660,77 @@ class ConsentTrampolineActivity : AppCompatActivity() {
         stateJob?.cancel()
         stateJob =
             lifecycleScope.launch {
-                connection.state.collect { state ->
-                    when (state) {
-                        is InboundConnectionState.Receiving ->
-                            renderProgress(
-                                bytesReceived = state.progress.bytesTransferred,
-                                totalBytes = state.progress.totalSize,
-                            )
-                        is InboundConnectionState.Completed -> showCompletedPanel(state.items)
-                        is InboundConnectionState.Cancelled ->
-                            showFailedPanel(getString(R.string.consent_state_cancelled), reason = null)
-                        is InboundConnectionState.Failed ->
-                            showFailedPanel(getString(R.string.consent_state_failed), reason = state.reason)
-                        is InboundConnectionState.Rejected ->
-                            showFailedPanel(getString(R.string.consent_state_failed), reason = null)
-                        else -> Unit
+                connection.state
+                    .combine(connection.activeMedium) { state, medium -> state to medium }
+                    .combine(connection.activeWifiFrequencyMhz) { (state, medium), frequencyMhz ->
+                        ReceiveRenderSnapshot(
+                            state = state,
+                            activeMedium = medium,
+                            wifiFrequencyMhz = frequencyMhz,
+                        )
+                    }.collect { snapshot ->
+                        when (val state = snapshot.state) {
+                            is InboundConnectionState.Receiving -> {
+                                setTransferKeepScreenOn(active = true)
+                                renderProgress(
+                                    progress = state.progress,
+                                    activeMedium = snapshot.activeMedium,
+                                    wifiFrequencyMhz = snapshot.wifiFrequencyMhz,
+                                )
+                            }
+                            is InboundConnectionState.Completed -> {
+                                setTransferKeepScreenOn(active = false)
+                                showCompletedPanel(state.items)
+                            }
+                            is InboundConnectionState.Cancelled -> {
+                                setTransferKeepScreenOn(active = false)
+                                showFailedPanel(getString(R.string.consent_state_cancelled), reason = null)
+                            }
+                            is InboundConnectionState.Failed -> {
+                                setTransferKeepScreenOn(active = false)
+                                showFailedPanel(getString(R.string.consent_state_failed), reason = state.reason)
+                            }
+                            is InboundConnectionState.Rejected -> {
+                                setTransferKeepScreenOn(active = false)
+                                showFailedPanel(getString(R.string.consent_state_failed), reason = null)
+                            }
+                            else -> Unit
+                        }
                     }
-                }
             }
     }
 
+    private data class ReceiveRenderSnapshot(
+        val state: InboundConnectionState,
+        val activeMedium: Medium,
+        val wifiFrequencyMhz: Int?,
+    )
+
+    private fun setTransferKeepScreenOn(active: Boolean) {
+        val keepScreenOn =
+            active &&
+                KeepScreenOnPreferences
+                    .from(this)
+                    .isKeepScreenOnDuringTransfersEnabled()
+        if (keepScreenOn) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
+
     private fun renderProgress(
-        bytesReceived: Long,
-        totalBytes: Long,
+        progress: TransferProgress,
+        activeMedium: Medium,
+        wifiFrequencyMhz: Int?,
     ) {
         val progressBar = findViewById<RoundedProgressBar>(R.id.consent_receiving_progress) ?: return
         val percentText = findViewById<TextView>(R.id.consent_receiving_progress_pct)
         val pct =
-            if (totalBytes > 0) {
-                ((bytesReceived.toDouble() / totalBytes.toDouble()) * PERCENT_SCALE).toInt().coerceIn(
-                    0,
-                    PERCENT_SCALE,
-                )
+            if (progress.totalSize > 0) {
+                ((progress.bytesTransferred.toDouble() / progress.totalSize.toDouble()) * PERCENT_SCALE)
+                    .toInt()
+                    .coerceIn(0, PERCENT_SCALE)
             } else {
                 0
             }
@@ -686,9 +742,30 @@ class ConsentTrampolineActivity : AppCompatActivity() {
         findViewById<TextView>(R.id.consent_receiving_progress_text)?.text =
             getString(
                 R.string.consent_state_progress,
-                Formatter.formatShortFileSize(this, bytesReceived),
-                Formatter.formatShortFileSize(this, totalBytes),
+                Formatter.formatShortFileSize(this, progress.bytesTransferred),
+                Formatter.formatShortFileSize(this, progress.totalSize),
             )
+        renderExpertDetails(progress, activeMedium, wifiFrequencyMhz)
+    }
+
+    private fun renderExpertDetails(
+        progress: TransferProgress,
+        activeMedium: Medium,
+        wifiFrequencyMhz: Int?,
+    ) {
+        val details = findViewById<TextView>(R.id.consent_expert_details) ?: return
+        if (!TransferExpertViewPreferences.from(this).isExpertViewEnabled()) {
+            details.visibility = View.GONE
+            return
+        }
+        details.text =
+            TransferExpertDetailsFormatter.format(
+                context = this,
+                progress = progress,
+                activeMedium = activeMedium,
+                wifiFrequencyMhz = wifiFrequencyMhz,
+            )
+        details.visibility = View.VISIBLE
     }
 
     /**
@@ -714,6 +791,7 @@ class ConsentTrampolineActivity : AppCompatActivity() {
      * behavior for that path.
      */
     private fun showCompletedPanel(items: List<ReceivedItem>) {
+        findViewById<TextView>(R.id.consent_expert_details)?.visibility = View.GONE
         val fileItems = items.filterIsInstance<ReceivedItem.File>()
         val targetNames = fileItems.map { it.header.fileName }.toSet()
         lifecycleScope.launch {
@@ -995,6 +1073,7 @@ class ConsentTrampolineActivity : AppCompatActivity() {
         reason: String?,
     ) {
         beginPanelTransition()
+        findViewById<TextView>(R.id.consent_expert_details)?.visibility = View.GONE
         findViewById<View>(R.id.consent_receiving_panel).visibility = View.GONE
         findViewById<View>(R.id.consent_completed_panel).visibility = View.GONE
         findViewById<View>(R.id.consent_failed_panel).visibility = View.VISIBLE

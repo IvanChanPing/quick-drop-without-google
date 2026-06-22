@@ -185,7 +185,24 @@ class OutboundConnectionTest {
     private class LoopbackUpgradePair(
         private val medium: Medium = Medium.BLUETOOTH,
     ) {
-        private val credentials = UpgradePathCredentials.Generic(medium)
+        val wifiFrequencyMhz: Int? =
+            if (medium == Medium.WIFI_DIRECT) {
+                WIFI_DIRECT_TEST_FREQUENCY_MHZ
+            } else {
+                null
+            }
+        private val credentials: UpgradePathCredentials =
+            if (medium == Medium.WIFI_DIRECT) {
+                UpgradePathCredentials.WifiDirect(
+                    ipAddress = byteArrayOf(127, 0, 0, 1),
+                    port = 1,
+                    ssid = "DIRECT-bada-test",
+                    passphrase = "12345678",
+                    frequency = WIFI_DIRECT_TEST_FREQUENCY_MHZ,
+                )
+            } else {
+                UpgradePathCredentials.Generic(medium)
+            }
         private val clientSocket: Socket
         private val serverSocket: Socket
 
@@ -598,7 +615,7 @@ class OutboundConnectionTest {
 
                         assertThat(outboundResult).isEqualTo(OutboundResult.Completed)
                         assertThat(inboundResult).isInstanceOf(InboundResult.Completed::class.java)
-                        assertThat(inbound.activeMedium.value).isEqualTo(Medium.WIFI_DIRECT)
+                        assertWifiDirectMetadata(outbound, inbound, directUpgradePair.wifiFrequencyMhz)
                     }
 
                     assertThat(factory.output[payloadId]?.toByteArray()).isEqualTo(fileBytes)
@@ -736,6 +753,56 @@ class OutboundConnectionTest {
                     }
 
                     assertThat(logs).contains("medium-upgrade: pre-UKEY2 client completed WIFI_DIRECT")
+                } finally {
+                    runCatching { oldWire.close() }
+                    directUpgradePair.close()
+                }
+            }
+        }
+
+    @Test
+    fun `preconnected BLE bootstrap sends ClientInit when no pre-UKEY2 offer arrives`() =
+        runBlocking {
+            withTimeout(WALLCLOCK_TIMEOUT_MS) {
+                val (client, server) = connectedSocketPair()
+                val directUpgradePair = LoopbackUpgradePair(Medium.WIFI_DIRECT)
+                val logs = mutableListOf<String>()
+                val outbound =
+                    OutboundConnection(
+                        transport = client.asConnectedTransport(Medium.BLE),
+                        secureRandom = SecureRandom("outbound-ble-no-offer-clientinit".toByteArray()),
+                        mediumRegistry =
+                            MediumRegistry(
+                                providers =
+                                    listOf(
+                                        MediumRegistry.DefaultWifiLan.providerFor(Medium.WIFI_LAN)!!,
+                                        directUpgradePair.clientProvider,
+                                        SupportedProvider(Medium.BLE),
+                                    ),
+                                ladder = MediumLadder(listOf(Medium.WIFI_DIRECT, Medium.WIFI_LAN, Medium.BLE)),
+                            ),
+                        initialHandshakeTimeoutMillis = SHORT_INITIAL_HANDSHAKE_TIMEOUT_MS,
+                        logger = logs::add,
+                    )
+                val oldWire = FramedConnection(server.asConnectedTransport(Medium.BLE))
+
+                try {
+                    coroutineScope {
+                        val outboundJob = async { outbound.run(emptyList()) }
+                        // Peer reads ConnectionRequest and, like a stock GMS
+                        // receiver, sends NO pre-UKEY2 upgrade offer.
+                        assertThat(OfflineFrame.parseFrom(oldWire.receiveFrame()).isConnectionRequest()).isTrue()
+                        // Issue #216: rather than stalling until the receiver
+                        // drops the link, the sender must give up waiting for an
+                        // offer and send ClientInit on the BLE medium.
+                        val next = Ukey2Message.parseFrom(oldWire.receiveFrame())
+                        assertThat(next.messageType).isEqualTo(Ukey2Message.Type.CLIENT_INIT)
+
+                        oldWire.close()
+                        assertThat(outboundJob.await()).isInstanceOf(OutboundResult.Failed::class.java)
+                    }
+
+                    assertThat(logs).contains("medium-upgrade: no pre-UKEY2 upgrade offer; continuing on BLE")
                 } finally {
                     runCatching { oldWire.close() }
                     directUpgradePair.close()
@@ -1375,7 +1442,20 @@ class OutboundConnectionTest {
             else -> false
         }
 
+    private fun assertWifiDirectMetadata(
+        outbound: OutboundConnection,
+        inbound: InboundConnection,
+        frequencyMhz: Int?,
+    ) {
+        assertThat(inbound.activeMedium.value).isEqualTo(Medium.WIFI_DIRECT)
+        assertThat(outbound.activeMedium.value).isEqualTo(Medium.WIFI_DIRECT)
+        assertThat(inbound.activeWifiFrequencyMhz.value).isEqualTo(frequencyMhz)
+        assertThat(outbound.activeWifiFrequencyMhz.value).isEqualTo(frequencyMhz)
+    }
+
     private companion object {
+        private const val WIFI_DIRECT_TEST_FREQUENCY_MHZ: Int = 5_180
+
         // Hard wall-clock cap for individual short tests. Real Socket I/O is
         // blocking, so we use [withTimeout] (not runTest's virtual scheduler)
         // to bound each scenario. 30 s leaves plenty of slack on slow CI.

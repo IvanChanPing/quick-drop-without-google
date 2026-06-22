@@ -77,8 +77,8 @@ android {
             libs.versions.targetSdk
                 .get()
                 .toInt()
-        versionCode = 2026060402
-        versionName = "20260604.02"
+        versionCode = 2026061401
+        versionName = "20260614.01"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -115,6 +115,9 @@ android {
 
     buildFeatures {
         viewBinding = true
+        // Required by the "Check for updates" feature (#211): UpdateRepository
+        // reads BuildConfig.VERSION_NAME to compare against the latest GitHub release.
+        buildConfig = true
     }
 }
 

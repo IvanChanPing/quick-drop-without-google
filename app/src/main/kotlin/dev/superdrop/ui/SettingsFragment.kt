@@ -30,6 +30,8 @@ import dev.superdrop.service.downloads.SaveLocationPreferences
 import dev.superdrop.service.receiver.AdvertisedDeviceNames
 import dev.superdrop.service.receiver.ReceiverForegroundService
 import dev.superdrop.service.receiver.consent.ConsentNotificationStylePreferences
+import dev.superdrop.transfer.KeepScreenOnPreferences
+import dev.superdrop.transfer.TransferExpertViewPreferences
 
 /**
  * Settings tab content for the bottom-navigation shell in
@@ -135,6 +137,26 @@ internal class SettingsFragment : Fragment(R.layout.fragment_settings) {
             bugReportPreferences.setShakeToReportEnabled(checked)
         }
 
+        // "Keep screen on during transfers" toggle (#219). Persists to
+        // KeepScreenOnPreferences; Send/Consent activities read it to decide
+        // whether to hold FLAG_KEEP_SCREEN_ON while a transfer is active.
+        val keepScreenOnSwitch = view.findViewById<SwitchCompat>(R.id.main_keep_screen_on_switch)
+        val keepScreenOnPreferences = KeepScreenOnPreferences.from(requireContext())
+        keepScreenOnSwitch.isChecked = keepScreenOnPreferences.isKeepScreenOnDuringTransfersEnabled()
+        keepScreenOnSwitch.setOnCheckedChangeListener { _, checked ->
+            keepScreenOnPreferences.setKeepScreenOnDuringTransfersEnabled(checked)
+        }
+
+        // "Expert transfer details" toggle (#220). Persists to
+        // TransferExpertViewPreferences; Send/Consent activities show the
+        // speed/ETA/medium/Wi-Fi-band diagnostics row when enabled.
+        val expertViewSwitch = view.findViewById<SwitchCompat>(R.id.main_transfer_expert_switch)
+        val expertViewPreferences = TransferExpertViewPreferences.from(requireContext())
+        expertViewSwitch.isChecked = expertViewPreferences.isExpertViewEnabled()
+        expertViewSwitch.setOnCheckedChangeListener { _, checked ->
+            expertViewPreferences.setExpertViewEnabled(checked)
+        }
+
         // "Show NFC tap diagnostics" toggle — gates the on-screen Toasts during a tap.
         val nfcDiagnosticsSwitch = view.findViewById<SwitchCompat>(R.id.settings_nfc_diagnostics_switch)
         val nfcDiagnosticsPreferences = NfcTapDiagnosticsPreferences.from(requireContext())
@@ -235,6 +257,33 @@ internal class SettingsFragment : Fragment(R.layout.fragment_settings) {
         refreshBatteryStatus()
         refreshFullScreenIntentSection()
         refreshBugReportSwitch()
+        refreshTransferSwitches()
+    }
+
+    /**
+     * Re-sync the transfer display switches ("Keep screen on during
+     * transfers" #219 and "Expert transfer details" #220) in case another
+     * Settings surface or restored app state mutated the preferences while
+     * this fragment was alive.
+     */
+    private fun refreshTransferSwitches() {
+        val v = view ?: return
+        v
+            .findViewById<SwitchCompat>(R.id.main_keep_screen_on_switch)
+            ?.refreshChecked(
+                KeepScreenOnPreferences
+                    .from(requireContext())
+                    .isKeepScreenOnDuringTransfersEnabled(),
+            )
+        v
+            .findViewById<SwitchCompat>(R.id.main_transfer_expert_switch)
+            ?.refreshChecked(TransferExpertViewPreferences.from(requireContext()).isExpertViewEnabled())
+    }
+
+    private fun SwitchCompat.refreshChecked(enabled: Boolean) {
+        if (isChecked != enabled) {
+            isChecked = enabled
+        }
     }
 
     override fun onResume() {

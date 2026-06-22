@@ -272,6 +272,16 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!--
+              Long-press on Bada's Quick Settings tile (issue #207). The
+              platform fires ACTION_QS_TILE_PREFERENCES; without a matching
+              activity it falls back to the system App Info page. Routing
+              it to MainActivity opens the in-app surface the user actually
+              expects when they long-press the tile.
+            -->
+            <intent-filter>
+                <action android:name="android.service.quicksettings.action.QS_TILE_PREFERENCES" />
+            </intent-filter>
         </activity>
 
         <activity
@@ -291,6 +301,18 @@
             android:name=".ui.CreditActivity"
             android:exported="false"
             android:label="@string/credit_activity_label"
+            android:parentActivityName=".MainActivity" />
+
+        <!--
+          "Check for updates" screen reachable from MainActivity's
+          overflow menu. Runs a one-shot GitHub releases/latest query
+          via UpdateRepository / UpdateChecker and opens the matching
+          release page when the user taps "Update".
+        -->
+        <activity
+            android:name=".update.CheckForUpdatesActivity"
+            android:exported="false"
+            android:label="@string/update_activity_label"
             android:parentActivityName=".MainActivity" />
 
         <!--

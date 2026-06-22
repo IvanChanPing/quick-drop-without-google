@@ -11,6 +11,8 @@ import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
+import android.text.SpannableString
+import android.text.Spanned
 import android.util.Log
 import android.view.Menu
 import android.view.MenuItem
@@ -22,6 +24,9 @@ import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import dev.superdrop.battery.BatteryOptimizationOemHelper
@@ -37,6 +42,11 @@ import dev.superdrop.ui.CreditActivity
 import dev.superdrop.ui.ElasticBottomNavigationView
 import dev.superdrop.ui.SendReceiveFragment
 import dev.superdrop.ui.SettingsFragment
+import dev.superdrop.update.CenteredImageSpan
+import dev.superdrop.update.CheckForUpdatesActivity
+import dev.superdrop.update.UpdateRepository
+import dev.superdrop.update.UpdateState
+import kotlinx.coroutines.launch
 
 /**
  * Top-level launcher activity. Splits the UI into:
@@ -106,6 +116,14 @@ class MainActivity : AppCompatActivity() {
      */
     private lateinit var bugReportFlowSupport: BugReportFlowSupport
 
+    /**
+     * Toolbar reference kept on the instance so the [UpdateRepository]
+     * state observer can swap [MaterialToolbar.overflowIcon] between
+     * the no-dot and red-dot kebab variants when a new GitHub release
+     * is detected (or cleared after an in-app upgrade).
+     */
+    private var mainToolbar: MaterialToolbar? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -140,6 +158,20 @@ class MainActivity : AppCompatActivity() {
         // every minSdk we target.
         toolbar.overflowIcon = ContextCompat.getDrawable(this, R.drawable.ic_overflow_kebab_24)
         setSupportActionBar(toolbar)
+        mainToolbar = toolbar
+
+        // Update-check pipeline (issue #211). Seed the state from the
+        // cached "latest known release" so the red dot is correct from
+        // the very first frame even when the device is offline; then
+        // kick a one-shot background refresh against GitHub so the dot
+        // also reflects any release published since the last cold start.
+        UpdateRepository.seedFromCache(this)
+        lifecycleScope.launch { UpdateRepository.refresh(this@MainActivity) }
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                UpdateRepository.state.collect { applyUpdateBadge(it) }
+            }
+        }
 
         val bottomNav = findViewById<BottomNavigationView>(R.id.main_bottom_nav)
         bottomNav.setOnItemSelectedListener { item ->
@@ -256,14 +288,76 @@ class MainActivity : AppCompatActivity() {
         return true
     }
 
+    override fun onPrepareOptionsMenu(menu: Menu): Boolean {
+        // Append a vertically-centred red dot to the "Check for
+        // updates" menu item when UpdateRepository surfaces
+        // UpdateAvailable, so the in-popup indicator matches the red
+        // dot painted on the kebab.
+        val item = menu.findItem(R.id.menu_check_updates)
+        if (item != null) {
+            val rawTitle = getString(R.string.menu_check_updates)
+            item.title =
+                if (UpdateRepository.hasPendingUpdate()) {
+                    rawTitle.withTrailingBadgeOrPlain()
+                } else {
+                    rawTitle
+                }
+        }
+        return super.onPrepareOptionsMenu(menu)
+    }
+
+    /**
+     * Returns this title with a trailing vertically-centred badge dot
+     * spanned in, or the plain title if the badge drawable cannot be
+     * resolved. Extracted from [onPrepareOptionsMenu] to keep the
+     * menu hook flat for detekt's NestedBlockDepth.
+     */
+    private fun String.withTrailingBadgeOrPlain(): CharSequence {
+        val badge =
+            ContextCompat
+                .getDrawable(this@MainActivity, R.drawable.update_badge_dot)
+                ?.apply { setBounds(0, 0, intrinsicWidth, intrinsicHeight) }
+                ?: return this
+        return SpannableString("$this  ").apply {
+            setSpan(
+                CenteredImageSpan(badge),
+                length - 1,
+                length,
+                Spanned.SPAN_EXCLUSIVE_EXCLUSIVE,
+            )
+        }
+    }
+
     override fun onOptionsItemSelected(item: MenuItem): Boolean =
         when (item.itemId) {
+            R.id.menu_check_updates -> {
+                startActivity(Intent(this, CheckForUpdatesActivity::class.java))
+                true
+            }
             R.id.menu_credit -> {
                 startActivity(Intent(this, CreditActivity::class.java))
                 true
             }
             else -> super.onOptionsItemSelected(item)
         }
+
+    /**
+     * Re-render the toolbar's overflow indicator for the current
+     * [UpdateState]. Swapping the kebab drawable updates the at-a-glance
+     * red dot; `invalidateOptionsMenu()` triggers a re-prepare so the
+     * matching dot next to the menu item text follows the same
+     * transition without the user having to close and re-open the popup.
+     */
+    private fun applyUpdateBadge(state: UpdateState) {
+        val drawableRes =
+            if (state is UpdateState.UpdateAvailable) {
+                R.drawable.ic_overflow_kebab_with_dot_24
+            } else {
+                R.drawable.ic_overflow_kebab_24
+            }
+        mainToolbar?.overflowIcon = ContextCompat.getDrawable(this, drawableRes)
+        invalidateOptionsMenu()
+    }
 
     override fun onSaveInstanceState(outState: Bundle) {
         super.onSaveInstanceState(outState)

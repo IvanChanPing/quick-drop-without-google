@@ -1,3 +1,34 @@
+## [2026-06-22] Upstream sync: Bada v20260604.02 → v20260614.01
+Merged all upstream `kyujin-cho/Bada` changes from our fork base (v20260604.02) up to upstream's
+latest release (v20260614.01) into the Super Drop fork (`dev.superdrop`). 60 files reconciled via
+per-file 3-way merge against the true ancestor; 18 new files (translated `dev.bluehouse.bada`→
+`dev.superdrop`), 7 conflicts resolved preserving all Super Drop customizations. Version bumped to
+20260614.01. `:app:assembleDebug` builds clean; all unit tests pass (app + core-protocol + discovery).
+DEVICE-UNVERIFIED (no radios/NFC in build env).
+- **Off-LAN Bluetooth RFCOMM send bootstrap (#214/#215)** + **shorter pre-UKEY2 BLE offer wait
+  (#216/#218)** — the fix `SUPERDROP-CHANGES.txt` D1 flagged as the fork's top missing item (off-LAN
+  sends to stock phones).
+- **LAN re-resolve-on-connect-failure retry (#203/#204)** — new `send/LanReresolvePolicy.kt`,
+  `SendPeerPickerController.reresolveLan()`, `SendActivity.attemptRouteOutcome()/retryLanAfterReresolve()`
+  (wired into the normal route loop; coexists with the fork's NFC-tap `runTapConnectWithGrace`).
+- **Check for updates against GitHub releases (#211)** — new `update/` package + overflow-menu item +
+  badge. NOTE: `UpdateChecker.RELEASES_LATEST_URL` points at `kyujin-cho/Bada` (upstream) — left as-is;
+  may want to repoint at `IvanChanPing/Bada` or drop for the fork. Required enabling `buildConfig = true`.
+- **QS tile long-press opens app + 1.2× glyph (#207/#210)**.
+- **Keep screen on during transfers (#219/#221)** — new `transfer/KeepScreenOnPreferences.kt`; Settings
+  toggle (default ON); Send/Consent activities hold `FLAG_KEEP_SCREEN_ON` while transferring.
+- **Expert transfer details (#220)** — new `transfer/TransferExpertViewPreferences.kt` +
+  `TransferExpertDetailsFormatter.kt`; Settings toggle (default OFF); speed/ETA/medium/Wi-Fi-band row on
+  Send + Consent screens. Backed by new `activeWifiFrequencyMhz` plumbing through Inbound/Outbound
+  connections + Wi-Fi Direct transports (`UpgradePathCredentialMetadata.kt`).
+- **Contextual empty-peer radio hint (#209/#224)** — new `send/EmptyPeerRadioHint.kt`,
+  `send/RadioStateReader.kt`; the send picker's empty state now explains which radio (BT/Wi-Fi) is off.
+- Conflict resolutions preserved: fork's OShare `RoundedProgressBar` (vs upstream CircularProgressIndicator),
+  NFC-tap connect grace path, in-app/external send-receive split, tile visibility elevation.
+- Also fixed two PRE-EXISTING fork test breakages (stale `dev.bluehouse.bada` paths left over from the
+  original rename) in `SendReceiveFragmentSourceTest` and `HmacComparisonAuditTest`.
+- Files: see `docs/UPSTREAM_0614_MERGE_JOURNAL.md`. Branch `superdrop-pr/upstream-0614-merge`.
+
 ## [2026-06-16] In-app send screen: fade/morph open transition (instead of the OEM slide)
 The in-app send flow (SendReceiveFragment "Send files"/"Send folder" → file picker → `SendActivityInApp`)
 now opens with a soft fade + gentle scale-up so the sending screen DISSOLVES in over the main screen

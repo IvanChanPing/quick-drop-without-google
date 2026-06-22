@@ -14,6 +14,21 @@
          there. -->
     <string name="menu_credit">Credit</string>
     <string name="credit_activity_label">Credit</string>
+
+    <!-- "Check for updates" overflow entry + screen. Reached from the
+         toolbar overflow on MainActivity; runs a one-shot GitHub
+         releases/latest check and lets the user open the release page
+         to download the APK. -->
+    <string name="menu_check_updates">Check for updates</string>
+    <string name="update_activity_label">Check for updates</string>
+    <string name="update_status_checking">Checking for updates…</string>
+    <string name="update_status_up_to_date">You\'re on the latest version</string>
+    <string name="update_status_available">New update available</string>
+    <string name="update_status_error">Couldn\'t check for updates</string>
+    <string name="update_subtitle_current_version">Current: %1$s</string>
+    <string name="update_subtitle_latest_version">%1$s</string>
+    <string name="update_button_check_again">Check again</string>
+    <string name="update_button_update">Update</string>
     <string name="credit_placeholder_text">credit</string>
 
     <!--
@@ -110,6 +125,28 @@
     <string name="main_bug_report_subtitle">When enabled, shaking the phone while Bada is open offers to package recent diagnostics, device state, and a screenshot into a zip that you save yourself. Nothing is uploaded automatically.</string>
     <string name="settings_nfc_diagnostics_title">Show NFC tap diagnostics</string>
     <string name="settings_nfc_diagnostics_subtitle">When enabled, each NFC tap-to-share shows on-screen messages (read outcome, wake, which device it connects to, or why it could not). Turn this off for a clean tap once everything works. The detailed log is always kept for bug reports.</string>
+    <string name="main_keep_screen_on_title">Keep screen on during transfers</string>
+    <string name="main_keep_screen_on_subtitle">Keep the display awake while sending or receiving files so long transfers stay visible and reliable.</string>
+    <string name="main_transfer_expert_title">Expert transfer details</string>
+    <string name="main_transfer_expert_subtitle">Show live speed, ETA, active medium, and Wi-Fi Direct band on transfer screens.</string>
+
+    <string name="transfer_expert_speed">Speed: %1$s</string>
+    <string name="transfer_expert_speed_value">%1$s/s</string>
+    <string name="transfer_expert_eta">ETA: %1$s</string>
+    <string name="transfer_expert_medium">Medium: %1$s</string>
+    <string name="transfer_expert_wifi_band">Wi-Fi band: %1$s</string>
+    <string name="transfer_expert_calculating">calculating…</string>
+    <string name="transfer_expert_unknown">unknown</string>
+    <string name="transfer_expert_wifi_band_24">2.4 GHz</string>
+    <string name="transfer_expert_wifi_band_5">5 GHz</string>
+    <string name="transfer_expert_medium_bluetooth">Bluetooth</string>
+    <string name="transfer_expert_medium_wifi_hotspot">Wi-Fi hotspot</string>
+    <string name="transfer_expert_medium_ble">Bluetooth LE</string>
+    <string name="transfer_expert_medium_wifi_lan">Wi-Fi LAN</string>
+    <string name="transfer_expert_medium_wifi_aware">Wi-Fi Aware</string>
+    <string name="transfer_expert_medium_wifi_direct">Wi-Fi Direct</string>
+    <string name="transfer_expert_medium_web_rtc">WebRTC</string>
+    <string name="transfer_expert_medium_ble_l2cap">Bluetooth LE L2CAP</string>
 
     <!-- Save location settings (#42). The "current location" line shows
          either the picked folder's display name or "Downloads" as the
@@ -285,6 +322,11 @@
     <string name="send_subtitle_pick_peer">Tap a device to send.</string>
     <string name="send_subtitle_no_usable_route">Nearby device found, but no supported transfer route is available yet.</string>
     <string name="send_empty_state">No devices nearby yet. Make sure the receiver has Quick Share open.</string>
+    <!-- Contextual empty-state variants surfaced by EmptyPeerRadioHint
+         when one or both radios are unavailable (#209). -->
+    <string name="send_empty_state_no_bt_no_wifi">No devices found. Turn on Bluetooth and connect to the same Wi-Fi network as the receiver, then make sure Quick Share is open on the receiver.</string>
+    <string name="send_empty_state_no_bt">No devices found over Wi-Fi. Turn on Bluetooth to also reach devices not on this Wi-Fi network, and make sure Quick Share is open on the receiver.</string>
+    <string name="send_empty_state_no_wifi">No devices found. Connect both devices to the same Wi-Fi network for the most reliable discovery, and make sure Quick Share is open on the receiver.</string>
 
     <!-- Same-Wi-Fi-network hint card (#85). Surfaced after a few seconds
          of empty peer list so the user understands why nothing has

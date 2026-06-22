@@ -28,6 +28,7 @@ import android.transition.TransitionManager
 import android.util.Log
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowManager
 import android.view.animation.AccelerateInterpolator
 import android.view.animation.OvershootInterpolator
 import android.widget.Toast
@@ -58,8 +59,10 @@ import dev.superdrop.protocol.connection.FileSource
 import dev.superdrop.protocol.connection.OutboundConnection
 import dev.superdrop.protocol.connection.OutboundConnectionState
 import dev.superdrop.protocol.connection.OutboundResult
+import dev.superdrop.protocol.connection.TransferProgress
 import dev.superdrop.protocol.endpoint.DeviceType
 import dev.superdrop.protocol.endpoint.EndpointInfo
+import dev.superdrop.protocol.medium.Medium
 import dev.superdrop.protocol.qr.DerivedQrKeys
 import dev.superdrop.protocol.qr.GeneratedQrKeyData
 import dev.superdrop.protocol.qr.QrKeyData
@@ -70,11 +73,15 @@ import dev.superdrop.service.receiver.AdvertisedDeviceNames
 import dev.superdrop.service.radio.RadioHelperClient
 import dev.superdrop.service.radio.ShareRadioController
 import dev.superdrop.service.receiver.OutboundSessionActiveHolder
+import dev.superdrop.transfer.KeepScreenOnPreferences
+import dev.superdrop.transfer.TransferExpertDetailsFormatter
+import dev.superdrop.transfer.TransferExpertViewPreferences
 import dev.superdrop.ui.BackdropBlurView
 import dev.superdrop.ui.sheet.DraggableSheetLayout
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.security.PrivateKey
@@ -358,6 +365,7 @@ public class SendActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        setTransferKeepScreenOn(active = false)
         super.onDestroy()
         // Cancel any pending fade-out for the rejection banner so its
         // Runnable does not fire against a recycled binding.
@@ -422,6 +430,9 @@ public class SendActivity : AppCompatActivity() {
         if (!binding.sendQrScroll.isVisible) {
             tapReader?.enable()
         }
+        // Re-evaluate the contextual empty-state hint when the user returns
+        // from system settings after toggling Bluetooth or Wi-Fi (#209).
+        peerPickerController.onRadioStateChanged()
     }
 
     override fun onPause() {
@@ -600,7 +611,12 @@ public class SendActivity : AppCompatActivity() {
                     logger = ::logOutboundWireMessage,
                 )
             is NearbyPeerRoute.BluetoothClassic -> {
-                if (!UserFacingMediumFeatures.BLUETOOTH_CLASSIC_USER_FACING_ENABLED) return null
+                if (
+                    !UserFacingMediumFeatures.BLUETOOTH_CLASSIC_BOOTSTRAP_ROUTE_ENABLED &&
+                    !UserFacingMediumFeatures.BLUETOOTH_CLASSIC_USER_FACING_ENABLED
+                ) {
+                    return null
+                }
                 val client = BluetoothClassicBootstrapClient(applicationContext)
                 bluetoothBootstrapClient = client
                 val transport =
@@ -860,7 +876,11 @@ public class SendActivity : AppCompatActivity() {
                             SendBootstrapPlan.forRoute(peer, route)
                         }
                     val isLastAttempt = index == routes.lastIndex
-                    pendingFallback = !isLastAttempt
+                    // Suppress the per-attempt terminal while another
+                    // attempt may still follow — either a lower-priority
+                    // fallback route, or (for a LAN route) an in-place
+                    // re-resolve retry against a refreshed address.
+                    pendingFallback = !isLastAttempt || route is NearbyPeerRoute.Lan
                     if (index > 0) {
                         // Re-paint the status panel for the fallback
                         // attempt so the user sees the transport switch
@@ -872,7 +892,7 @@ public class SendActivity : AppCompatActivity() {
                             "retry: attempting fallback route=$route after primary failed",
                         )
                     }
-                    val outcome = attemptOutbound(peer, attemptPlan)
+                    val outcome = attemptRouteOutcome(peer, route, attemptPlan)
                     pendingFallback = false
                     val shouldFallback =
                         !isLastAttempt &&
@@ -1013,6 +1033,72 @@ public class SendActivity : AppCompatActivity() {
     }
 
     /**
+     * Run one route's connect attempt and, for a LAN route, fold in the
+     * re-resolve retry (#203). Keeps [proceedWithPeer]'s fallback loop
+     * focused on route ordering: a non-failing attempt is returned as-is,
+     * and a failing one is handed to [retryLanAfterReresolve], which only
+     * acts on a stale-address LAN failure and otherwise returns the
+     * original outcome unchanged.
+     */
+    private suspend fun attemptRouteOutcome(
+        peer: NearbyPeer,
+        route: NearbyPeerRoute,
+        attemptPlan: SendBootstrapPlan,
+    ): OutboundResult {
+        val firstOutcome = attemptOutbound(peer, attemptPlan)
+        if (firstOutcome !is OutboundResult.Failed) return firstOutcome
+        return retryLanAfterReresolve(peer, route, firstOutcome) ?: firstOutcome
+    }
+
+    /**
+     * LAN re-resolve-on-connect-failure retry (issue #203).
+     *
+     * When a LAN bootstrap fails before a SecureChannel exists, the
+     * cached address may be stale — the peer roamed Wi-Fi or its DHCP
+     * lease renewed while we held a frozen route snapshot from pick time
+     * and discovery was suspended. Re-resolve the peer's current LAN
+     * address and, if a fresh LAN route surfaces, retry the connection
+     * once with it.
+     *
+     * Returns the retry's [OutboundResult], or `null` when no re-resolve
+     * was warranted (non-LAN route, or a post-secure failure that a new
+     * address cannot fix) or no fresh LAN address surfaced in time — in
+     * which case the caller keeps the original failure and proceeds to
+     * the next viable route.
+     */
+    @Suppress("ReturnCount") // Two early bail-outs (no re-resolve warranted /
+    // no fresh address) plus the retry result read clearer as guards.
+    private suspend fun retryLanAfterReresolve(
+        peer: NearbyPeer,
+        failedRoute: NearbyPeerRoute,
+        failure: OutboundResult.Failed,
+    ): OutboundResult? {
+        if (!LanReresolvePolicy.shouldReresolveLan(failedRoute, failure.reason)) return null
+        val previousLan = failedRoute as NearbyPeerRoute.Lan
+        val freshLan =
+            peerPickerController.reresolveLan(peer, LanReresolvePolicy.DEFAULT_TIMEOUT_MILLIS)
+        if (freshLan == null) {
+            logOutboundDiagnostic(
+                "reresolve: no fresh LAN address for peer=${peer.stableId}; keeping original failure",
+            )
+            return null
+        }
+        logOutboundDiagnostic(
+            "reresolve: retrying LAN peer=${peer.stableId} " +
+                "old=${previousLan.address.hostAddress}:${previousLan.port} " +
+                "new=${freshLan.address.hostAddress}:${freshLan.port} " +
+                "changed=${LanReresolvePolicy.addressChanged(previousLan, freshLan)}",
+        )
+        binding.sendStatusPhase.setText(R.string.send_phase_connecting)
+        binding.sendStatusMessage.text =
+            getString(
+                R.string.send_status_retrying_route,
+                SendBootstrapPlan.forRoute(peer, freshLan).subtitle,
+            )
+        return attemptOutbound(peer, SendBootstrapPlan.forRoute(peer, freshLan))
+    }
+
+    /**
      * Single connect attempt: build the connection from [plan], wire a
      * StateFlow collector to [renderConnectionState], and await
      * [OutboundConnection.run] to terminal. Returns the `OutboundResult`
@@ -1046,9 +1132,22 @@ public class SendActivity : AppCompatActivity() {
                 activeConnection = connection
                 val collector =
                     lifecycleScope.launch {
-                        connection.state.collect { state ->
-                            renderConnectionState(state, peer)
-                        }
+                        connection.state
+                            .combine(connection.activeMedium) { state, medium -> state to medium }
+                            .combine(connection.activeWifiFrequencyMhz) { (state, medium), frequencyMhz ->
+                                SendRenderSnapshot(
+                                    state = state,
+                                    activeMedium = medium,
+                                    wifiFrequencyMhz = frequencyMhz,
+                                )
+                            }.collect { snapshot ->
+                                renderConnectionState(
+                                    state = snapshot.state,
+                                    peer = peer,
+                                    activeMedium = snapshot.activeMedium,
+                                    wifiFrequencyMhz = snapshot.wifiFrequencyMhz,
+                                )
+                            }
                     }
                 try {
                     connection.run(files)
@@ -1072,10 +1171,22 @@ public class SendActivity : AppCompatActivity() {
         ) : PreparedConnection
     }
 
+    private data class SendRenderSnapshot(
+        val state: OutboundConnectionState,
+        val activeMedium: Medium,
+        val wifiFrequencyMhz: Int?,
+    )
+
     private fun renderConnectionState(
         state: OutboundConnectionState,
         peer: NearbyPeer,
+        activeMedium: Medium,
+        wifiFrequencyMhz: Int?,
     ) {
+        setTransferKeepScreenOn(active = state is OutboundConnectionState.Sending)
+        if (state !is OutboundConnectionState.Sending) {
+            binding.sendExpertDetails?.visibility = View.GONE
+        }
         // Animate any bounds change in the status panel triggered by
         // this state — chiefly the PIN appearing on
         // AwaitingRemoteAcceptance / Sending and disappearing on
@@ -1126,7 +1237,8 @@ public class SendActivity : AppCompatActivity() {
                 // just phase + target + circle.
                 binding.sendPin.visibility = View.GONE
                 binding.sendStatusMessage.visibility = View.GONE
-                renderCircularProgress(state.progress.bytesTransferred, state.progress.totalSize)
+                renderCircularProgress(state.progress)
+                renderExpertDetails(state.progress, activeMedium, wifiFrequencyMhz)
             }
             OutboundConnectionState.Completed ->
                 renderTerminal(
@@ -1174,6 +1286,19 @@ public class SendActivity : AppCompatActivity() {
         }
     }
 
+    private fun setTransferKeepScreenOn(active: Boolean) {
+        val keepScreenOn =
+            active &&
+                KeepScreenOnPreferences
+                    .from(this)
+                    .isKeepScreenOnDuringTransfersEnabled()
+        if (keepScreenOn) {
+            window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
+
     // -----------------------------------------------------------------
     // Terminal / unsupported / QR
     // -----------------------------------------------------------------
@@ -1196,9 +1321,11 @@ public class SendActivity : AppCompatActivity() {
         message: String,
         isSuccess: Boolean = false,
     ) {
+        setTransferKeepScreenOn(active = false)
         peerPickerController.stopBleAdvertise()
         beginCardBoundsTransition(BOUNDS_DURATION_MS)
         binding.sendStatusPanel.visibility = View.VISIBLE
+        binding.sendExpertDetails?.visibility = View.GONE
         binding.sendStatusPhase.text = phaseText
         binding.sendDoneButton.visibility = View.VISIBLE
         binding.sendCancelButton.visibility = View.GONE
@@ -1267,6 +1394,7 @@ public class SendActivity : AppCompatActivity() {
         binding.sendStatusPanel.visibility = View.GONE
         binding.sendPin.visibility = View.GONE
         binding.sendStatusCircleWrapper.visibility = View.GONE
+        binding.sendExpertDetails?.visibility = View.GONE
         binding.sendPinStateBackground.visibility = View.GONE
         binding.sendTerminalPreviewCard.visibility = View.GONE
         binding.sendCardBlur.visibility = View.GONE
@@ -1497,17 +1625,13 @@ public class SendActivity : AppCompatActivity() {
      * `setProgressCompat` is also the API that handles the indeterminate
      * → determinate transition cleanly.
      */
-    private fun renderCircularProgress(
-        bytesTransferred: Long,
-        totalSize: Long,
-    ) {
+    private fun renderCircularProgress(progress: TransferProgress) {
         binding.sendStatusCircleWrapper.visibility = View.VISIBLE
         val pct =
-            if (totalSize > 0L) {
-                ((bytesTransferred.toDouble() / totalSize.toDouble()) * PERCENT_SCALE).toInt().coerceIn(
-                    0,
-                    PERCENT_SCALE,
-                )
+            if (progress.totalSize > 0L) {
+                ((progress.bytesTransferred.toDouble() / progress.totalSize.toDouble()) * PERCENT_SCALE)
+                    .toInt()
+                    .coerceIn(0, PERCENT_SCALE)
             } else {
                 0
             }
@@ -1516,6 +1640,26 @@ public class SendActivity : AppCompatActivity() {
         }
         binding.sendStatusCircle.setProgressCompat(pct, true)
         binding.sendStatusCirclePct.text = getString(R.string.transfer_progress_percent, pct)
+    }
+
+    private fun renderExpertDetails(
+        progress: TransferProgress,
+        activeMedium: Medium,
+        wifiFrequencyMhz: Int?,
+    ) {
+        if (!TransferExpertViewPreferences.from(this).isExpertViewEnabled()) {
+            binding.sendExpertDetails?.visibility = View.GONE
+            return
+        }
+        val expertDetails = binding.sendExpertDetails ?: return
+        expertDetails.text =
+            TransferExpertDetailsFormatter.format(
+                context = this,
+                progress = progress,
+                activeMedium = activeMedium,
+                wifiFrequencyMhz = wifiFrequencyMhz,
+            )
+        expertDetails.visibility = View.VISIBLE
     }
 
     /**
@@ -1764,6 +1908,7 @@ public class SendActivity : AppCompatActivity() {
         // flow back through the StateFlow collector and finish the UI.
         val connection = activeConnection
         if (connection != null && binding.sendStatusPanel.isVisible) {
+            setTransferKeepScreenOn(active = false)
             connection.cancel()
             return
         }

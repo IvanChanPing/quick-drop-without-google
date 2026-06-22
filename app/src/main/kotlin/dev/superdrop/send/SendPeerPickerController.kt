@@ -25,7 +25,9 @@ import dev.superdrop.service.receiver.ReceiverAdvertisementStateHolder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import dev.superdrop.discovery.diagnostics.DiagnosticLog as Log
 
 @Suppress("LongParameterList") // Every collaborator (UI, lifecycle, callbacks, sender id) is needed.
@@ -53,6 +55,12 @@ internal class SendPeerPickerController(
      * `type=SILENT` pulse.
      */
     private val senderEndpointId: String,
+    /**
+     * Reads the current Bluetooth and Wi-Fi state so the empty-state
+     * text can surface a contextual hint (#209). Defaults to a real
+     * reader backed by the system services; override in tests if needed.
+     */
+    private val radioStateReader: RadioStateReader = RadioStateReader(context),
 ) {
     /**
      * Binding-based convenience constructor — the UNCHANGED call site for the external
@@ -173,6 +181,68 @@ internal class SendPeerPickerController(
 
     /** Current resolved peers (snapshot) — used by the NFC tap-wake auto-connect. */
     fun resolvedPeers(): List<NearbyPeer> = peers.toList()
+    /**
+     * Re-resolve [peer]'s current LAN address by running a short,
+     * transient discovery session, and return the fresh LAN route — or
+     * `null` if no matching LAN-capable peer surfaces within [timeoutMs].
+     *
+     * Used by the sender's LAN re-resolve-on-connect-failure retry
+     * (issue #203): the picker stops discovery the moment a peer is
+     * picked ([suspendPicker]), so the route's baked-in address can go
+     * stale (Wi-Fi roam / DHCP renew) with no live discovery to refresh
+     * it. This spins up a fresh [NearbyPeerDiscovery] browse, waits for
+     * the same peer to re-resolve, and tears the browse down again as
+     * soon as it matches (or the timeout elapses).
+     *
+     * Matching is by `endpointId` when both sides have one — it is
+     * stable across an IP change within a single advertising session —
+     * and falls back to `stableId` otherwise. The fresh LAN route is
+     * built through [SendBootstrapPlan.viableRoutes] so it honours the
+     * same connectability gates (parseable endpoint info, dialable
+     * primary address) the picker applies.
+     */
+    suspend fun reresolveLan(
+        peer: NearbyPeer,
+        timeoutMs: Long,
+    ): NearbyPeerRoute.Lan? {
+        logDiagnostic(
+            "reresolve: browsing for peer=${peer.stableId} " +
+                "endpointId=${peer.endpointId ?: "<none>"} timeoutMs=$timeoutMs",
+        )
+        val discovery = NearbyPeerDiscovery(context.applicationContext)
+        val match =
+            withTimeoutOrNull(timeoutMs) {
+                discovery.browse().firstOrNull { event ->
+                    event is NearbyPeerEvent.Resolved &&
+                        matchesReresolveTarget(event.peer, peer) &&
+                        freshLanRoute(event.peer) != null
+                } as? NearbyPeerEvent.Resolved
+            }
+        val route = match?.peer?.let(::freshLanRoute)
+        logDiagnostic(
+            "reresolve: result peer=${peer.stableId} found=${route != null}" +
+                (route?.let { " addr=${it.address.hostAddress}:${it.port}" } ?: ""),
+        )
+        return route
+    }
+
+    private fun freshLanRoute(peer: NearbyPeer): NearbyPeerRoute.Lan? =
+        SendBootstrapPlan
+            .viableRoutes(peer)
+            .filterIsInstance<NearbyPeerRoute.Lan>()
+            .firstOrNull()
+
+    private fun matchesReresolveTarget(
+        candidate: NearbyPeer,
+        target: NearbyPeer,
+    ): Boolean {
+        val targetEndpoint = target.endpointId
+        return if (targetEndpoint != null && candidate.endpointId != null) {
+            candidate.endpointId == targetEndpoint
+        } else {
+            candidate.stableId == target.stableId
+        }
+    }
 
     fun peerLabel(peer: NearbyPeer): String = peer.displayName()
 
@@ -403,12 +473,19 @@ internal class SendPeerPickerController(
         // expires with no peers found.
         val now = System.currentTimeMillis()
         val isEmpty = peers.isEmpty()
-        emptyState.visibility =
-            if (emptyPeerHintTimer.shouldShowEmptyState(now, isEmpty)) {
-                View.VISIBLE
-            } else {
-                View.GONE
-            }
+        if (emptyPeerHintTimer.shouldShowEmptyState(now, isEmpty)) {
+            // Pick a contextual message based on the current radio state
+            // so the user understands why no peers appeared (#209).
+            val hintRes =
+                EmptyPeerRadioHint.stringResFor(
+                    bluetoothEnabled = radioStateReader.isBluetoothEnabled(),
+                    wifiConnected = radioStateReader.isWifiConnected(),
+                )
+            emptyState.setText(hintRes)
+            emptyState.visibility = View.VISIBLE
+        } else {
+            emptyState.visibility = View.GONE
+        }
 
         // The "Same Wi-Fi network required" inline card is intentionally
         // disabled in favour of the help link + bottom-sheet flow added
@@ -419,6 +496,23 @@ internal class SendPeerPickerController(
         // guidance (and adds the QR fallback section), so the inline
         // card is kept in the layout for now but never raised.
         networkHint.visibility = View.GONE
+    }
+
+    /**
+     * Re-evaluate the contextual empty-state text with the latest radio
+     * state. Called from [SendActivity.onResume] so that toggling
+     * Bluetooth or Wi-Fi in system settings and returning to the picker
+     * reflects immediately (#209).
+     *
+     * No-op once the picker is no longer actively discovering (after
+     * [suspendPicker] or [stop] null out [discoveryJob]): the empty-state
+     * hint is only meaningful while discovery is running, so resuming
+     * during an in-progress transfer must not re-surface it over the
+     * status panel.
+     */
+    fun onRadioStateChanged() {
+        if (discoveryJob == null) return
+        updateEmptyPeerHintVisibility()
     }
 
     @Suppress("MissingPermission")

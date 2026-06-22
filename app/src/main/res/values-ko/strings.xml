@@ -38,6 +38,18 @@
     <string name="menu_credit">크레딧</string>
     <string name="credit_activity_label">크레딧</string>
 
+    <!-- "업데이트 확인" 오버플로우 항목 + 화면. -->
+    <string name="menu_check_updates">업데이트 확인</string>
+    <string name="update_activity_label">업데이트 확인</string>
+    <string name="update_status_checking">업데이트를 확인하는 중…</string>
+    <string name="update_status_up_to_date">최신 버전입니다</string>
+    <string name="update_status_available">새 업데이트가 있습니다</string>
+    <string name="update_status_error">업데이트를 확인할 수 없습니다</string>
+    <string name="update_subtitle_current_version">현재: %1$s</string>
+    <string name="update_subtitle_latest_version">%1$s</string>
+    <string name="update_button_check_again">다시 확인</string>
+    <string name="update_button_update">업데이트</string>
+
     <!-- `credit_section_developer`, `credit_section_polisher`,
          `credit_section_qa`, `credit_section_thanks` are intentionally
          NOT translated here (no override). Per product direction the
@@ -91,6 +103,28 @@
     <!-- Shake-to-report bug toggle. -->
     <string name="main_bug_report_title">흔들어서 버그 보고</string>
     <string name="main_bug_report_subtitle">활성화 시 Bada가 열려 있을 때 휴대폰을 흔들면 최근 진단 정보, 기기 상태, 스크린샷을 압축 파일로 묶어 직접 저장할 수 있습니다. 자동으로 업로드되지 않습니다.</string>
+    <string name="main_keep_screen_on_title">전송 중 화면 켜두기</string>
+    <string name="main_keep_screen_on_subtitle">파일을 보내거나 받는 동안 화면이 꺼지지 않게 유지해 긴 전송을 계속 확인하고 안정적으로 진행할 수 있게 합니다.</string>
+    <string name="main_transfer_expert_title">전송 상세 정보</string>
+    <string name="main_transfer_expert_subtitle">전송 화면에 실시간 속도, 남은 시간, 사용 중인 전송 방식, Wi-Fi Direct 대역을 표시합니다.</string>
+
+    <string name="transfer_expert_speed">속도: %1$s</string>
+    <string name="transfer_expert_speed_value">%1$s/초</string>
+    <string name="transfer_expert_eta">남은 시간: %1$s</string>
+    <string name="transfer_expert_medium">전송 방식: %1$s</string>
+    <string name="transfer_expert_wifi_band">Wi-Fi 대역: %1$s</string>
+    <string name="transfer_expert_calculating">계산 중…</string>
+    <string name="transfer_expert_unknown">알 수 없음</string>
+    <string name="transfer_expert_wifi_band_24">2.4 GHz</string>
+    <string name="transfer_expert_wifi_band_5">5 GHz</string>
+    <string name="transfer_expert_medium_bluetooth">Bluetooth</string>
+    <string name="transfer_expert_medium_wifi_hotspot">Wi-Fi 핫스팟</string>
+    <string name="transfer_expert_medium_ble">Bluetooth LE</string>
+    <string name="transfer_expert_medium_wifi_lan">Wi-Fi LAN</string>
+    <string name="transfer_expert_medium_wifi_aware">Wi-Fi Aware</string>
+    <string name="transfer_expert_medium_wifi_direct">Wi-Fi Direct</string>
+    <string name="transfer_expert_medium_web_rtc">WebRTC</string>
+    <string name="transfer_expert_medium_ble_l2cap">Bluetooth LE L2CAP</string>
 
     <!-- Save-location settings (#42). -->
     <string name="main_save_location_title">받은 파일 저장 위치</string>
@@ -197,6 +231,10 @@
     <string name="send_subtitle_pick_peer">기기를 눌러 보내세요.</string>
     <string name="send_subtitle_no_usable_route">근처 기기가 발견되었지만 아직 지원되는 전송 경로가 없습니다.</string>
     <string name="send_empty_state">근처에 기기가 없습니다. 받는 기기에서 Quick Share가 열려 있는지 확인하세요.</string>
+    <!-- Contextual empty-state variants (#209). -->
+    <string name="send_empty_state_no_bt_no_wifi">기기를 찾지 못했습니다. Bluetooth를 켜고 받는 기기와 같은 Wi-Fi 네트워크에 연결한 후, 받는 기기에서 Quick Share가 열려 있는지 확인하세요.</string>
+    <string name="send_empty_state_no_bt">Wi-Fi로 기기를 찾지 못했습니다. Bluetooth를 켜면 같은 Wi-Fi에 없는 기기도 검색할 수 있습니다. 받는 기기에서 Quick Share가 열려 있는지 확인하세요.</string>
+    <string name="send_empty_state_no_wifi">기기를 찾지 못했습니다. 두 기기를 같은 Wi-Fi 네트워크에 연결하면 더 안정적으로 검색할 수 있습니다. 받는 기기에서 Quick Share가 열려 있는지 확인하세요.</string>
 
     <!-- Same-Wi-Fi-network hint card (#85). -->
     <string name="send_network_hint_title">근처 검색 요건</string>
