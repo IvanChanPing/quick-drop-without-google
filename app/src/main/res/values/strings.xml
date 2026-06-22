@@ -148,6 +148,15 @@
     <string name="transfer_expert_medium_web_rtc">WebRTC</string>
     <string name="transfer_expert_medium_ble_l2cap">Bluetooth LE L2CAP</string>
 
+    <!-- First-run "Install Radio Helper" dialog + install flow (HelperInstaller). -->
+    <string name="helper_install_title">Install the Radio Helper</string>
+    <string name="helper_install_message">Super Drop uses a small companion app to turn Wi-Fi and Bluetooth on automatically when you share. Install it now — it\'s bundled in, so no download is needed.</string>
+    <string name="helper_install_button">Install</string>
+    <string name="helper_install_dismiss">Not now</string>
+    <string name="helper_install_allow_sources">To install the helper, allow Super Drop to install apps, then tap Install again.</string>
+    <string name="helper_install_success">Radio Helper installed</string>
+    <string name="helper_install_failed">Couldn\'t install Radio Helper</string>
+
     <!-- Save location settings (#42). The "current location" line shows
          either the picked folder's display name or "Downloads" as the
          default fallback. -->

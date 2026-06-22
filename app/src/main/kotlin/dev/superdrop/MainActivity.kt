@@ -33,6 +33,7 @@ import dev.superdrop.battery.BatteryOptimizationOemHelper
 import dev.superdrop.battery.BatteryOptimizationPreferences
 import dev.superdrop.bugreport.BugReportFlowSupport
 import dev.superdrop.diag.DiagnosticUploader
+import dev.superdrop.helper.HelperInstaller
 import dev.superdrop.consent.FullScreenIntentPermission
 import dev.superdrop.consent.FullScreenIntentPreferences
 import dev.superdrop.onboarding.PermissionRequirements
@@ -123,6 +124,12 @@ class MainActivity : AppCompatActivity() {
      * is detected (or cleared after an in-app upgrade).
      */
     private var mainToolbar: MaterialToolbar? = null
+
+    /**
+     * `true` while a bundled Radio-Helper install is waiting on the user to
+     * grant "install unknown apps" — [onResume] completes it on return.
+     */
+    private var pendingHelperInstall: Boolean = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -220,6 +227,64 @@ class MainActivity : AppCompatActivity() {
         // no-op. The activity content frame is the hierarchy to capture.
         (bottomNav as? ElasticBottomNavigationView)?.let { pill ->
             (findViewById<View>(android.R.id.content) as? ViewGroup)?.let(pill::attachBackdropBlur)
+        }
+
+        // First-run only (not on rotation): if the Radio Helper companion app
+        // isn't installed, offer to install the bundled copy in-app.
+        if (savedInstanceState == null) {
+            maybePromptHelperInstall()
+        }
+    }
+
+    /**
+     * First-run "Install the Radio Helper" prompt. Shown at most once (tracked
+     * by [PREFS_FIRST_RUN] / [KEY_HELPER_PROMPT_SHOWN]) and only when the
+     * matching helper package isn't already installed. "Install" routes through
+     * [startHelperInstall]; "Not now" dismisses. The helper APK is bundled in
+     * assets, so the install needs no browser/download. See [HelperInstaller].
+     */
+    private fun maybePromptHelperInstall() {
+        val prefs = getSharedPreferences(PREFS_FIRST_RUN, Context.MODE_PRIVATE)
+        if (prefs.getBoolean(KEY_HELPER_PROMPT_SHOWN, false)) return
+        if (HelperInstaller.isHelperInstalled(this)) {
+            // Already present — never need to ask. Mark done so we don't re-check.
+            prefs.edit().putBoolean(KEY_HELPER_PROMPT_SHOWN, true).apply()
+            return
+        }
+        prefs.edit().putBoolean(KEY_HELPER_PROMPT_SHOWN, true).apply()
+        AlertDialog
+            .Builder(this)
+            .setTitle(R.string.helper_install_title)
+            .setMessage(R.string.helper_install_message)
+            .setPositiveButton(R.string.helper_install_button) { _, _ -> startHelperInstall() }
+            .setNegativeButton(R.string.helper_install_dismiss, null)
+            .show()
+    }
+
+    /**
+     * Kick off the bundled-helper install. If Super Drop isn't yet allowed to
+     * install apps (API 26+ "install unknown apps"), bounce the user to that
+     * settings page ONCE — [onResume] resumes the install automatically when
+     * they return with the grant. Otherwise install immediately.
+     */
+    private fun startHelperInstall() {
+        if (!HelperInstaller.canInstallPackages(this)) {
+            pendingHelperInstall = true
+            Toast.makeText(this, R.string.helper_install_allow_sources, Toast.LENGTH_LONG).show()
+            runCatching { startActivity(HelperInstaller.unknownSourcesSettingsIntent(this)) }
+                .onFailure { pendingHelperInstall = false }
+            return
+        }
+        HelperInstaller.installBundledHelper(this)
+    }
+
+    override fun onResume() {
+        super.onResume()
+        // Resume a helper install that was waiting on the one-time
+        // "install unknown apps" grant the user just returned from.
+        if (pendingHelperInstall && HelperInstaller.canInstallPackages(this)) {
+            pendingHelperInstall = false
+            HelperInstaller.installBundledHelper(this)
         }
     }
 
@@ -504,6 +569,10 @@ class MainActivity : AppCompatActivity() {
         private const val STATE_ONBOARDING_LAUNCHED = "bada.main.onboardingLaunched"
         private const val STATE_BATTERY_DIALOG_SHOWN = "bada.main.batteryDialogShown"
         private const val STATE_FSI_DIALOG_SHOWN = "bada.main.fsiDialogShown"
+
+        // First-run Radio-Helper install prompt (shown at most once).
+        private const val PREFS_FIRST_RUN = "superdrop_first_run"
+        private const val KEY_HELPER_PROMPT_SHOWN = "helper_install_prompt_shown"
 
         // Bottom-nav icon scale on press (matches vivo native).
         private const val PRESSED_ICON_SCALE = 0.85f

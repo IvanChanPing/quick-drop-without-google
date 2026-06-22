@@ -121,6 +121,12 @@
          tap-to-receive wake (RadioHelperClient SESSION mode). Granted only when
          Super Drop is signed with the same key as the helper. -->
     <uses-permission android:name="dev.superdrop.radiohelper.permission.BIND_RADIO" />
+    <!-- First-run "Install Radio Helper" flow (HelperInstaller): lets Super Drop
+         install the bundled radio-helper APK in-app via PackageInstaller without
+         a browser. The user grants "allow from this source" ONCE in the system
+         prompt (one-time, not per-boot); without it we route to
+         ACTION_MANAGE_UNKNOWN_APP_SOURCES. -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
     <uses-feature
         android:name="android.hardware.nfc.hce"
         android:required="false" />
@@ -515,6 +521,14 @@
                 android:name="android.service.quicksettings.TOGGLEABLE_TILE"
                 android:value="true" />
         </service>
+
+        <!-- Receives PackageInstaller status for the first-run "Install Radio
+             Helper" flow (HelperInstaller). Not exported — only the app's own
+             session PendingIntent targets it; it launches the system install
+             confirm dialog and toasts the result. -->
+        <receiver
+            android:name="dev.superdrop.helper.HelperInstallReceiver"
+            android:exported="false" />
 
     </application>
 
