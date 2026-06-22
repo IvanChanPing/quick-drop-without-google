@@ -12,7 +12,7 @@ import java.io.File
 
 class SendReceiveFragmentSourceTest {
     private val source: String by lazy {
-        val file = File("src/main/kotlin/dev/bluehouse/bada/ui/SendReceiveFragment.kt")
+        val file = File("src/main/kotlin/dev/superdrop/ui/SendReceiveFragment.kt")
         assertTrue("SendReceiveFragment.kt should exist at ${file.absolutePath}", file.exists())
         file.readText()
     }

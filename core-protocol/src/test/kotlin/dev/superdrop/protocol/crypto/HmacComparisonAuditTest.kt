@@ -181,7 +181,7 @@ class HmacComparisonAuditTest {
         // contains the package we expect.
         var dir: File? = File(".").absoluteFile
         repeat(MAX_PARENT_HOPS) {
-            val candidate = dir?.resolve("src/main/kotlin/dev/bluehouse/bada/protocol")
+            val candidate = dir?.resolve("src/main/kotlin/dev/superdrop/protocol")
             if (candidate != null && candidate.isDirectory) {
                 return File(dir!!, "src/main/kotlin")
             }
@@ -191,7 +191,7 @@ class HmacComparisonAuditTest {
     }
 
     private fun readSource(relativeWithinPackage: String): String {
-        val file = File(mainSourceRoot(), "dev/bluehouse/bada/protocol/$relativeWithinPackage")
+        val file = File(mainSourceRoot(), "dev/superdrop/protocol/$relativeWithinPackage")
         check(file.isFile) { "Expected source file at $file but it is missing" }
         return file.readText()
     }
