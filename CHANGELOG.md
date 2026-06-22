@@ -12,8 +12,10 @@ DEVICE-UNVERIFIED (no radios/NFC in build env).
   `SendPeerPickerController.reresolveLan()`, `SendActivity.attemptRouteOutcome()/retryLanAfterReresolve()`
   (wired into the normal route loop; coexists with the fork's NFC-tap `runTapConnectWithGrace`).
 - **Check for updates against GitHub releases (#211)** — new `update/` package + overflow-menu item +
-  badge. NOTE: `UpdateChecker.RELEASES_LATEST_URL` points at `kyujin-cho/Bada` (upstream) — left as-is;
-  may want to repoint at `IvanChanPing/Bada` or drop for the fork. Required enabling `buildConfig = true`.
+  badge. `UpdateChecker.RELEASES_LATEST_URL` REPOINTED from upstream `kyujin-cho/Bada` to our fork
+  `IvanChanPing/Bada` so Super Drop offers OUR APK. Required enabling `buildConfig = true`. Only finds
+  updates once IvanChanPing/Bada publishes a GitHub Release tagged `YYYYMMDD.NN`; until then the query
+  404s and degrades to UpToDate/Error (no crash).
 - **QS tile long-press opens app + 1.2× glyph (#207/#210)**.
 - **Keep screen on during transfers (#219/#221)** — new `transfer/KeepScreenOnPreferences.kt`; Settings
   toggle (default ON); Send/Consent activities hold `FLAG_KEEP_SCREEN_ON` while transferring.

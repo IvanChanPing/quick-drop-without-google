@@ -28,12 +28,16 @@ import java.net.URL
  */
 internal object UpdateChecker {
     /**
-     * GitHub upstream repository. The release tag scheme follows the
-     * app's `versionName` (`YYYYMMDD.NN`), optionally prefixed with
-     * `v` — see CLAUDE.md "Release process".
+     * Super Drop's OWN GitHub release repository (the fork), NOT upstream
+     * kyujin-cho/Bada — so the in-app "Check for updates" offers the
+     * dev.superdrop APK, not the upstream dev.bluehouse.bada one. The
+     * release tag scheme follows the app's `versionName` (`YYYYMMDD.NN`),
+     * optionally prefixed with `v` — see CLAUDE.md "Release process".
+     * Until IvanChanPing/Bada publishes a tagged GitHub Release, this query
+     * returns HTTP 404 and the checker degrades to UpToDate/Error (no crash).
      */
     private const val RELEASES_LATEST_URL =
-        "https://api.github.com/repos/kyujin-cho/Bada/releases/latest"
+        "https://api.github.com/repos/IvanChanPing/Bada/releases/latest"
     private const val USER_AGENT = "Bada-Android-UpdateChecker"
     private const val CONNECT_TIMEOUT_MS = 10_000
     private const val READ_TIMEOUT_MS = 10_000
