@@ -91,6 +91,20 @@ android {
                 keyAlias = releaseSigningInputs.keyAlias
                 keyPassword = releaseSigningInputs.keyPassword
             }
+            // CI determinism: when an explicit keystore is injected (env/props),
+            // sign the DEBUG variant with it too. The whole Super Drop family
+            // (app + dev.superdrop.radiohelper helper + bridge) shares ONE key
+            // (the project debug keystore). A GitHub runner would otherwise
+            // generate its own random debug keystore, breaking drop-in updates
+            // and the BIND_RADIO signature permission. Locally (no injected
+            // keystore) the debug variant keeps using ~/.android/debug.keystore,
+            // which on the build box IS that same shared key.
+            getByName("debug") {
+                storeFile = file(releaseSigningInputs.keystoreFile)
+                storePassword = releaseSigningInputs.keystorePassword
+                keyAlias = releaseSigningInputs.keyAlias
+                keyPassword = releaseSigningInputs.keyPassword
+            }
         }
     }
 
@@ -138,6 +152,27 @@ android.applicationVariants.configureEach {
 
 kotlin {
     jvmToolchain(17)
+}
+
+// ---------------------------------------------------------------------------
+// Bundle the Radio Helper APK INTO Super Drop's assets so the first-run
+// "Install Radio Helper" dialog (HelperInstaller) can install it on-device
+// with NO download / no browser. The DEBUG app bundles the DEBUG helper: both
+// are signed with the shared family key and the helper is dev.superdrop.
+// radiohelper.debug — matching what dev.superdrop.debug binds via BIND_RADIO.
+// Output lands at app/src/main/assets/radio-helper.apk (gitignored) and is
+// wired ahead of mergeDebugAssets so a plain `:app:assembleDebug` always
+// embeds a fresh helper.
+val bundleRadioHelperDebug by tasks.registering(Copy::class) {
+    dependsOn(":radio-helper:assembleDebug")
+    from(project(":radio-helper").layout.buildDirectory.dir("outputs/apk/debug")) {
+        include("*.apk")
+    }
+    into(layout.projectDirectory.dir("src/main/assets"))
+    rename { "radio-helper.apk" }
+}
+tasks.matching { it.name == "mergeDebugAssets" }.configureEach {
+    dependsOn(bundleRadioHelperDebug)
 }
 
 dependencies {

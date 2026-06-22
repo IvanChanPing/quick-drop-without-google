@@ -1,3 +1,33 @@
+## [2026-06-22] GitHub Actions APK build + first-run Radio Helper install
+Two coupled additions so the repo produces an installable APK and Super Drop sets up its helper itself.
+
+**GitHub Actions (build the APK):**
+- New `.github/workflows/build-apk.yml` — on the manual "Run workflow" button (workflow_dispatch) and on
+  every push to `fork/superdrop-ui`, builds `:app:assembleDebug` (+ `:radio-helper`) and uploads both APKs
+  as downloadable artifacts.
+- Rewrote `.github/workflows/release.yml` — on `vYYYYMMDD.NN` tags, builds the same debug-variant APK and
+  attaches it to the matching GitHub Release so the in-app updater performs a true drop-in update.
+- **Signing:** the whole family shares ONE key — the project debug keystore (cert `eeb79952…`). CI signs
+  with that exact keystore, injected from the single repo secret `KEYSTORE_B64` (set on IvanChanPing/Bada;
+  creds = the well-known android/androiddebugkey/android). `app/build.gradle.kts` now also signs the DEBUG
+  variant with the injected keystore when present (so a CI runner's random debug key can't break drop-in
+  updates / the `BIND_RADIO` signature permission). We stay on the **debug variant** (`dev.superdrop.debug`)
+  to match what's installed on device. A new key would break the whole app family — intentionally reused.
+
+**First-run Radio Helper install (no browser):**
+- `:app` now BUNDLES the helper APK into its assets at build time (Gradle task `bundleRadioHelperDebug` →
+  `app/src/main/assets/radio-helper.apk`, gitignored). The bundled helper is `dev.superdrop.radiohelper.debug`,
+  same-key signed (build-verified) so it satisfies `BIND_RADIO`.
+- New `dev.superdrop.helper.HelperInstaller` + `HelperInstallReceiver`: on first launch `MainActivity` checks
+  whether the matching helper is installed; if not, shows an AlertDialog ("Install the Radio Helper" /
+  Install / Not now) that installs the bundled APK via `PackageInstaller` (streamed off the main thread) —
+  no download, no browser. Needs `REQUEST_INSTALL_PACKAGES`; if "install unknown apps" isn't granted it
+  routes to that settings page once (one-time, not per-boot) and resumes the install in `onResume`.
+- Shown at most once (pref `superdrop_first_run`/`helper_install_prompt_shown`).
+- Status: BUILD-verified (assembleDebug clean; helper embedded + signature/package confirmed; app unit tests
+  pass). The on-device install + bind click-path is DEVICE-UNVERIFIED.
+- Files: `docs/CI_AND_HELPER_INSTALL_JOURNAL.md`.
+
 ## [2026-06-22] Upstream sync: Bada v20260604.02 → v20260614.01
 Merged all upstream `kyujin-cho/Bada` changes from our fork base (v20260604.02) up to upstream's
 latest release (v20260614.01) into the Super Drop fork (`dev.superdrop`). 60 files reconciled via

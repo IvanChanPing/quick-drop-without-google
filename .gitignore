@@ -46,3 +46,6 @@ release/
 .editorconfig.bak
 build/reports/
 super-drop-debug.apk
+
+# Bundled Radio Helper APK (generated at build time by :app bundleRadioHelperDebug)
+app/src/main/assets/radio-helper.apk

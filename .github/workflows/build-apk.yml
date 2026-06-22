@@ -1,0 +1,80 @@
+name: Build APK
+
+# On-demand + per-push builder for an INSTALLABLE Super Drop APK.
+#
+# Why this exists (separate from ci.yml/release.yml): ci.yml only runs on
+# `main` and uploads nothing downloadable; release.yml only fires on `v*` tags.
+# This one runs on the fork's working branch and on the manual "Run workflow"
+# button, and uploads the APK as a downloadable artifact.
+#
+# Signing: the whole Super Drop family (app + dev.superdrop.radiohelper helper
+# + bridge) shares ONE key — the project debug keystore. CI must sign with that
+# exact keystore (a fresh runner would otherwise generate its own, breaking
+# drop-in updates and the BIND_RADIO signature permission). The keystore is
+# injected from the single repo secret KEYSTORE_B64; its creds are the
+# well-known Android debug creds. We build the DEBUG variant so the package
+# (dev.superdrop.debug) and signature match what's already installed on device.
+# The radio-helper APK is auto-bundled into assets by the :app build.
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [fork/superdrop-ui]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Decode shared signing keystore
+        env:
+          KEYSTORE_B64: ${{ secrets.KEYSTORE_B64 }}
+        run: |
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "::error::Repo secret KEYSTORE_B64 is not set. Add it (base64 of the shared Super Drop keystore) so CI APKs match the on-device signature." >&2
+            exit 1
+          fi
+          printf '%s' "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/superdrop.keystore"
+          chmod 600 "$RUNNER_TEMP/superdrop.keystore"
+
+      - name: Assemble debug APK (shared-key signed, radio-helper bundled)
+        env:
+          KEYSTORE_FILE: ${{ runner.temp }}/superdrop.keystore
+          KEYSTORE_PASSWORD: android
+          KEY_ALIAS: androiddebugkey
+          KEY_PASSWORD: android
+        run: ./gradlew :app:assembleDebug :radio-helper:assembleDebug --stacktrace
+
+      - name: Remove decoded keystore
+        if: always()
+        run: rm -f "$RUNNER_TEMP/superdrop.keystore"
+
+      - name: Upload Super Drop APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: super-drop-debug
+          if-no-files-found: error
+          path: app/build/outputs/apk/debug/*.apk
+
+      - name: Upload Radio Helper APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: radio-helper-debug
+          if-no-files-found: error
+          path: radio-helper/build/outputs/apk/debug/*.apk
