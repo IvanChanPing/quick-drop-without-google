@@ -114,25 +114,6 @@ object NfcColdReceiverPrimer {
     }
 
     /**
-     * Publish the live receiver link for a WARM session — one already running with
-     * its TCP listener bound on [port] — so an NFC tap answers a real
-     * `deym + Wi-Fi-LAN rxAdv` tag without cold-priming a second socket. Called by
-     * [ReceiverForegroundService] right after the session binds. Returns the
-     * published link, or `null` when there is no Wi-Fi-LAN IPv4 to advertise (the
-     * receiver isn't reachable over Wi-Fi-LAN, so we leave the tag empty).
-     */
-    fun publishWarmLink(
-        context: Context,
-        port: Int,
-    ): NfcTapLinkHolder.Link? {
-        val ip = firstWifiLanIpv4(context) ?: return null
-        val link = buildLink(context, ip, port)
-        NfcTapLinkHolder.set(link)
-        DiagnosticLog.w(TAG, "publishWarmLink: live tag ${ip.hostAddress}:$port")
-        return link
-    }
-
-    /**
      * Build the [NfcTapLinkHolder.Link] advertised over NFC for the given live
      * [ip]/[port], reusing the cached [EndpointIdentityHolder] snapshot so we
      * don't re-read device-name settings on the HCE thread when possible.

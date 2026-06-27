@@ -32,8 +32,11 @@ import dev.bluehouse.bada.discovery.diagnostics.DiagnosticLog
 import dev.bluehouse.bada.discovery.medium.MediumRegistries
 import dev.bluehouse.bada.protocol.endpoint.BleServiceData
 import dev.bluehouse.bada.protocol.endpoint.EndpointInfo
+import dev.bluehouse.bada.protocol.endpoint.NearbyServiceId
 import dev.bluehouse.bada.protocol.nfc.NfcTapLinkHolder
 import dev.bluehouse.bada.service.downloads.DownloadsWriterFactory
+import dev.bluehouse.bada.service.radio.RadioHelperClient
+import dev.bluehouse.bada.service.radio.ShareRadioController
 import dev.bluehouse.bada.service.receiver.consent.ConsentBroadcastReceiver
 import dev.bluehouse.bada.service.receiver.consent.ConsentCoordinator
 import dev.bluehouse.bada.service.receiver.consent.ConsentDiagnostic
@@ -59,6 +62,8 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withTimeoutOrNull
+import java.net.Inet4Address
+import java.net.InetAddress
 import java.util.concurrent.atomic.AtomicReference
 
 /**
@@ -123,6 +128,7 @@ import java.util.concurrent.atomic.AtomicReference
  * (see [ReceiverSession]) so the service body remains the only
  * Android-coupled surface.
  */
+@Suppress("TooManyFunctions") // Aggregates the receiver, consent, progress, NFC, and tile-wake glue.
 public class ReceiverForegroundService : Service() {
     private val serviceJob: Job = SupervisorJob()
     private val serviceScope: CoroutineScope = CoroutineScope(serviceJob + Dispatchers.IO)
@@ -169,6 +175,28 @@ public class ReceiverForegroundService : Service() {
 
     @Volatile
     private var mdnsGate: MdnsAdvertisementGate? = null
+
+    /**
+     * Bounded cold-tap wake window (NFC tap-to-receive). Cancelled/replaced
+     * on each [ACTION_NFC_WAKE]; on expiry it restores the visibility
+     * override unless the user already had it on before the tap.
+     */
+    @Volatile
+    private var nfcWakeJob: Job? = null
+
+    /** Visibility-override state captured when a fresh wake window opened. */
+    private var nfcWakePriorOverride: Boolean = false
+
+    /**
+     * Shared radio lease used to force Wi-Fi + Bluetooth ON for an NFC
+     * tap-to-receive wake or a Quick Settings tile open, restored at teardown.
+     * The same [ShareRadioController] type backs the sender too — see
+     * [ensureRadiosForWake] / [restoreRadiosAfterShare]. All calls on the main
+     * thread per the client's threading contract.
+     */
+    private val shareRadios: ShareRadioController by lazy {
+        ShareRadioController(this, logTag = NFC_WAKE_TAG)
+    }
 
     @Volatile
     private var discoveryDiagnosticsJob: Job? = null
@@ -252,7 +280,83 @@ public class ReceiverForegroundService : Service() {
             startReceiverSession()
         }
 
+        // Cold NFC tap-to-receive: a tap on our idle HCE starts the service
+        // with this action. Force a bounded visibility window so we
+        // advertise and the tapping sender can connect; the normal inbound
+        // path then posts the Accept consent notification (no app takeover).
+        if (intent?.action == ACTION_NFC_WAKE) {
+            ensureRadiosForWake()
+            armNfcWakeWindow()
+        }
+
+        // Quick Settings tile tap (open receive sheet). The tile already
+        // manages the visibility bump + its restore; here we only force
+        // Wi-Fi + Bluetooth on for the receive. They are restored by
+        // [restoreRadiosAfterShare] when the sheet closes and stops the
+        // service the tile started (see [TileVisibilityElevationHolder]).
+        if (intent?.action == ACTION_TILE_WAKE) {
+            ensureRadiosForWake()
+        }
+
         return START_STICKY
+    }
+
+    /**
+     * Open a bounded visibility window in response to a cold NFC tap
+     * (mirrors stock Quick Share's `djvf.f` -> `PendingIntent.send`: the
+     * tapped-while-idle HCE wakes the receiver into a discoverable state).
+     * Forces [MdnsVisibilityOverrideHolder] on so the
+     * [MdnsAdvertisementGate] publishes immediately, then auto-restores
+     * after [NFC_WAKE_WINDOW_MILLIS] — unless the user already had
+     * always-visible on before the tap, in which case it is left untouched.
+     * A transfer that starts inside the window keeps its own session alive
+     * regardless of the override, so expiring the window does not interrupt
+     * an in-flight receive.
+     */
+    private fun armNfcWakeWindow() {
+        if (nfcWakeJob?.isActive != true) {
+            nfcWakePriorOverride = MdnsVisibilityOverrideHolder.isActive
+        }
+        MdnsVisibilityOverrideHolder.setAlwaysVisible(true)
+        DiagnosticLog.w(NFC_WAKE_TAG, "nfc-wake: visibility forced for ${NFC_WAKE_WINDOW_MILLIS}ms")
+        nfcWakeJob?.cancel()
+        nfcWakeJob =
+            serviceScope.launch {
+                delay(NFC_WAKE_WINDOW_MILLIS)
+                if (!nfcWakePriorOverride) {
+                    MdnsVisibilityOverrideHolder.setAlwaysVisible(false)
+                    DiagnosticLog.w(NFC_WAKE_TAG, "nfc-wake: window expired -> visibility restored")
+                }
+            }
+    }
+
+    /**
+     * Force Wi-Fi + Bluetooth ON for an NFC tap-to-receive, routed through the
+     * universal `:radio-helper` via [RadioHelperClient] SESSION mode. The helper
+     * captures the user's original radio state, enables only what's OFF, and
+     * restores it on [restoreRadiosAfterShare] (teardown) — this app tracks
+     * nothing. The transfer can't happen without Wi-Fi (Wi-Fi-LAN connect) and
+     * benefits from BLE (discovery + GATT initial-control), and the headless
+     * wake can't pop a dialog — hence the silent helper.
+     *
+     * Best-effort + fully logged: helper not installed / bind denied (wrong key)
+     * / OEM force-stop / 5 s timeout → log and continue (BLE + mDNS advertise
+     * still come up). Called on the main thread from [onStartCommand] per the
+     * client's threading contract. NOT device-verified — whether the helper
+     * actually flips the radios on the target OEM is the make-or-break.
+     */
+    private fun ensureRadiosForWake() {
+        shareRadios.requestRadiosOn(RadioHelperClient.RADIO_BOTH)
+    }
+
+    /**
+     * Tell the radio-helper the share is over so it restores ONLY the radios it
+     * turned on, then unbind. Called from [stopReceiverAndExit]. Fires the
+     * restore message before unbinding so the helper (a separate process) still
+     * runs its restore even as this service goes away. Main-thread (teardown).
+     */
+    private fun restoreRadiosAfterShare() {
+        shareRadios.restoreRadios(finishSession = true)
     }
 
     /**
@@ -414,12 +518,9 @@ public class ReceiverForegroundService : Service() {
                 // responder, which has its own multicast filter
                 // exemption.
                 //
-                // Publish the live NFC tap-to-receive link (#NFC) so a tap on
-                // this already-running receiver answers a real tag pointing at
-                // the bound port — the warm counterpart of NfcColdReceiverPrimer.
-                // A cold tap that primed + adopted a socket lands on the same
-                // port, so this is consistent either way; no-op without Wi-Fi-LAN.
-                NfcColdReceiverPrimer.publishWarmLink(applicationContext, newSession.boundPort)
+                // The live NFC tap-to-receive link is published reactively by
+                // [startNfcTapLinkPublisher] (tracks the advertise state), so no
+                // one-shot publish is needed here.
                 startMdnsGate(newSession)
             } catch (
                 @Suppress("SwallowedException") t: Throwable,
@@ -439,6 +540,81 @@ public class ReceiverForegroundService : Service() {
         // debug screen. The cadence is intentionally slow (every 10s)
         // so we don't spam logcat in the steady state.
         startDiscoveryDiagnosticsLogger()
+
+        // Publish / clear the Quick Share NFC tap-to-share link in
+        // lock-step with the receiver's mDNS advertise state so the HCE
+        // (BadaTapHceService) only emits a live tag while we are
+        // actually a reachable receiver.
+        startNfcTapLinkPublisher(newSession)
+    }
+
+    /**
+     * Drive [NfcTapLinkHolder] from the receiver's advertise state.
+     *
+     * When the receiver starts advertising (mDNS publish — gated by the
+     * same foreground/sheet/visibility signals as the
+     * [MdnsAdvertisementGate]), build a [NfcTapLinkHolder.Link] from the
+     * live identity (endpointId + EndpointInfo), the Nearby service-id
+     * hash, the device's Wi-Fi-LAN IPv4 address, and the session's bound
+     * TCP port, and publish it so the HCE can serve it to a tapping Quick
+     * Share sender. When advertising stops, clear the holder so a tap
+     * becomes a no-op rather than pointing at a dead port.
+     *
+     * The bound port and LAN IP are re-read on each transition so a Wi-Fi
+     * reconnect (new IP) is reflected the next time advertising flips on.
+     */
+    private fun startNfcTapLinkPublisher(activeSession: ReceiverSession) {
+        serviceScope.launch {
+            ReceiverAdvertisementStateHolder.advertisingFlow.collect { advertising ->
+                if (!advertising || !activeSession.isRunning) {
+                    NfcTapLinkHolder.clear()
+                    return@collect
+                }
+                val endpointInfo = EndpointIdentityHolder.snapshot.get()
+                val ip = firstWifiLanIpv4()
+                val port = runCatching { activeSession.boundPort }.getOrNull()
+                if (endpointInfo == null || ip == null || port == null) {
+                    NfcTapLinkHolder.clear()
+                    return@collect
+                }
+                NfcTapLinkHolder.set(
+                    NfcTapLinkHolder.Link(
+                        endpointId = BleEndpointIdHolder.bytesFor(),
+                        serviceIdHash = NearbyServiceId.hashPrefix,
+                        endpointInfo = endpointInfo.serialize(),
+                        address = ip,
+                        port = port,
+                    ),
+                )
+            }
+        }
+    }
+
+    /**
+     * First non-loopback, non-link-local IPv4 address on a Wi-Fi
+     * transport, matching the address `Discovery` advertises over mDNS.
+     * Returns `null` when Wi-Fi has no usable IPv4 (e.g. cellular-only),
+     * in which case the tap-to-share holder is left cleared.
+     */
+    @Suppress("DEPRECATION")
+    private fun firstWifiLanIpv4(): Inet4Address? {
+        val cm =
+            applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE)
+                as? android.net.ConnectivityManager ?: return null
+        return cm.allNetworks
+            .asSequence()
+            .filter { network ->
+                cm
+                    .getNetworkCapabilities(network)
+                    ?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) == true
+            }.mapNotNull { network -> cm.getLinkProperties(network) }
+            .flatMap { linkProperties -> linkProperties.linkAddresses.asSequence() }
+            .map { linkAddress -> linkAddress.address }
+            .filterIsInstance<Inet4Address>()
+            .filterNot { addr: InetAddress ->
+                addr.isAnyLocalAddress || addr.isLoopbackAddress || addr.isLinkLocalAddress
+            }.sortedBy(InetAddress::getHostAddress)
+            .firstOrNull()
     }
 
     /**
@@ -900,14 +1076,24 @@ public class ReceiverForegroundService : Service() {
     }
 
     private fun stopReceiverAndExit() {
+        // Clear any outstanding tile-elevation record: the receiver is
+        // being torn down (explicit stop or process teardown), so a later
+        // receive-sheet dismissal must not try to "restore" by stopping a
+        // service that is already gone or re-toggling an override the user
+        // may have since changed by other means. Best-effort, idempotent.
+        TileVisibilityElevationHolder.disarm()
+        // The receiver is going away — make sure a tap can no longer read
+        // a stale tag pointing at the about-to-close TCP listener. The
+        // advertising-flow collector also clears this, but the scope is
+        // cancelled below so we clear eagerly here.
+        NfcTapLinkHolder.clear()
+        // Cold-tap cleanup: tell the radio-helper the share is over (restore the
+        // radios it enabled) and release any primer listener that was bound for a
+        // cold tap but never adopted (e.g. a refused FGS wake).
+        restoreRadiosAfterShare()
+        NfcColdReceiverPrimer.discardUnadopted()
         stopActiveReceiverSession()
         unregisterConsentReceiverIfNeeded()
-
-        // The receiver is no longer live: clear the NFC tap-to-receive link so a
-        // tap answers an empty tag (no stale port), and release any cold-tap
-        // primed-but-unadopted socket so a refused FGS wake doesn't leak it.
-        NfcTapLinkHolder.clear()
-        NfcColdReceiverPrimer.discardUnadopted()
 
         // Detach the ProcessLifecycleOwner observer first — once the
         // scanner is stopped, any late foreground/background callback
@@ -954,6 +1140,30 @@ public class ReceiverForegroundService : Service() {
          * is accepted on the advertised port. Not exported.
          */
         public const val ACTION_NFC_WAKE: String = "dev.bluehouse.bada.service.receiver.ACTION_NFC_WAKE"
+
+        /**
+         * Action sent by [dev.bluehouse.bada.tile.BadaQuickShareTileService] when the
+         * Quick Settings tile is tapped to open the receive sheet. The tile owns
+         * the visibility bump itself (via [MdnsVisibilityOverrideHolder] +
+         * [TileVisibilityElevationHolder]); this action additionally asks us to
+         * force Wi-Fi + Bluetooth ON for the receive through the radio-helper,
+         * restored on teardown ([restoreRadiosAfterShare] from
+         * [stopReceiverAndExit] when the sheet closes and stops the service the
+         * tile started). Not exported (package-internal control intent).
+         */
+        public const val ACTION_TILE_WAKE: String = "dev.bluehouse.bada.service.receiver.ACTION_TILE_WAKE"
+
+        /** Logcat tag for cold NFC / tile wake lifecycle lines. */
+        private const val NFC_WAKE_TAG: String = "BadaNfcWake"
+
+        /**
+         * How long a cold NFC / tile wake keeps the receiver forcibly visible/
+         * advertising so the sender can connect. After this the visibility
+         * override is restored (unless the user had it on already). 60 s
+         * mirrors the [MdnsAdvertisementGate] debounce so a tap that lands
+         * just before a sender's first connect attempt still rendezvous.
+         */
+        private const val NFC_WAKE_WINDOW_MILLIS: Long = 60_000L
 
         /**
          * Intent extra carrying a serialized [EndpointInfo] when the
@@ -1070,6 +1280,26 @@ public class ReceiverForegroundService : Service() {
          */
         public fun start(context: Context) {
             val intent = Intent(context, ReceiverForegroundService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        }
+
+        /**
+         * Bring up the foreground service AND force Wi-Fi + Bluetooth on for
+         * the receive (via the radio-helper), restored when the service is
+         * later stopped. Used by [dev.bluehouse.bada.tile.BadaQuickShareTileService]
+         * so opening the receive sheet from the Quick Settings tile also turns
+         * the radios on. Same platform-call wrapping as [start]; differs only
+         * by tagging the start intent with [ACTION_TILE_WAKE].
+         */
+        public fun startWithRadios(context: Context) {
+            val intent =
+                Intent(context, ReceiverForegroundService::class.java).apply {
+                    action = ACTION_TILE_WAKE
+                }
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 context.startForegroundService(intent)
             } else {

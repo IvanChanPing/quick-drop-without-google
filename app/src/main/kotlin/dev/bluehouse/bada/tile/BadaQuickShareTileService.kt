@@ -14,39 +14,55 @@ import android.service.quicksettings.TileService
 import android.util.Log
 import dev.bluehouse.bada.MainActivity
 import dev.bluehouse.bada.R
+import dev.bluehouse.bada.consent.ConsentTrampolineActivity
 import dev.bluehouse.bada.onboarding.PermissionRequirements
 import dev.bluehouse.bada.service.receiver.MdnsVisibilityOverrideHolder
 import dev.bluehouse.bada.service.receiver.ReceiverForegroundService
+import dev.bluehouse.bada.service.receiver.TileVisibilityElevationHolder
+import dev.bluehouse.bada.service.receiver.consent.ConsentIntents
 
 /**
- * Quick Settings tile that turns Bada "on" — i.e. forces the receiver to
- * be discoverable to nearby Quick Share senders — straight from the
- * system Quick Settings panel, without opening the app.
+ * Quick Settings tile that opens the **receive bottom sheet**
+ * straight from the system Quick Settings panel, making the
+ * device discoverable to nearby Quick Share senders for the duration of
+ * the sheet without permanently flipping any switch.
  *
- * Tapping the tile toggles the same process-wide
- * [MdnsVisibilityOverrideHolder] "always visible" override that the
- * in-app Send/Receive pill drives (see `SendReceiveFragment`), and brings
- * the [ReceiverForegroundService] up/down to back it. ON publishes the
- * mDNS + BLE fast advertisement unconditionally; OFF clears the override
- * and stops the receiver.
+ * ### Behaviour (replaces the old persistent on/off toggle)
  *
- * State model: the tile mirrors [MdnsVisibilityOverrideHolder.isActive].
- * The override lives in memory only and resets on process death, so a
- * cold Quick Settings panel correctly shows the tile OFF (nothing is
- * actually advertising). [onStartListening] re-syncs every time the panel
- * opens, which keeps the tile consistent with the in-app pill even though
- * one cannot change the override while the other is on screen.
+ * On click the tile:
  *
- * This is a standard (listening) tile rather than an active tile: the
- * override has no cross-module way to push `requestListeningState`, and
- * re-reading the holder in [onStartListening] is enough for eventual
- * consistency.
+ *  1. Captures the current receiver visibility from
+ *     [MdnsVisibilityOverrideHolder.isActive].
+ *  2. If visibility is below "visible" (override off), raises it to
+ *     visible AND starts [ReceiverForegroundService] — but only
+ *     temporarily, recording the prior state in
+ *     [TileVisibilityElevationHolder] so it can be restored.
+ *  3. Launches [ConsentTrampolineActivity] in waiting mode (the receive
+ *     sheet) as a foreground activity.
+ *  4. When the sheet is dismissed / finished, the activity calls
+ *     [TileVisibilityElevationHolder.restoreIfArmed] which restores the
+ *     exact prior visibility (and stops the service if the tile started
+ *     it). If visibility was ALREADY active when the tile fired, nothing
+ *     is changed and nothing is restored.
+ *
+ * The tile is therefore momentary in effect: it never leaves the
+ * receiver discoverable after the user closes the sheet (unless it was
+ * already discoverable before, which it leaves untouched).
+ *
+ * ### Tile visual state
+ *
+ * The tile still mirrors [MdnsVisibilityOverrideHolder.isActive] in
+ * [syncTile] so that, while the sheet is open and visibility is bumped,
+ * the tile reads ACTIVE; once the sheet is dismissed and visibility
+ * restored, the next [onStartListening] re-syncs it back to INACTIVE.
+ * The override lives in memory only and resets on process death.
  */
 internal class BadaQuickShareTileService : TileService() {
     /**
      * Fires each time the Quick Settings panel becomes visible. Re-read
      * the current override so the tile reflects state changed elsewhere
-     * (the in-app pill, or a process restart that reset the override).
+     * (the in-app pill, the receive sheet bumping/restoring visibility,
+     * or a process restart that reset the override).
      */
     override fun onStartListening() {
         super.onStartListening()
@@ -55,18 +71,19 @@ internal class BadaQuickShareTileService : TileService() {
 
     override fun onClick() {
         super.onClick()
-        if (MdnsVisibilityOverrideHolder.isActive) {
-            turnOff()
-        } else {
-            turnOn()
-        }
+        openReceiveSheet()
         syncTile()
     }
 
-    private fun turnOn() {
+    /**
+     * Capture → bump → open the receive sheet. The restore half runs
+     * later from [ConsentTrampolineActivity.finish] via
+     * [TileVisibilityElevationHolder.restoreIfArmed].
+     */
+    private fun openReceiveSheet() {
         // Being discoverable needs the mandatory discovery permission
         // (NEARBY_WIFI_DEVICES on API 33+). If it isn't granted yet,
-        // toggling the override would light up a switch that can never
+        // bumping visibility would light up a receiver that can never
         // actually advertise — so bounce the user into the app instead,
         // which routes to the permissions onboarding. This mirrors
         // MainActivity's own service-start gate.
@@ -77,29 +94,92 @@ internal class BadaQuickShareTileService : TileService() {
             return
         }
 
-        MdnsVisibilityOverrideHolder.setAlwaysVisible(true)
+        // (a) Capture the prior visibility BEFORE touching anything.
+        val priorOverrideActive = MdnsVisibilityOverrideHolder.isActive
+
+        // (b) If below "visible", raise it AND start the service — only
+        // for the duration of the sheet. When already visible, change
+        // nothing (the user is in a persistent always-on state we must
+        // not disturb).
+        var startedService = false
+        if (!priorOverrideActive) {
+            MdnsVisibilityOverrideHolder.setAlwaysVisible(true)
+            try {
+                // startWithRadios (not start): opening the receive sheet from
+                // the tile also forces Wi-Fi + Bluetooth on via the radio-helper
+                // for the duration of the receive; they are restored when the
+                // sheet closes and stops this service (TileVisibilityElevationHolder
+                // -> ReceiverForegroundService.stop -> restoreRadiosAfterShare).
+                ReceiverForegroundService.startWithRadios(this)
+                startedService = true
+            } catch (e: IllegalStateException) {
+                // Android 12+ forbids most background foreground-service
+                // starts; ForegroundServiceStartNotAllowedException
+                // (API 31+) extends IllegalStateException, and a Quick
+                // Settings tap is NOT one of the platform's documented
+                // start exemptions. When Bada is fully backgrounded the
+                // start can be rejected — roll back the override bump we
+                // just made and bounce into the app, which starts the
+                // receiver from a visible (exempt) context.
+                Log.w(TAG, "Foreground-service start from tile rejected; opening app instead", e)
+                MdnsVisibilityOverrideHolder.setAlwaysVisible(false)
+                openApp()
+                return
+            }
+        }
+
+        // Record what we did so the sheet's dismissal restores it. Arm
+        // even when nothing was bumped (priorOverrideActive=true) so the
+        // activity's restore call is a clean no-op rather than acting on
+        // a stale prior elevation.
+        TileVisibilityElevationHolder.arm(
+            priorOverride = priorOverrideActive,
+            startedService = startedService,
+        )
+
+        // (c) Launch the receive sheet in waiting mode.
         try {
-            ReceiverForegroundService.start(this)
+            launchReceiveSheet()
         } catch (e: IllegalStateException) {
-            // Android 12+ forbids most background foreground-service
-            // starts; ForegroundServiceStartNotAllowedException (API 31+)
-            // extends IllegalStateException, and a Quick Settings tap is
-            // NOT one of the platform's documented start exemptions. When
-            // Bada is fully backgrounded the start can therefore be
-            // rejected. Fall back to opening the app: MainActivity starts
-            // the receiver from a visible (exempt) context, and the
-            // override we just set makes the gate advertise immediately.
-            Log.w(TAG, "Foreground-service start from tile rejected; opening app instead", e)
-            openApp()
+            // Launching the activity from the tile failed (rare vendor
+            // background-activity-launch restriction). Undo the bump so
+            // we don't leave the receiver discoverable with no sheet to
+            // dismiss it.
+            Log.w(TAG, "Receive-sheet launch from tile failed; restoring visibility", e)
+            TileVisibilityElevationHolder.restoreIfArmed(this)
         }
     }
 
-    private fun turnOff() {
-        MdnsVisibilityOverrideHolder.setAlwaysVisible(false)
-        // stop() delivers ACTION_STOP through startService to the
-        // already-running service. Re-delivering to a running service is
-        // allowed from the background, so this needs no FGS-start handling.
-        ReceiverForegroundService.stop(this)
+    /**
+     * Start [ConsentTrampolineActivity] in Phase 2 waiting mode. The
+     * `ACTION_OPEN_RECEIVE_SHEET` action with no connection id tells the
+     * activity to show the "waiting for sender" panel. The visibility bump and
+     * its restore are tracked by [TileVisibilityElevationHolder], not by an
+     * intent extra.
+     *
+     * `startActivityAndCollapse` collapses the Quick Settings shade as the
+     * sheet rises. API 34 made the bare-`Intent` overload throw, so we use
+     * the `PendingIntent` overload there and the `Intent` form below it.
+     */
+    private fun launchReceiveSheet() {
+        val intent =
+            Intent(this, ConsentTrampolineActivity::class.java).apply {
+                action = ConsentIntents.ACTION_OPEN_RECEIVE_SHEET
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+            val pending =
+                PendingIntent.getActivity(
+                    this,
+                    RECEIVE_SHEET_REQUEST_CODE,
+                    intent,
+                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT,
+                )
+            startActivityAndCollapse(pending)
+        } else {
+            @Suppress("DEPRECATION", "StartActivityAndCollapseDeprecated")
+            startActivityAndCollapse(intent)
+        }
     }
 
     /**
@@ -159,5 +239,12 @@ internal class BadaQuickShareTileService : TileService() {
 
     private companion object {
         const val TAG = "BadaQsTile"
+
+        /**
+         * Stable PendingIntent request code for the receive-sheet launch
+         * on API 34+. Distinct from the openApp PendingIntent's code so
+         * FLAG_UPDATE_CURRENT updates the right cached intent.
+         */
+        const val RECEIVE_SHEET_REQUEST_CODE = 1
     }
 }

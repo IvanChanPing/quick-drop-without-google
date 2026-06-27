@@ -206,6 +206,40 @@
 
         </LinearLayout>
 
+        <!--
+          Waiting state — shown when the receive sheet is opened from the
+          Quick Settings tile with no transfer yet pending (ACTION_OPEN_RECEIVE_SHEET).
+          The device is now discoverable and waiting for a nearby sender; when a
+          transfer arrives the panel swaps to the consent prompt in place.
+        -->
+        <LinearLayout
+            android:id="@+id/consent_waiting_panel"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:gravity="center"
+            android:orientation="vertical"
+            android:padding="24dp"
+            android:visibility="gone">
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:gravity="center"
+                android:text="@string/consent_state_waiting_title"
+                android:textAppearance="@style/TextAppearance.AppCompat.Headline"
+                android:textStyle="bold" />
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:gravity="center"
+                android:text="@string/consent_state_waiting_body"
+                android:textAppearance="@style/TextAppearance.AppCompat.Body1"
+                android:textColor="?android:attr/textColorSecondary" />
+
+        </LinearLayout>
+
         <!-- Receiving state. -->
         <LinearLayout
             android:id="@+id/consent_receiving_panel"
@@ -224,29 +258,22 @@
                 android:textAppearance="@style/TextAppearance.AppCompat.Headline"
                 android:textStyle="bold" />
 
-            <FrameLayout
+            <TextView
+                android:id="@+id/consent_receiving_progress_pct"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="24dp">
+                android:layout_marginTop="24dp"
+                android:textAppearance="@style/TextAppearance.AppCompat.Body1"
+                android:textStyle="bold"
+                tools:text="42%" />
 
-                <com.google.android.material.progressindicator.CircularProgressIndicator
-                    android:id="@+id/consent_receiving_progress"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:indeterminate="true"
-                    app:indicatorSize="72dp"
-                    app:trackThickness="6dp" />
-
-                <TextView
-                    android:id="@+id/consent_receiving_progress_pct"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_gravity="center"
-                    android:textAppearance="@style/TextAppearance.AppCompat.Body1"
-                    android:textStyle="bold"
-                    tools:text="42%" />
-
-            </FrameLayout>
+            <!-- Horizontal "pill" determinate bar; ConsentTrampolineActivity
+                 animates the blue fill toward each progress fraction. -->
+            <dev.bluehouse.bada.ui.sheet.RoundedProgressBar
+                android:id="@+id/consent_receiving_progress"
+                android:layout_width="220dp"
+                android:layout_height="8dp"
+                android:layout_marginTop="12dp" />
 
             <TextView
                 android:id="@+id/consent_receiving_progress_text"

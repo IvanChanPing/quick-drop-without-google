@@ -38,15 +38,16 @@ import androidx.core.view.AccessibilityDelegateCompat
 import androidx.core.view.ViewCompat
 import androidx.core.view.accessibility.AccessibilityNodeInfoCompat
 import androidx.lifecycle.lifecycleScope
-import com.google.android.material.progressindicator.CircularProgressIndicator
 import dev.bluehouse.bada.R
 import dev.bluehouse.bada.bugreport.BugReportFlowSupport
+import dev.bluehouse.bada.nfc.NfcPreferredService
 import dev.bluehouse.bada.protocol.connection.InboundConnection
 import dev.bluehouse.bada.protocol.connection.InboundConnectionState
 import dev.bluehouse.bada.protocol.connection.ReceivedItem
 import dev.bluehouse.bada.protocol.connection.TransferItem
 import dev.bluehouse.bada.protocol.connection.TransferProgress
 import dev.bluehouse.bada.protocol.medium.Medium
+import dev.bluehouse.bada.service.receiver.TileVisibilityElevationHolder
 import dev.bluehouse.bada.service.receiver.consent.ConsentBroadcastReceiver
 import dev.bluehouse.bada.service.receiver.consent.ConsentDiagnostic
 import dev.bluehouse.bada.service.receiver.consent.ConsentIntents
@@ -56,6 +57,7 @@ import dev.bluehouse.bada.service.receiver.consent.ConsentRegistry
 import dev.bluehouse.bada.transfer.KeepScreenOnPreferences
 import dev.bluehouse.bada.transfer.TransferExpertDetailsFormatter
 import dev.bluehouse.bada.transfer.TransferExpertViewPreferences
+import dev.bluehouse.bada.ui.sheet.RoundedProgressBar
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.combine
@@ -123,7 +125,7 @@ import kotlinx.coroutines.withTimeoutOrNull
  * raises the heads-up notification, and the user can resume from the
  * shade.
  */
-@Suppress("TooManyFunctions")
+@Suppress("TooManyFunctions", "LargeClass")
 class ConsentTrampolineActivity : AppCompatActivity() {
     private var connectionId: Long = ConsentIntents.MISSING_CONNECTION_ID
     private var decisionSubmitted: Boolean = false
@@ -158,12 +160,6 @@ class ConsentTrampolineActivity : AppCompatActivity() {
         // flags via the shim below.
         applyIncomingCallFlags()
         super.onCreate(savedInstanceState)
-        // Soft alpha + scale-up entrance so the popup feels like it's
-        // emerging from its centre rather than snapping into place.
-        // Paired with `popup_fade_out` in [finish] for a symmetric
-        // dismiss.
-        @Suppress("DEPRECATION")
-        overridePendingTransition(R.anim.popup_fade_in, 0)
         setContentView(R.layout.activity_consent_trampoline)
         bugReportFlowSupport = BugReportFlowSupport.install(this)
 
@@ -186,10 +182,16 @@ class ConsentTrampolineActivity : AppCompatActivity() {
      * (back-compat shim is still wired in the framework) and is
      * trivially correct for our minSdk = 24 floor.
      */
-    @Suppress("DEPRECATION")
     override fun finish() {
+        // If this sheet was opened by the Quick Settings tile in waiting
+        // mode (which temporarily bumped receiver visibility), restore
+        // the exact prior visibility / service state now that the sheet
+        // is going away. No-op when the sheet was raised by an incoming
+        // transfer (the holder is only armed by the tile path). Done
+        // before super.finish() so the restore runs even if the platform
+        // tears the activity down immediately.
+        TileVisibilityElevationHolder.restoreIfArmed(applicationContext)
         super.finish()
-        overridePendingTransition(0, R.anim.popup_fade_out)
     }
 
     override fun onNewIntent(intent: Intent) {
@@ -212,16 +214,44 @@ class ConsentTrampolineActivity : AppCompatActivity() {
     override fun onResume() {
         super.onResume()
         ConsentDiagnostic.log(this, "trampoline.onResume id=$connectionId")
+        // While the receive sheet is foreground, claim the Quick Share NFC AID so
+        // a tap reaches US instead of stock Google Quick Share (the only way to win
+        // a shared AID on Android 15). Released in onPause -> taps fall back to
+        // native Quick Share when the sheet is closed.
+        NfcPreferredService.prefer(this)
     }
 
     override fun onPause() {
         super.onPause()
         ConsentDiagnostic.log(this, "trampoline.onPause id=$connectionId finishing=$isFinishing")
+        NfcPreferredService.release(this)
     }
 
     override fun onStop() {
         super.onStop()
         ConsentDiagnostic.log(this, "trampoline.onStop id=$connectionId finishing=$isFinishing")
+    }
+
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        // The tile-opened receive sheet is transient: when the user leaves the
+        // still-WAITING sheet (Home / Recents) before any transfer has bound,
+        // dismiss it so the temporary visibility bump is restored (finish() ->
+        // restoreIfArmed). Without this, leaving via Home never calls finish()
+        // and the receiver stays discoverable with the tile stuck on.
+        //
+        // Gated on a still-empty connection id (no transfer bound yet) so that
+        // once a real transfer arrives — the waiting panel swaps to the consent
+        // prompt via onNewIntent and connectionId is set — backgrounding does NOT
+        // tear the receiver down. That bound-but-undecided case is left to the
+        // notification path (the modal dismisses, the heads-up re-raises) so the
+        // in-flight transfer is never dropped. Notification-raised consent sheets
+        // are not tile-armed, so they are also left in place.
+        val waitingWithNoBoundTransfer = connectionId == ConsentIntents.MISSING_CONNECTION_ID
+        if (TileVisibilityElevationHolder.isArmed && !decisionSubmitted && waitingWithNoBoundTransfer) {
+            ConsentDiagnostic.log(this, "trampoline.onUserLeaveHint finishing waiting sheet id=$connectionId")
+            finish()
+        }
     }
 
     private fun incomingId(intent: Intent?): Long =
@@ -254,6 +284,18 @@ class ConsentTrampolineActivity : AppCompatActivity() {
         )
 
         if (entry == null) {
+            if (intent?.action == ConsentIntents.ACTION_OPEN_RECEIVE_SHEET) {
+                // Tile-opened "waiting for sender" sheet (Phase 2). No
+                // transfer is pending yet; show the waiting panel and
+                // stay foreground. When an incoming transfer arrives the
+                // ConsentCoordinator's foreground path re-launches this
+                // singleTop activity with a real connection id, which
+                // lands in onNewIntent -> bindIntent and swaps the
+                // waiting panel for the consent prompt in place.
+                ConsentDiagnostic.log(this, "trampoline.waiting open (no pending entry)")
+                showWaitingPanel()
+                return
+            }
             // The notification fired but the underlying connection has
             // already terminated (e.g. the peer cancelled). Show a brief
             // toast and finish — the surface keeps its incoming-call
@@ -272,7 +314,29 @@ class ConsentTrampolineActivity : AppCompatActivity() {
         registerModal()
     }
 
+    /**
+     * Show the Phase 2 "ready to receive / waiting for sender" panel.
+     * Hides every other panel so a re-bind from waiting back to waiting
+     * (e.g. a second tile tap) is idempotent, and animates the swap with
+     * the same [ChangeBounds] transition the consent→receiving→completed
+     * path uses so the sheet resizes smoothly if it was showing another
+     * state.
+     */
+    private fun showWaitingPanel() {
+        beginPanelTransition()
+        findViewById<View>(R.id.consent_panel).visibility = View.GONE
+        findViewById<View>(R.id.consent_receiving_panel).visibility = View.GONE
+        findViewById<View>(R.id.consent_completed_panel).visibility = View.GONE
+        findViewById<View>(R.id.consent_failed_panel).visibility = View.GONE
+        findViewById<View>(R.id.consent_waiting_panel).visibility = View.VISIBLE
+    }
+
     override fun onDestroy() {
+        // Backstop for the tile's temporary visibility bump: restore on
+        // any teardown that didn't run through finish() (recents swipe,
+        // system kill while finishing). Idempotent with finish()'s call
+        // (restoreIfArmed compare-and-sets the armed flag).
+        TileVisibilityElevationHolder.restoreIfArmed(applicationContext)
         setTransferKeepScreenOn(active = false)
         // If the user dismissed the activity without an explicit
         // decision (e.g. swipe-back, screen lock), DO NOT auto-reject —
@@ -315,6 +379,19 @@ class ConsentTrampolineActivity : AppCompatActivity() {
     }
 
     private fun renderEntry(entry: ConsentRegistry.Entry) {
+        // Ensure the consent prompt is the visible panel. This matters
+        // when the sheet was previously showing the Phase 2 waiting panel
+        // (tile-opened) and an incoming transfer just arrived via
+        // onNewIntent — swap waiting → consent in place. The other
+        // post-decision panels are always GONE at this point but are
+        // reset defensively in case of an unusual re-bind ordering.
+        beginPanelTransition()
+        findViewById<View>(R.id.consent_waiting_panel).visibility = View.GONE
+        findViewById<View>(R.id.consent_receiving_panel).visibility = View.GONE
+        findViewById<View>(R.id.consent_completed_panel).visibility = View.GONE
+        findViewById<View>(R.id.consent_failed_panel).visibility = View.GONE
+        findViewById<View>(R.id.consent_panel).visibility = View.VISIBLE
+
         val titleView = findViewById<TextView>(R.id.consent_title)
         val pinView = findViewById<TextView>(R.id.consent_pin)
         val list = findViewById<LinearLayout>(R.id.consent_files_list)
@@ -617,7 +694,7 @@ class ConsentTrampolineActivity : AppCompatActivity() {
         activeMedium: Medium,
         wifiFrequencyMhz: Int?,
     ) {
-        val progressBar = findViewById<CircularProgressIndicator>(R.id.consent_receiving_progress) ?: return
+        val progressBar = findViewById<RoundedProgressBar>(R.id.consent_receiving_progress) ?: return
         val percentText = findViewById<TextView>(R.id.consent_receiving_progress_pct)
         val pct =
             if (progress.totalSize > 0) {
@@ -627,13 +704,10 @@ class ConsentTrampolineActivity : AppCompatActivity() {
             } else {
                 0
             }
-        if (progress.totalSize > 0) {
-            // Once we know the total, switch from the spinning
-            // indeterminate state to a deterministic ratio so the user
-            // can see the bar fill up frame by frame.
-            if (progressBar.isIndeterminate) progressBar.isIndeterminate = false
-            progressBar.setProgressCompat(pct, true)
-        }
+        // The RoundedProgressBar animates the blue pill fill toward
+        // the target fraction; before the total is known we hold it at 0%
+        // (the bar still shows a dot so the panel reads as "started").
+        progressBar.setProgress(pct)
         percentText?.text = getString(R.string.transfer_progress_percent, pct)
         findViewById<TextView>(R.id.consent_receiving_progress_text)?.text =
             getString(

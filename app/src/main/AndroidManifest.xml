@@ -453,18 +453,19 @@
             android:label="@string/consent_activity_label" />
 
         <!--
-          Quick Settings tile: toggles the receiver's "always visible"
-          override straight from the system Quick Settings panel so the
-          user can make this device discoverable to nearby Quick Share
-          senders without opening the app.
+          Quick Settings tile: opens the receiver "Ready to receive" sheet
+          straight from the system Quick Settings panel — making this device
+          discoverable to nearby Quick Share senders and forcing Wi-Fi/Bluetooth
+          on for the receive (both restored when the sheet is dismissed) without
+          the user opening the app first.
 
           Required by the platform: exported=true plus the
           BIND_QUICK_SETTINGS_TILE permission (only system_server, which
           binds the tile, holds it) and the QS_TILE action filter. The
           icon must be a 24dp solid-white VectorDrawable.
 
-          TOGGLEABLE_TILE marks this as a two-state on/off switch for
-          accessibility and so the OS understands the tile's behavior.
+          TOGGLEABLE_TILE reflects the tile's active/inactive state (it tracks
+          the receiver's always-visible override) for accessibility.
         -->
         <service
             android:name=".tile.BadaQuickShareTileService"

@@ -74,6 +74,18 @@ public object ConsentIntents {
     public const val ACTION_SHOW_CONSENT: String = "dev.bluehouse.bada.consent.SHOW"
 
     /**
+     * Activity action used by the Quick Settings tile to open the
+     * receive bottom sheet in **waiting** mode (Phase 2). The activity
+     * shows a "ready to receive / waiting for sender" state in the same
+     * sheet — no [EXTRA_CONNECTION_ID] is attached because no transfer
+     * is pending yet. When an incoming transfer then arrives while the
+     * sheet is foreground, the [ConsentCoordinator]'s foreground path
+     * routes that consent into this already-open activity via
+     * `onNewIntent` (the activity is `singleTop`).
+     */
+    public const val ACTION_OPEN_RECEIVE_SHEET: String = "dev.bluehouse.bada.consent.OPEN_RECEIVE_SHEET"
+
+    /**
      * `Long` extra carrying the connection id this consent applies to.
      * The broadcast receiver and the trampoline activity both parse
      * this off the intent before consulting [ConsentRegistry].
