@@ -109,22 +109,6 @@
         android:name="android.permission.BLUETOOTH_CONNECT"
         tools:targetApi="31" />
 
-    <!-- NFC link broadcast (Phase 4). NFC is install-time normal
-         protection; BIND_NFC_SERVICE on the HCE service below is the
-         actual gate and is auto-granted to the system NFC service. The
-         hce feature is required=false so the app still installs on
-         phones without NFC hardware (the service is simply never bound
-         there). -->
-    <uses-permission android:name="android.permission.NFC" />
-    <!-- Bind the universal radio-helper's RadioService (signature-protected
-         BIND_RADIO) to silently force Wi-Fi/Bluetooth ON for an NFC
-         tap-to-receive wake (RadioHelperClient SESSION mode). Granted only when
-         Bada is signed with the same key as the helper. -->
-    <uses-permission android:name="dev.bluehouse.bada.radiohelper.permission.BIND_RADIO" />
-    <uses-feature
-        android:name="android.hardware.nfc.hce"
-        android:required="false" />
-
     <!-- Legacy Bluetooth permission model for API ≤ 30. Capped with
          maxSdkVersion=30 so API 31+ devices use the runtime BLUETOOTH_*
          permissions above instead of these grant-at-install variants. -->
@@ -436,11 +420,10 @@
             android:name=".consent.ConsentTrampolineActivity"
             android:exported="false"
             android:excludeFromRecents="true"
-            android:taskAffinity=""
             android:launchMode="singleTop"
             android:showOnLockScreen="true"
             android:turnScreenOn="true"
-            android:theme="@style/Theme.Bada.ReceiveSheet"
+            android:theme="@style/Theme.Bada.ConsentDialog"
             android:label="@string/consent_activity_label" />
 
         <!--

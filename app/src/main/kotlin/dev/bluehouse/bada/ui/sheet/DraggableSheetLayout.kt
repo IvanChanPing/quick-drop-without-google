@@ -37,7 +37,12 @@ import dev.bluehouse.bada.discovery.diagnostics.DiagnosticLog
  *
  * Child buttons still receive taps — the drag only engages once the
  * pointer travels past the touch slop downward.
+ *
+ * Programmatic custom view: drag thresholds, fling velocities, and animation
+ * constants are inherently numeric; the gesture dispatch in onTouchEvent uses one
+ * early return per pointer action. MagicNumber / ReturnCount are suppressed.
  */
+@Suppress("MagicNumber", "ReturnCount")
 public class DraggableSheetLayout
     @JvmOverloads
     constructor(
@@ -433,6 +438,7 @@ public class DraggableSheetLayout
             // the window open transition (SendActivity.onEnterAnimationComplete) so it
             // is not masked by the window's own animation.
             private const val ENTRANCE_OFFSET_PX = 80
+
             // A little quicker than the old 240ms (which was itself snappier than 300ms),
             // per the "make the slide a little quicker" request. Shared by the send sheet
             // and the consent sheet (both call playEntrance); 30ms is modest enough that

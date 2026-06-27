@@ -22,7 +22,11 @@ import kotlin.math.min
  * clockwise). Used for each discovered device in the send bottom sheet;
  * the ring tracks transfer progress, and the disc morphs into a green
  * check on completion.
+ *
+ * Programmatic custom view: stroke widths, sweep angles, and ARGB colour
+ * components are inherently numeric drawing constants, so MagicNumber is suppressed.
  */
+@Suppress("MagicNumber")
 public class RingProgressView
     @JvmOverloads
     constructor(

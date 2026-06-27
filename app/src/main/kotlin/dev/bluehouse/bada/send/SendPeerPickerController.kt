@@ -14,14 +14,13 @@ import androidx.lifecycle.repeatOnLifecycle
 import dev.bluehouse.bada.R
 import dev.bluehouse.bada.databinding.ActivitySendBinding
 import dev.bluehouse.bada.discovery.NearbyPeer
-import dev.bluehouse.bada.protocol.endpoint.hasBadaMarker
-import dev.bluehouse.bada.ui.sheet.DeviceIconView
 import dev.bluehouse.bada.discovery.NearbyPeerDiscovery
 import dev.bluehouse.bada.discovery.NearbyPeerEvent
 import dev.bluehouse.bada.discovery.NearbyPeerRoute
 import dev.bluehouse.bada.discovery.ble.BleAdvertiseHandle
 import dev.bluehouse.bada.discovery.ble.BleAdvertiser
 import dev.bluehouse.bada.service.receiver.ReceiverAdvertisementStateHolder
+import dev.bluehouse.bada.ui.sheet.DeviceIconView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -126,10 +125,6 @@ internal class SendPeerPickerController(
         val stableId: String,
         val title: String,
         val subtitle: String,
-        // Whether the peer is a Bada device (advertises the marker TLV). Part of the
-        // snapshot so a peer flipping false->true mid-discovery (full EndpointInfo resolved
-        // after an initial pulse-only sighting) forces the chip to redraw with its badge.
-        val isBada: Boolean,
     )
 
     fun start() {
@@ -183,6 +178,7 @@ internal class SendPeerPickerController(
 
     /** Current resolved peers (snapshot) — used by the NFC tap-wake auto-connect. */
     fun resolvedPeers(): List<NearbyPeer> = peers.toList()
+
     /**
      * Re-resolve [peer]'s current LAN address by running a short,
      * transient discovery session, and return the fresh LAN route — or
@@ -383,7 +379,6 @@ internal class SendPeerPickerController(
             val peer: NearbyPeer,
             val title: String,
             val subtitle: String,
-            val isBada: Boolean,
         )
         val seenNames = HashSet<String>()
         val targetRows =
@@ -392,13 +387,11 @@ internal class SendPeerPickerController(
                 if (!plan.isConnectable) return@mapNotNull null
                 val label = peerLabel(peer)
                 if (!seenNames.add(label)) return@mapNotNull null
-                // A peer is "Bada" if its advertised EndpointInfo carries our marker TLV.
-                val isBada = peer.endpointInfo?.hasBadaMarker() == true
-                TargetRow(peer, label, plan.subtitle, isBada)
+                TargetRow(peer, label, plan.subtitle)
             }
         val targetSnapshot =
             targetRows.map { row ->
-                RenderedRowSnapshot(row.peer.stableId, row.title, row.subtitle, row.isBada)
+                RenderedRowSnapshot(row.peer.stableId, row.title, row.subtitle)
             }
 
         // Subtitle ("Looking for nearby devices…" vs "Pick a device")
@@ -431,9 +424,6 @@ internal class SendPeerPickerController(
             val icon = DeviceIconView(context, stableId, target.title)
             icon.isEnabled = true
             icon.alpha = 1f
-            // Badge the chip "Bada" when the peer advertises our marker TLV, so the
-            // user can tell a Bada device from a stock Quick Share one at a glance.
-            icon.setBada(target.isBada)
             icon.setOnClickListener {
                 // Acknowledge the tap with the bounce, then route
                 // through the SAME selection path the old row click used

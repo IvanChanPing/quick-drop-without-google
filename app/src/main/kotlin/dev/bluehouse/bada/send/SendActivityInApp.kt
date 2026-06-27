@@ -48,12 +48,11 @@ import dev.bluehouse.bada.discovery.bootstrap.BleGattInitialControlClient
 import dev.bluehouse.bada.discovery.bootstrap.BleGattInitialControlServer
 import dev.bluehouse.bada.discovery.bootstrap.BleL2capInitialControlClient
 import dev.bluehouse.bada.discovery.bootstrap.BluetoothClassicBootstrapClient
-import dev.bluehouse.bada.diag.DiagnosticUploader
 import dev.bluehouse.bada.discovery.diagnostics.DiagnosticLog
 import dev.bluehouse.bada.discovery.medium.MediumRegistries
+import dev.bluehouse.bada.nfc.BadaTapReader
 import dev.bluehouse.bada.nfc.NfcLinkHolder
 import dev.bluehouse.bada.nfc.NfcTapDiagnosticsPreferences
-import dev.bluehouse.bada.nfc.BadaTapReader
 import dev.bluehouse.bada.protocol.connection.CancelCause
 import dev.bluehouse.bada.protocol.connection.FileSource
 import dev.bluehouse.bada.protocol.connection.OutboundConnection
@@ -69,17 +68,17 @@ import dev.bluehouse.bada.protocol.qr.QrKeyData
 import dev.bluehouse.bada.protocol.qr.QrKeyDerivation
 import dev.bluehouse.bada.protocol.qr.QrTlvMatcher
 import dev.bluehouse.bada.protocol.qr.QrUrl
-import dev.bluehouse.bada.service.receiver.AdvertisedDeviceNames
 import dev.bluehouse.bada.service.radio.RadioHelperClient
 import dev.bluehouse.bada.service.radio.ShareRadioController
+import dev.bluehouse.bada.service.receiver.AdvertisedDeviceNames
 import dev.bluehouse.bada.service.receiver.OutboundSessionActiveHolder
 import dev.bluehouse.bada.transfer.KeepScreenOnPreferences
 import dev.bluehouse.bada.transfer.TransferExpertDetailsFormatter
 import dev.bluehouse.bada.transfer.TransferExpertViewPreferences
 import dev.bluehouse.bada.ui.BackdropBlurView
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -414,10 +413,6 @@ public class SendActivityInApp : AppCompatActivity() {
         super.onPause()
         // Release the NFC controller while we are not the foreground sheet.
         tapReader?.disable()
-        // Queue the full diagnostics ring for upload now that a tap attempt is over — this
-        // captures the case where the reader's onTag never fired (no tap read), which a
-        // tap-only upload would miss. The uploader holds it until internet is available.
-        DiagnosticUploader.upload(this, reason = "send-leave")
     }
 
     /**
@@ -467,10 +462,12 @@ public class SendActivityInApp : AppCompatActivity() {
         }
     }
 
-    /** Long Toast for the NFC-tap debug flow — shown on the send sheet so each tap's
-     * outcome is visible (and screenshot-able) with no internet. */
-    /** Gated by the "Show NFC tap diagnostics" setting (default on). The full DiagnosticLog
-     * trace is always recorded; this only suppresses the on-screen Toasts. */
+    /**
+     * Long Toast for the NFC-tap debug flow — shown on the send sheet so each tap's
+     * outcome is visible (and screenshot-able) with no internet. Gated by the
+     * "Show NFC tap diagnostics" setting (default on); the full DiagnosticLog trace
+     * is always recorded, this only suppresses the on-screen Toasts.
+     */
     private fun nfcTapToast(message: String) {
         if (!nfcTapDiagnosticsPreferences.isEnabled()) return
         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
@@ -516,9 +513,11 @@ public class SendActivityInApp : AppCompatActivity() {
                 if (!tapWakeConnectStarted && tapWakeWindowUntilMs == thisWindow && !isFinishing) {
                     val peers = peerPickerController.resolvedPeers()
                     val msg =
-                        "NFC tap-wake: NO Quick Share receiver found in ${TAP_WAKE_WINDOW_MS / 1000}s " +
-                            "(saw ${peers.size}: ${peers.joinToString { "${it.displayName()}" +
-                                "[hidden=${it.endpointInfo?.hidden},lan=${it.lanEndpoint != null}]" }})"
+                        "NFC tap-wake: NO Quick Share receiver found in ${TAP_WAKE_WINDOW_MS / MILLIS_PER_SECOND}s " +
+                            "(saw ${peers.size}: ${peers.joinToString {
+                                "${it.displayName()}" +
+                                    "[hidden=${it.endpointInfo?.hidden},lan=${it.lanEndpoint != null}]"
+                            }})"
                     logOutboundDiagnostic(msg)
                     nfcTapToast(msg)
                 }
@@ -2164,6 +2163,9 @@ public class SendActivityInApp : AppCompatActivity() {
          * as we start a connect.
          */
         private const val TAP_WAKE_WINDOW_MS: Long = 15_000L
+
+        /** Milliseconds per second, for the human-readable "in Ns" log text. */
+        private const val MILLIS_PER_SECOND: Long = 1000L
 
         // In-card QR panel animation tunables. Entry uses an
         // overshoot easing so the panel briefly scales past 1.0 before
