@@ -41,7 +41,7 @@ internal object OfflineFrames {
      * Version we advertise for the "safe to disconnect" handshake.
      * See [OutboundFrames.SAFE_TO_DISCONNECT_VERSION] for the full rationale.
      */
-    private const val SAFE_TO_DISCONNECT_VERSION: Int = 1
+    internal const val SAFE_TO_DISCONNECT_VERSION: Int = 1
 
     /**
      * Bitmask value that declares "no medium supports multiplexing".
@@ -75,8 +75,13 @@ internal object OfflineFrames {
      *   6. `keep_alive_timeout_millis = 600_000` — proto field 9, required
      *      by One UI 8.0.5 (verified on-device); see
      *      [OutboundFrames.connectionResponse] for the full rationale.
+     *
+     * @param safeToDisconnectVersion Value to advertise in field 7.
+     *   Defaults to [SAFE_TO_DISCONNECT_VERSION] (1) for production;
+     *   tests override it (e.g. 0, to emulate a Windows Quick Share peer
+     *   with safe-to-disconnect disabled — issue #200).
      */
-    fun connectionResponse(): OfflineFrame {
+    fun connectionResponse(safeToDisconnectVersion: Int = SAFE_TO_DISCONNECT_VERSION): OfflineFrame {
         @Suppress("DEPRECATION")
         val response =
             ConnectionResponseFrame
@@ -89,7 +94,7 @@ internal object OfflineFrames {
                         .setType(OsInfo.OsType.ANDROID)
                         .build(),
                 ).setMultiplexSocketBitmask(MULTIPLEX_SOCKET_BITMASK_NONE)
-                .setSafeToDisconnectVersion(SAFE_TO_DISCONNECT_VERSION)
+                .setSafeToDisconnectVersion(safeToDisconnectVersion)
                 .setKeepAliveTimeoutMillis(KEEP_ALIVE_TIMEOUT_MILLIS)
                 .build()
         return OfflineFrame

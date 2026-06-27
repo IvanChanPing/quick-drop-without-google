@@ -90,6 +90,14 @@ internal class InboundConnectionDriver(
      * sensitivity.
      */
     private val rateEstimator: TransferRateEstimator = TransferRateEstimator(),
+    /**
+     * `safe_to_disconnect_version` advertised on our outgoing
+     * `ConnectionResponseFrame` (field 7). Defaults to
+     * [OfflineFrames.SAFE_TO_DISCONNECT_VERSION] (1) in production; tests
+     * override it (e.g. 0) to emulate a peer with safe-to-disconnect
+     * disabled — see issue #200 / [OutboundConnectionDriver].
+     */
+    private val safeToDisconnectVersion: Int = OfflineFrames.SAFE_TO_DISCONNECT_VERSION,
 ) {
     private var framedConnection: FramedConnection? = null
     private var secureChannel: SecureChannel? = null
@@ -210,7 +218,7 @@ internal class InboundConnectionDriver(
         val handshake = Ukey2Server.performHandshake(framedTransport, secureRandom)
 
         // Step 3: send unencrypted ConnectionResponse{ACCEPT}.
-        framedTransport.sendFrame(OfflineFrames.connectionResponse().toByteArray())
+        framedTransport.sendFrame(OfflineFrames.connectionResponse(safeToDisconnectVersion).toByteArray())
 
         // Step 4: read peer's unencrypted ConnectionResponse.
         val peerResponse = readOfflineFrameUnencrypted(framedTransport)

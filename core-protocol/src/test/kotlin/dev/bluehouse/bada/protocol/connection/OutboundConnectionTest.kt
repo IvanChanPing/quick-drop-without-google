@@ -411,6 +411,76 @@ class OutboundConnectionTest {
             }
         }
 
+    /**
+     * Issue #200: a peer that advertises `safe_to_disconnect_version = 0`
+     * (e.g. Windows Quick Share, which has safe-to-disconnect disabled)
+     * must NOT receive an eager terminal `Disconnection` after the last
+     * byte — it treats a disconnect that arrives before it reaches
+     * kComplete as a failure and discards the already-complete payload.
+     *
+     * Drives the production [InboundConnection] but overrides its
+     * advertised version to 0, then asserts (a) the sender took the
+     * "do not send Disconnection" branch, (b) it did NOT log the
+     * Disconnection-sending branch, and (c) the transfer still completes
+     * with bytes intact (the sender's safe-disconnect drain returns on
+     * the receiver's FIN).
+     */
+    @Test
+    fun `accept path - version-0 peer does not get eager Disconnection and still completes`() =
+        runBlocking {
+            withTimeout(WALLCLOCK_TIMEOUT_MS) {
+                val (client, server) = connectedSocketPair()
+                val factory = InMemoryFactory()
+                val outboundLog = java.util.Collections.synchronizedList(mutableListOf<String>())
+                val outbound =
+                    OutboundConnection(
+                        transport = client.asConnectedTransport(Medium.WIFI_LAN),
+                        secureRandom = SecureRandom("outbound-v0".toByteArray()),
+                        logger = { outboundLog.add(it) },
+                    )
+
+                val fileBytes = ByteArray(4096) { (it and 0xFF).toByte() }
+                val payloadId = 0x6263L
+                val files = listOf(bytesSource("windows.bin", fileBytes, payloadId))
+
+                coroutineScope {
+                    val outboundJob = async { outbound.run(files) }
+                    // Emulate a Windows Quick Share receiver: advertise
+                    // safe_to_disconnect_version = 0 on the ConnectionResponse.
+                    val inbound =
+                        InboundConnection(
+                            transport = server.asConnectedTransport(Medium.WIFI_LAN),
+                            secureRandom = SecureRandom("inbound-v0".toByteArray()),
+                            safeToDisconnectVersion = 0,
+                        )
+
+                    launch {
+                        inbound.state.first { it is InboundConnectionState.WaitingForUserConsent }
+                        inbound.submitUserConsent(accepted = true)
+                    }
+
+                    val inboundResult = inbound.run(factory)
+                    val outboundResult = outboundJob.await()
+
+                    assertThat(outboundResult).isEqualTo(OutboundResult.Completed)
+                    assertThat(inboundResult).isInstanceOf(InboundResult.Completed::class.java)
+                }
+
+                // Bytes still round-tripped intact.
+                assertThat(factory.output[payloadId]?.toByteArray()).isEqualTo(fileBytes)
+                assertThat(outbound.state.value).isEqualTo(OutboundConnectionState.Completed)
+
+                // The sender captured the peer's version-0 advertisement...
+                val log = outboundLog.toList()
+                assertThat(log.any { it.contains("safeToDisconnectVersion=0") }).isTrue()
+                // ...took the "do NOT send eager Disconnection" branch...
+                assertThat(log.any { it.contains("NOT sending eager Disconnection") }).isTrue()
+                // ...and never took the Disconnection-sending success branch.
+                assertThat(log.any { it.contains("sending Disconnection (peer safeToDisconnectVersion") })
+                    .isFalse()
+            }
+        }
+
     @Test
     fun `accept path - bandwidth upgrade swaps to provider transport before file payload`() =
         runBlocking {

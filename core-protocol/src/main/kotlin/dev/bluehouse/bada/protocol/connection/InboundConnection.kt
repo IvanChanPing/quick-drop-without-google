@@ -125,6 +125,14 @@ public class InboundConnection(
      */
     private val mediumRegistry: MediumRegistry = MediumRegistry.DefaultWifiLan,
     private val logger: (String) -> Unit = {},
+    /**
+     * `safe_to_disconnect_version` this receiver advertises on its
+     * `ConnectionResponseFrame` (field 7). Defaults to
+     * [OfflineFrames.SAFE_TO_DISCONNECT_VERSION] (1) for production; it is
+     * an in-module test seam to emulate a peer with safe-to-disconnect
+     * disabled (e.g. 0 = Windows Quick Share — see issue #200).
+     */
+    internal val safeToDisconnectVersion: Int = OfflineFrames.SAFE_TO_DISCONNECT_VERSION,
 ) {
     public constructor(
         socket: Socket,
@@ -265,6 +273,7 @@ public class InboundConnection(
                 mediumRegistry = mediumRegistry,
                 onHandshakeComplete = ::markHandshakeComplete,
                 logger = logger,
+                safeToDisconnectVersion = safeToDisconnectVersion,
             )
 
         return try {

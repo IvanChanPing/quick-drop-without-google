@@ -184,23 +184,7 @@ internal class OutboundConnectionDriver(
         // Step 4: read receiver's unencrypted ConnectionResponse.
         val hasResp = peerResponse.v1.hasConnectionResponse()
         logger("step 4: received peer ConnectionResponse type=${peerResponse.v1.type} hasConnectionResponse=$hasResp")
-        if (peerResponse.v1.hasConnectionResponse()) {
-            val cr = peerResponse.v1.connectionResponse
-
-            // Capture the peer's safe_to_disconnect_version (issue #200). 0 = the
-            // receiver has safe-to-disconnect DISABLED (e.g. Windows Quick Share) and
-            // must NOT be disconnected before it reaches kComplete; the success-path
-            // teardown in streamFilesAndComplete gates the eager Disconnection on this.
-            peerSafeToDisconnectVersion = cr.safeToDisconnectVersion
-
-            @Suppress("DEPRECATION")
-            val status = cr.status
-            logger(
-                "step 4: peer.response=${cr.response} status=$status " +
-                    "osType=${if (cr.hasOsInfo()) cr.osInfo.type else "<none>"} " +
-                    "safeToDisconnectVersion=$peerSafeToDisconnectVersion",
-            )
-        }
+        capturePeerConnectionResponse(peerResponse)
         check(peerResponse.isConnectionResponse()) {
             "Expected ConnectionResponse, got ${peerResponse.v1.type}"
         }
@@ -287,6 +271,28 @@ internal class OutboundConnectionDriver(
         } else {
             runReceiveLoop(negotiated.channel, negotiationFsm, negotiated.initialWireFrames)
         }
+    }
+
+    /**
+     * Capture the receiver's unencrypted ConnectionResponse fields we care about —
+     * currently the `safe_to_disconnect_version` (issue #200). 0 = the receiver has
+     * safe-to-disconnect DISABLED (e.g. Windows Quick Share) and must NOT be
+     * disconnected before it reaches kComplete; the success-path teardown in
+     * [streamFilesAndComplete] gates the eager Disconnection on this value. No-op if
+     * the frame is not a ConnectionResponse (the caller's [check] handles that).
+     */
+    private fun capturePeerConnectionResponse(peerResponse: OfflineFrame) {
+        if (!peerResponse.v1.hasConnectionResponse()) return
+        val cr = peerResponse.v1.connectionResponse
+        peerSafeToDisconnectVersion = cr.safeToDisconnectVersion
+
+        @Suppress("DEPRECATION")
+        val status = cr.status
+        logger(
+            "step 4: peer.response=${cr.response} status=$status " +
+                "osType=${if (cr.hasOsInfo()) cr.osInfo.type else "<none>"} " +
+                "safeToDisconnectVersion=$peerSafeToDisconnectVersion",
+        )
     }
 
     private suspend fun openPreSecureTransport(): PreUkey2Negotiation {
