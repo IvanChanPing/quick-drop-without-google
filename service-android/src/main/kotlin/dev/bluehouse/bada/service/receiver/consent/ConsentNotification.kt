@@ -185,19 +185,6 @@ public object ConsentNotification {
                 null
             }
 
-        // The user picks (in Settings) how this consent notification is
-        // presented. Three single-choice styles:
-        //   RECOLORED (default) — custom RemoteViews (notification_consent):
-        //     recolored Decline/Accept centered pair via
-        //     DecoratedCustomViewStyle.
-        //   BRIDGE — same mechanism but the styled card layout
-        //     (notification_consent_bridge).
-        //   SHEET — no custom view at all: a standard/minimal notification
-        //     (BigTextStyle + addAction Accept/Reject), where the bottom
-        //     sheet raised by the full-screen / content intent is the real
-        //     surface. This is the original pre-custom-view path.
-        val style = ConsentNotificationStylePreferences.from(context).mode()
-
         val builder =
             NotificationCompat
                 .Builder(context, CHANNEL_ID)
@@ -217,64 +204,31 @@ public object ConsentNotification {
                 .setAutoCancel(false)
                 .setShowWhen(true)
 
-        when (style) {
-            ConsentNotificationStylePreferences.Style.SHEET -> {
-                // No custom RemoteViews / DecoratedCustomViewStyle. A plain
-                // BigTextStyle notification plus standard Accept / Reject
-                // action buttons; the full-screen / content intent (added
-                // below for all styles) raises the consent bottom sheet,
-                // which is the real surface in this mode.
-                builder
-                    .setStyle(NotificationCompat.BigTextStyle().bigText(content.bigText))
-                    .addAction(
-                        android.R.drawable.ic_menu_send,
-                        content.acceptLabel,
-                        acceptIntent,
-                    ).addAction(
-                        android.R.drawable.ic_menu_close_clear_cancel,
-                        content.rejectLabel,
-                        rejectIntent,
-                    )
+        // A custom RemoteViews body (notification_consent) wired with the same
+        // broadcast PendingIntents the standard action buttons would use:
+        // recolored Decline/Accept as a centered pair plus a thumbnail of the
+        // incoming item. DecoratedCustomViewStyle keeps the native notification
+        // frame (small icon, app name, time) and renders our layout as the body
+        // across collapsed / expanded / heads-up. The two consent buttons live
+        // in the layout, so no addAction() row is added (it would duplicate them).
+        val customView =
+            RemoteViews(context.packageName, R.layout.notification_consent).apply {
+                setTextViewText(R.id.notif_consent_title, content.title)
+                setTextViewText(R.id.notif_consent_body, content.body)
+                setTextViewText(R.id.notif_consent_accept, content.acceptLabel)
+                setTextViewText(R.id.notif_consent_decline, content.rejectLabel)
+                setOnClickPendingIntent(R.id.notif_consent_accept, acceptIntent)
+                setOnClickPendingIntent(R.id.notif_consent_decline, rejectIntent)
+                setImageViewBitmap(
+                    R.id.notif_consent_thumb,
+                    ConsentThumbnail.photo(ConsentThumbnail.THUMB_PX, ConsentThumbnail.THUMB_PX),
+                )
             }
-            else -> {
-                // RECOLORED or BRIDGE: a custom RemoteViews body wired with
-                // the same broadcast PendingIntents the action buttons would
-                // use. DecoratedCustomViewStyle keeps the native notification
-                // frame (small icon, app name, time) and renders our layout as
-                // the body across collapsed / expanded / heads-up. The two
-                // consent buttons live in the layout, so no addAction() row is
-                // added (which would duplicate them).
-                val layoutRes =
-                    if (style == ConsentNotificationStylePreferences.Style.BRIDGE) {
-                        R.layout.notification_consent_bridge
-                    } else {
-                        R.layout.notification_consent
-                    }
-                val customView =
-                    RemoteViews(context.packageName, layoutRes).apply {
-                        setTextViewText(R.id.notif_consent_title, content.title)
-                        setTextViewText(R.id.notif_consent_body, content.body)
-                        setTextViewText(R.id.notif_consent_accept, content.acceptLabel)
-                        setTextViewText(R.id.notif_consent_decline, content.rejectLabel)
-                        setOnClickPendingIntent(R.id.notif_consent_accept, acceptIntent)
-                        setOnClickPendingIntent(R.id.notif_consent_decline, rejectIntent)
-                        // RECOLORED layout has a right-side placeholder thumbnail of
-                        // the incoming file(s); the BRIDGE layout has no such view, so
-                        // only bind it for the recolored layout.
-                        if (style == ConsentNotificationStylePreferences.Style.RECOLORED) {
-                            setImageViewBitmap(
-                                R.id.notif_consent_thumb,
-                                ConsentThumbnail.photo(ConsentThumbnail.THUMB_PX, ConsentThumbnail.THUMB_PX),
-                            )
-                        }
-                    }
-                builder
-                    .setStyle(NotificationCompat.DecoratedCustomViewStyle())
-                    .setCustomContentView(customView)
-                    .setCustomBigContentView(customView)
-                    .setCustomHeadsUpContentView(customView)
-            }
-        }
+        builder
+            .setStyle(NotificationCompat.DecoratedCustomViewStyle())
+            .setCustomContentView(customView)
+            .setCustomBigContentView(customView)
+            .setCustomHeadsUpContentView(customView)
 
         if (tapIntent != null) {
             // Tapping the notification body opens the consent sheet for

@@ -45,7 +45,7 @@
                 android:layout_height="wrap_content"
                 android:ellipsize="end"
                 android:maxLines="1"
-                android:textSize="16sp"
+                android:textAppearance="@style/TextAppearance.Compat.Notification.Title"
                 android:textStyle="bold" />
 
             <TextView
@@ -55,7 +55,7 @@
                 android:layout_marginTop="3dp"
                 android:ellipsize="end"
                 android:maxLines="2"
-                android:textSize="14sp" />
+                android:textAppearance="@style/TextAppearance.Compat.Notification.Line2" />
         </LinearLayout>
 
         <!-- notif_consent_thumb — small rounded placeholder thumbnail of the

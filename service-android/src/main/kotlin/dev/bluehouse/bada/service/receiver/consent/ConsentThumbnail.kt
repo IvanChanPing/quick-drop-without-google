@@ -28,13 +28,9 @@ import kotlin.math.min
  * historical "vector drawable inside RemoteViews" rendering pitfalls — no asset
  * files, no density folders.
  *
- * Bound at runtime in [ConsentNotification.build] (production) and the
- * debug `ConsentPreviewActivity`. Ported from the HeadsUp Demo's `Placeholders`.
- *
- * Status: rendered + verified via the consent preview harness.
+ * Bound at runtime in [ConsentNotification.build].
  */
 public object ConsentThumbnail {
-
     /** Pixel size of the square right-side thumbnail bitmap. */
     public const val THUMB_PX: Int = 132
 
