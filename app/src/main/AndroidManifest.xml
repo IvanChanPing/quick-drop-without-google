@@ -369,6 +369,32 @@
             android:label="@string/show_qr_title" />
 
         <!--
+          NFC link broadcast HCE service (NDEF Tag Application D2760000850101).
+
+          Emulates an NFC Forum Type-4 NDEF tag whose single URI record is the
+          current Bada pairing link (NfcLinkHolder.currentUrl, set by the Send UI
+          while the QR/link panel is showing). An iPhone tapped to the back of
+          this phone background-reads the URI and opens it in Safari (the URL is
+          an ordinary web link, not an App Store / universal link).
+
+          Distinct AID from the Quick Share tap-to-share service below, so both
+          HostApduServices coexist on the one NFC controller. exported=true +
+          BIND_NFC_SERVICE: only the system NFC service binds and routes APDUs
+          here, so this is not a third-party-callable surface.
+        -->
+        <service
+            android:name=".nfc.BadaNdefApduService"
+            android:exported="true"
+            android:permission="android.permission.BIND_NFC_SERVICE">
+            <intent-filter>
+                <action android:name="android.nfc.cardemulation.action.HOST_APDU_SERVICE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.nfc.cardemulation.host_apdu_service"
+                android:resource="@xml/bada_apduservice" />
+        </service>
+
+        <!--
           Quick Share NFC tap-to-share HCE receiver (AID F00000FE2C).
 
           A stock Quick Share sender in reader-mode (or Bada's own reader-mode)

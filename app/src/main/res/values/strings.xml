@@ -562,4 +562,8 @@
     <!-- NFC tap-to-share HCE service description, shown in the system NFC /
          card-emulation settings list of registered apps. -->
     <string name="nfc_tap_hce_service_description">Bada Quick Share tap-to-share</string>
+    <!-- HCE service description shown in system NFC settings. The Type-4 NDEF
+         service broadcasts the current pairing link to a tapped iPhone so it
+         opens that link in Safari. -->
+    <string name="nfc_hce_service_description">Bada NFC link</string>
 </resources>

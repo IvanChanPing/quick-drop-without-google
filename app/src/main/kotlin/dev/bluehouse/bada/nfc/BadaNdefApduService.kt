@@ -8,7 +8,6 @@ package dev.bluehouse.bada.nfc
 import android.nfc.cardemulation.HostApduService
 import android.os.Bundle
 import android.util.Log
-import java.nio.charset.StandardCharsets
 
 /**
  * Host Card Emulation service that exposes the current Bada pairing link
@@ -39,7 +38,12 @@ import java.nio.charset.StandardCharsets
  *  4. SELECT the NDEF file `E104` -> `90 00`.
  *  5. READ_BINARY offset 0, len 2 -> the 2-byte NLEN.
  *  6. READ_BINARY offset 2.. -> the NDEF message bytes.
+ *
+ * The APDU state machine is inherently byte-index heavy and branches per
+ * command/file, so MagicNumber / ReturnCount / CyclomaticComplexMethod are
+ * suppressed; the pure byte encoders live in [NdefTagCodec].
  */
+@Suppress("MagicNumber", "ReturnCount", "CyclomaticComplexMethod")
 public class BadaNdefApduService : HostApduService() {
     /** Which file the reader currently has selected. */
     private enum class Selected { NONE, CC, NDEF }
@@ -54,8 +58,8 @@ public class BadaNdefApduService : HostApduService() {
      * READ_BINARY before any SELECT-AID (defensive — a compliant reader
      * always selects first).
      */
-    private var ndefFile: ByteArray = buildNdefFile(EMPTY_NDEF_MESSAGE)
-    private var ccFile: ByteArray = buildCapabilityContainer(ndefFile.size)
+    private var ndefFile: ByteArray = NdefTagCodec.buildNdefFile(EMPTY_NDEF_MESSAGE)
+    private var ccFile: ByteArray = NdefTagCodec.buildCapabilityContainer(ndefFile.size)
 
     override fun processCommandApdu(
         apdu: ByteArray?,
@@ -69,7 +73,7 @@ public class BadaNdefApduService : HostApduService() {
         if (apdu[0] == 0x00.toByte() && apdu[1] == 0xA4.toByte()) {
             // SELECT by name (P1=04): match the NDEF Tag Application AID.
             if (apdu[2] == 0x04.toByte()) {
-                if (apduSelectsAid(apdu, NDEF_TAG_APP_AID)) {
+                if (NdefTagCodec.apduSelectsAid(apdu, NDEF_TAG_APP_AID)) {
                     refreshNdefForCurrentLink()
                     selected = Selected.NONE // app selected; no file selected yet
                     return SW_OK
@@ -84,7 +88,7 @@ public class BadaNdefApduService : HostApduService() {
                     selected = Selected.CC
                     return SW_OK
                 }
-                if (hi == NDEF_FILE_ID[0] && lo == NDEF_FILE_ID[1]) {
+                if (hi == NdefTagCodec.NDEF_FILE_ID[0] && lo == NdefTagCodec.NDEF_FILE_ID[1]) {
                     selected = Selected.NDEF
                     return SW_OK
                 }
@@ -138,10 +142,10 @@ public class BadaNdefApduService : HostApduService() {
                 EMPTY_NDEF_MESSAGE
             } else {
                 Log.d(TAG, "SELECT NDEF app AID -> OK; will serve $url")
-                buildUriNdefMessage(url)
+                NdefTagCodec.buildUriNdefMessage(url)
             }
-        ndefFile = buildNdefFile(message)
-        ccFile = buildCapabilityContainer(ndefFile.size)
+        ndefFile = NdefTagCodec.buildNdefFile(message)
+        ccFile = NdefTagCodec.buildCapabilityContainer(ndefFile.size)
     }
 
     public companion object {
@@ -155,7 +159,6 @@ public class BadaNdefApduService : HostApduService() {
 
         // ---- File identifiers ----
         private val CC_FILE_ID = byteArrayOf(0xE1.toByte(), 0x03)
-        private val NDEF_FILE_ID = byteArrayOf(0xE1.toByte(), 0x04)
 
         // NDEF Tag Application AID (NFC Forum). The same AID an iPhone
         // SELECTs to read a Type-4 NDEF tag.
@@ -167,103 +170,5 @@ public class BadaNdefApduService : HostApduService() {
 
         /** A valid empty NDEF message (single empty record, TNF=0x00). */
         private val EMPTY_NDEF_MESSAGE = byteArrayOf(0xD0.toByte(), 0x00, 0x00)
-
-        /** True iff this SELECT-by-name APDU carries exactly [aid] in its data. */
-        internal fun apduSelectsAid(
-            apdu: ByteArray,
-            aid: ByteArray,
-        ): Boolean {
-            // 00 A4 04 00 <Lc> <AID...> [Le]
-            if (apdu.size < 5 + aid.size) return false
-            val lc = apdu[4].toInt() and 0xFF
-            if (lc != aid.size) return false
-            for (i in aid.indices) {
-                if (apdu[5 + i] != aid[i]) return false
-            }
-            return true
-        }
-
-        /**
-         * Build the 15-byte Capability Container per NFC Forum T4T:
-         * ```
-         * 00 0F  CCLEN = 15
-         * 20     mapping version 2.0
-         * 00 3B  MLe (max R-APDU data, 59)
-         * 00 34  MLc (max C-APDU data, 52)
-         * 04 06  NDEF File Control TLV: T=04, L=06
-         *   E1 04            NDEF file id
-         *   <max ndef len hi/lo>
-         *   00               read access granted
-         *   FF               write access denied (read-only tag)
-         * ```
-         */
-        internal fun buildCapabilityContainer(ndefFileLen: Int): ByteArray =
-            byteArrayOf(
-                0x00, 0x0F, // CCLEN = 15
-                0x20, // mapping version 2.0
-                0x00, 0x3B, // MLe
-                0x00, 0x34, // MLc
-                0x04, 0x06, // NDEF File Control TLV (T=04,L=06)
-                NDEF_FILE_ID[0], NDEF_FILE_ID[1],
-                ((ndefFileLen shr 8) and 0xFF).toByte(),
-                (ndefFileLen and 0xFF).toByte(),
-                0x00, // read access granted
-                0xFF.toByte(), // write access denied
-            )
-
-        /** NDEF file = 2-byte NLEN (big-endian message length) + message. */
-        internal fun buildNdefFile(ndefMessage: ByteArray): ByteArray {
-            val file = ByteArray(2 + ndefMessage.size)
-            file[0] = ((ndefMessage.size shr 8) and 0xFF).toByte()
-            file[1] = (ndefMessage.size and 0xFF).toByte()
-            System.arraycopy(ndefMessage, 0, file, 2, ndefMessage.size)
-            return file
-        }
-
-        /**
-         * Build a single-record NDEF message containing one Well-Known URI
-         * record (RTD-U).
-         * ```
-         * Record header byte = 0xD1 : MB=1 ME=1 CF=0 SR=1 IL=0 TNF=001(Well Known)
-         * Type Length = 01
-         * Payload Length = 1 (URI prefix code) + URI-body bytes (short record)
-         * Type = 'U' (0x55)
-         * Payload[0] = URI identifier code (prefix), Payload[1..] = URI body
-         * ```
-         * We pick the longest matching NFC Forum URI prefix to shorten the
-         * body; `https://` maps to identifier code 0x04.
-         */
-        internal fun buildUriNdefMessage(uri: String): ByteArray {
-            var prefixCode = 0x00
-            var body = uri
-            // Longest-prefix match against the NFC Forum URI prefix table (subset).
-            val prefixes =
-                arrayOf(
-                    "https://www." to 0x01,
-                    "http://www." to 0x02,
-                    "https://" to 0x04,
-                    "http://" to 0x03,
-                )
-            for ((prefix, code) in prefixes) {
-                if (uri.startsWith(prefix)) {
-                    prefixCode = code
-                    body = uri.substring(prefix.length)
-                    break
-                }
-            }
-            val bodyBytes = body.toByteArray(StandardCharsets.UTF_8)
-            val payloadLen = 1 + bodyBytes.size // +1 for the prefix code
-
-            // Short record (SR=1): payload length fits in 1 byte. The
-            // pairing URL is well under 255 bytes, so SR is valid.
-            val rec = ByteArray(4 + payloadLen)
-            rec[0] = 0xD1.toByte() // MB=1,ME=1,SR=1,TNF=Well-Known
-            rec[1] = 0x01 // type length = 1 ('U')
-            rec[2] = payloadLen.toByte()
-            rec[3] = 0x55 // 'U'
-            rec[4] = prefixCode.toByte()
-            System.arraycopy(bodyBytes, 0, rec, 5, bodyBytes.size)
-            return rec
-        }
     }
 }
