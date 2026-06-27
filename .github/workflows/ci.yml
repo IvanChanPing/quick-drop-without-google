@@ -46,8 +46,14 @@ jobs:
       - name: Run :app JVM unit tests
         run: ./gradlew :app:testDebugUnitTest --stacktrace
 
+      - name: Run :radio-helper JVM unit tests
+        run: ./gradlew :radio-helper:testDebugUnitTest --stacktrace
+
       - name: Check bug-report Android API compatibility
         run: ./scripts/check-app-bugreport-api-compat.sh
 
       - name: Assemble debug APK
         run: ./gradlew :app:assembleDebug --stacktrace
+
+      - name: Assemble radio-helper debug APK
+        run: ./gradlew :radio-helper:assembleDebug --stacktrace

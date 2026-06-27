@@ -64,7 +64,12 @@ import java.util.Date
  * All calls are blocking (socket I/O) — callers MUST run them OFF the main thread
  * (no UI-thread blocking → ANR). NOT device-tested; ColorOS `adb_wifi_enabled`
  * write + key-persistence across reboots is UNVERIFIED.
+ *
+ * The ADB pairing/connect wire constants (mDNS service-type bytes, packet field
+ * offsets) are inherently numeric, so the class suppresses detekt's MagicNumber —
+ * a named constant per offset would not read more clearly than the protocol comments.
  */
+@Suppress("MagicNumber")
 internal class AdbWifiManager private constructor(
     context: Context,
 ) : AbsAdbConnectionManager() {
@@ -93,7 +98,8 @@ internal class AdbWifiManager private constructor(
                 val kf = KeyFactory.getInstance("RSA")
                 privKey = kf.generatePrivate(PKCS8EncodedKeySpec(keyFile.readBytes()))
                 cert =
-                    CertificateFactory.getInstance("X.509")
+                    CertificateFactory
+                        .getInstance("X.509")
                         .generateCertificate(ByteArrayInputStream(certFile.readBytes())) as X509Certificate
                 return
             }.onFailure { Log.w(TAG, "key load failed, regenerating: ${it.message}") }
@@ -103,7 +109,9 @@ internal class AdbWifiManager private constructor(
 
     private fun generateKeyPairAndCert() {
         val keyPair =
-            KeyPairGenerator.getInstance("RSA").apply { initialize(2048, SecureRandom()) }
+            KeyPairGenerator
+                .getInstance("RSA")
+                .apply { initialize(2048, SecureRandom()) }
                 .generateKeyPair()
         privKey = keyPair.private
         cert = selfSignedCert(keyPair)

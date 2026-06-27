@@ -41,12 +41,17 @@ import dev.bluehouse.bada.radiohelper.adbwifi.AdbWifiRadio
  * onReceive returns immediately. compile-only / device-UNVERIFIED.
  */
 internal class PairingReplyReceiver : BroadcastReceiver() {
+    // The background ADB/mDNS pairing work can throw a wide range of I/O and
+    // reflection errors; a broadcast receiver must never crash, so it catches
+    // Throwable and surfaces the message to the pairing notification instead.
+    @Suppress("TooGenericExceptionCaught")
     override fun onReceive(
         context: Context,
         intent: Intent,
     ) {
         val code =
-            RemoteInput.getResultsFromIntent(intent)
+            RemoteInput
+                .getResultsFromIntent(intent)
                 ?.getCharSequence(PairingNotifier.KEY_CODE)
                 ?.toString()
                 ?.trim()
@@ -70,7 +75,8 @@ internal class PairingReplyReceiver : BroadcastReceiver() {
                         AdbWifiManager.pair(appContext, hp.host, hp.port, code) -> {
                             // Paired → re-enable wireless debugging + warm the connection.
                             val ready = AdbWifiRadio.ensureReady(appContext)
-                            "Paired OK at ${hp.host}:${hp.port}. self-ADB ${if (ready) "ready" else "warm-up: ${AdbWifiRadio.lastStatus}"}"
+                            val state = if (ready) "ready" else "warm-up: ${AdbWifiRadio.lastStatus}"
+                            "Paired OK at ${hp.host}:${hp.port}. self-ADB $state"
                         }
                         else ->
                             "Pair FAILED at ${hp.host}:${hp.port} — wrong code or it expired. " +

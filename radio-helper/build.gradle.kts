@@ -70,8 +70,8 @@ dependencies {
     // even with WRITE_SECURE_SETTINGS. We run a Shizuku USER SERVICE (shell
     // UID) that calls `svc wifi enable/disable` — robust across versions,
     // unlike binding the hidden IWifiManager AIDL (transaction codes shift).
-    implementation("dev.rikka.shizuku:api:13.1.5")
-    implementation("dev.rikka.shizuku:provider:13.1.5")
+    implementation(libs.shizuku.api)
+    implementation(libs.shizuku.provider)
 
     // Self-ADB Wi-Fi (silent, no Shizuku): pure-Java Android-11 ADB client. The
     // helper pairs ONCE with the device's own Wireless Debugging, then self-
@@ -81,13 +81,16 @@ dependencies {
     // (libadb-android #4) and provides autoConnect()/connectTls() which discover
     // and connect correctly — the manual discover+connect(127.0.0.1) on 1.0.1 hit
     // IOException on ColorOS (paired but adbd unreachable).
-    implementation("com.github.MuntashirAkon:libadb-android:3.1.1")
+    implementation(libs.libadb.android)
     // conscrypt: libadb's SslUtils reflectively instantiates org.conscrypt.
     // OpenSSLProvider for a self-contained TLSv1.3 (avoids the hidden-API path the
     // platform conscrypt would need). We do NOT register it as a global provider.
-    implementation("org.conscrypt:conscrypt-android:2.5.2")
+    implementation(libs.conscrypt.android)
     // BouncyCastle = our self-signed cert generation. Aligned to jdk15to18:1.81 to
     // match the bcprov libadb 3.1.1 pulls in (avoid a bcprov/bcpkix version skew).
-    implementation("org.bouncycastle:bcprov-jdk15to18:1.81")
-    implementation("org.bouncycastle:bcpkix-jdk15to18:1.81")
+    implementation(libs.bouncycastle.bcprov)
+    implementation(libs.bouncycastle.bcpkix)
+
+    testImplementation(libs.junit4)
+    testImplementation(libs.truth)
 }

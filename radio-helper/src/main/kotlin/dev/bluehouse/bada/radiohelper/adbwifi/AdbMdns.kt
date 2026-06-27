@@ -45,7 +45,10 @@ internal object AdbMdns {
     const val SERVICE_PAIRING = "_adb-tls-pairing._tcp"
 
     /** A resolved mDNS service endpoint (the device's own IP + the service port). */
-    data class HostPort(val host: String, val port: Int)
+    data class HostPort(
+        val host: String,
+        val port: Int,
+    )
 
     /**
      * @return the resolved adbd port, or -1 if none found within [timeoutSeconds].

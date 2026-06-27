@@ -68,6 +68,7 @@ internal object ShizukuRadio {
      * shell command reported success; `false` when Shizuku is unavailable,
      * the bind times out, or the command failed (→ caller shows the panel).
      */
+    @Suppress("ReturnCount") // one early return per unavailability/failure rung.
     fun trySetWifi(
         context: Context,
         on: Boolean,
@@ -108,10 +109,10 @@ internal object ShizukuRadio {
         service?.let { if (it.asBinder().isBinderAlive) return it }
         val latch = CountDownLatch(1)
         val args =
-            Shizuku.UserServiceArgs(
-                ComponentName(context.packageName, RadioShellService::class.java.name),
-            )
-                .daemon(false)
+            Shizuku
+                .UserServiceArgs(
+                    ComponentName(context.packageName, RadioShellService::class.java.name),
+                ).daemon(false)
                 .processNameSuffix("radioshell")
                 .debuggable(BuildConfig.DEBUG)
                 .version(1)

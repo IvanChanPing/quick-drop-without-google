@@ -90,6 +90,7 @@ internal object RadioToggler {
      *
      * Blocks (self-ADB/Shizuku do socket/mDNS I/O) — call OFF the main thread.
      */
+    @Suppress("ReturnCount") // one early return per rung of the fallback ladder.
     fun runWifiLadder(
         context: Context,
         on: Boolean,

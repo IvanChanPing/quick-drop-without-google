@@ -51,7 +51,9 @@ import android.os.Messenger
 import android.util.Log
 import java.util.ArrayDeque
 
-class RadioHelperClient(context: Context) {
+class RadioHelperClient(
+    context: Context,
+) {
     private val appContext = context.applicationContext
 
     // Outgoing messenger to the helper's RadioService (set on bind).
@@ -199,7 +201,12 @@ class RadioHelperClient(context: Context) {
         }
         cbs.add(cb)
         runCatching {
-            m.send(Message.obtain(null, what).also { it.arg1 = if (on) 1 else 0; it.replyTo = incoming })
+            m.send(
+                Message.obtain(null, what).also {
+                    it.arg1 = if (on) 1 else 0
+                    it.replyTo = incoming
+                },
+            )
         }.onFailure {
             cbs.remove(cb)
             cb(false)
@@ -226,8 +233,16 @@ class RadioHelperClient(context: Context) {
         }
         prepareCbs.add(done)
         runCatching {
-            m.send(Message.obtain(null, MSG_PREPARE_SHARE).also { it.arg1 = radios; it.replyTo = incoming })
-        }.onFailure { prepareCbs.remove(done); done(0) }
+            m.send(
+                Message.obtain(null, MSG_PREPARE_SHARE).also {
+                    it.arg1 = radios
+                    it.replyTo = incoming
+                },
+            )
+        }.onFailure {
+            prepareCbs.remove(done)
+            done(0)
+        }
     }
 
     /**
@@ -243,7 +258,10 @@ class RadioHelperClient(context: Context) {
         finishedCbs.add(done)
         runCatching {
             m.send(Message.obtain(null, MSG_TRANSFER_FINISHED).also { it.replyTo = incoming })
-        }.onFailure { finishedCbs.remove(done); done() }
+        }.onFailure {
+            finishedCbs.remove(done)
+            done()
+        }
     }
 
     /**

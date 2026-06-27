@@ -138,9 +138,10 @@ internal class QuickShareWatcherService : AccessibilityService() {
             bg.removeCallbacks(heartbeat)
             bg.post {
                 if (ShareRadioSession.isSessionActive(applicationContext)) {
-                    Log.i(TAG, "Quick Share left → restore alarm in ${LEAVE_TIMEOUT_MS / 1000}s")
+                    val secs = LEAVE_TIMEOUT_MS / MILLIS_PER_SECOND
+                    Log.i(TAG, "Quick Share left → restore alarm in ${secs}s")
                     ShareRadioSession.scheduleRestoreIn(applicationContext, LEAVE_TIMEOUT_MS)
-                    QuickShareWatchStatus.update("Quick Share left → restoring radios in ${LEAVE_TIMEOUT_MS / 1000}s")
+                    QuickShareWatchStatus.update("Quick Share left → restoring radios in ${secs}s")
                 } else {
                     QuickShareWatchStatus.update("Quick Share left (nothing to restore)")
                 }
@@ -184,5 +185,8 @@ internal class QuickShareWatcherService : AccessibilityService() {
         /** Heartbeat interval while Quick Share is in the foreground. Must be well
          * below [LEAVE_TIMEOUT_MS] so a tick always lands before the restore fires. */
         const val HEARTBEAT_MS = 5_000L
+
+        /** Milliseconds per second, for the human-readable "in Ns" log/status text. */
+        const val MILLIS_PER_SECOND = 1000L
     }
 }

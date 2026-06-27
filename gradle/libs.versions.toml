@@ -43,6 +43,16 @@ tink = "1.15.0"
 # need the encoder side (BitMatrix → Bitmap conversion is trivial).
 zxingCore = "3.5.3"
 
+# Radio-helper companion module (#234). The self-ADB Wi-Fi stack
+# (libadb-android + Conscrypt + BouncyCastle) and Shizuku live ONLY in
+# :radio-helper, which targets API 28 to keep the legacy radio-toggle
+# capability. bcprovJdk and bcpkixJdk share one version so the BouncyCastle
+# provider/PKIX pair stay aligned.
+shizuku = "13.1.5"
+libadb = "3.1.1"
+conscrypt = "2.5.2"
+bouncycastle = "1.81"
+
 # Testing
 junit4 = "4.13.2"
 junitJupiter = "5.11.3"
@@ -91,6 +101,14 @@ tink-android = { module = "com.google.crypto.tink:tink-android", version.ref = "
 # unit-testable on a host JVM; only the BitMatrix → Bitmap adapter
 # touches Android types.
 zxing-core = { module = "com.google.zxing:core", version.ref = "zxingCore" }
+
+# Radio-helper companion module (#234)
+shizuku-api = { module = "dev.rikka.shizuku:api", version.ref = "shizuku" }
+shizuku-provider = { module = "dev.rikka.shizuku:provider", version.ref = "shizuku" }
+libadb-android = { module = "com.github.MuntashirAkon:libadb-android", version.ref = "libadb" }
+conscrypt-android = { module = "org.conscrypt:conscrypt-android", version.ref = "conscrypt" }
+bouncycastle-bcprov = { module = "org.bouncycastle:bcprov-jdk15to18", version.ref = "bouncycastle" }
+bouncycastle-bcpkix = { module = "org.bouncycastle:bcpkix-jdk15to18", version.ref = "bouncycastle" }
 
 # Testing
 junit4 = { module = "junit:junit", version.ref = "junit4" }

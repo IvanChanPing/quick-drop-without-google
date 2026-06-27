@@ -9,6 +9,7 @@ import android.app.AlarmManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.SharedPreferences
 import android.os.Build
 import android.util.Log
 
@@ -65,6 +66,53 @@ internal object ShareRadioSession {
     const val RADIO_BOTH = RADIO_WIFI or RADIO_BT
 
     /**
+     * The pure, Android-free decision for [prepare]: given what's wanted, the
+     * current radio states, and the prior persisted session, decide which radios
+     * to ATTEMPT to enable and the cumulative "what WE turned on" flags to persist.
+     * Extracted so the safety-critical bitmask logic (enable-only-what's-off,
+     * restore-only-ours, re-entrant seed) is unit-testable on a host JVM.
+     *
+     * @property attemptWifi call the silent Wi-Fi enable ladder.
+     * @property attemptBt call the Bluetooth enable.
+     * @property enabledWifi cumulative "we turned Wi-Fi on" to persist (incl. prior).
+     * @property enabledBt cumulative "we turned BT on" to persist (incl. prior).
+     * @property alreadyOn bitmask of wanted radios already ON (no toggle needed).
+     */
+    internal data class PrepareDecision(
+        val attemptWifi: Boolean,
+        val attemptBt: Boolean,
+        val enabledWifi: Boolean,
+        val enabledBt: Boolean,
+        val alreadyOn: Int,
+    )
+
+    internal fun decidePrepare(
+        radios: Int,
+        wifiOn: Boolean,
+        btOn: Boolean,
+        priorEnabledWifi: Boolean,
+        priorEnabledBt: Boolean,
+    ): PrepareDecision {
+        val want = if (radios == 0) RADIO_BOTH else radios
+        val attemptWifi = want and RADIO_WIFI != 0 && !wifiOn
+        val attemptBt = want and RADIO_BT != 0 && !btOn
+        var alreadyOn = 0
+        if (want and RADIO_WIFI != 0 && wifiOn) alreadyOn = alreadyOn or RADIO_WIFI
+        if (want and RADIO_BT != 0 && btOn) alreadyOn = alreadyOn or RADIO_BT
+        return PrepareDecision(
+            attemptWifi = attemptWifi,
+            attemptBt = attemptBt,
+            // RE-ENTRANT: a prior session's true is never reset to false, so a SECOND
+            // prepare (rotation, repeated wakes) ADDS to what we enabled. Without this
+            // a 2nd prepare would see the radio we already turned on as "already on",
+            // record false, and finish() would strand it ON.
+            enabledWifi = priorEnabledWifi || attemptWifi,
+            enabledBt = priorEnabledBt || attemptBt,
+            alreadyOn = alreadyOn,
+        )
+    }
+
+    /**
      * Transfer START. For each requested radio that is currently OFF, turn it ON
      * (silent ladder) and remember we did so (persisted). Radios already ON are
      * left untouched and NOT recorded (so [finish] won't turn them off).
@@ -72,52 +120,72 @@ internal object ShareRadioSession {
      * @return bitmask of radios that are ON after this call (Wi-Fi bit set only if
      *         a SILENT path actually enabled it; the caller may ignore this).
      */
+    @Synchronized
     fun prepare(
         context: Context,
         radios: Int,
     ): Int {
-        val want = if (radios == 0) RADIO_BOTH else radios
         val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-        // RE-ENTRANT: seed from any prior un-finished prepare so a SECOND prepare
-        // (activity recreated on rotation, or repeated wakes) ADDS to what we
-        // enabled and never resets a true→false. Without this, a 2nd prepare would
-        // see the radio we already turned on as "already on", record enabled=false,
-        // and finish() would then leave it stranded ON. finish() clears the prefs,
-        // so a genuinely new share still starts from a clean (false) capture.
-        var enabledWifi = prefs.getBoolean(KEY_ENABLED_WIFI, false)
-        var enabledBt = prefs.getBoolean(KEY_ENABLED_BT, false)
-        var nowOn = 0
+        val decision =
+            decidePrepare(
+                radios = radios,
+                wifiOn = RadioToggler.isWifiOn(context),
+                btOn = RadioToggler.isBluetoothOn(),
+                priorEnabledWifi = prefs.getBoolean(KEY_ENABLED_WIFI, false),
+                priorEnabledBt = prefs.getBoolean(KEY_ENABLED_BT, false),
+            )
 
-        if (want and RADIO_WIFI != 0) {
-            if (RadioToggler.isWifiOn(context)) {
-                nowOn = nowOn or RADIO_WIFI
-            } else if (RadioToggler.setWifiSilent(context, true)) {
-                enabledWifi = true
+        // Persist the intent synchronously and arm the watchdog BEFORE touching any
+        // radio, so a process kill in the window between flipping a radio ON and the
+        // flush landing can NEVER strand the user's Wi-Fi/BT on: finish() (or the
+        // watchdog) still turns off whatever we recorded, and disabling an already-off
+        // radio is a harmless no-op. The safe direction — a spurious restore beats a
+        // stranded radio. (Reviewer M1.)
+        if (decision.enabledWifi || decision.enabledBt) {
+            persistEnabled(prefs, decision.enabledWifi, decision.enabledBt)
+            scheduleWatchdog(context)
+        } else {
+            // Nothing to turn on (both already on) — back out any stale watchdog.
+            cancelWatchdog(context)
+        }
+
+        var nowOn = decision.alreadyOn
+        if (decision.attemptWifi) {
+            if (RadioToggler.setWifiSilent(context, true)) {
                 nowOn = nowOn or RADIO_WIFI
             } else {
                 Log.w(TAG, "prepare: Wi-Fi could not be enabled silently (${RadioToggler.javaClass.simpleName})")
             }
         }
-        if (want and RADIO_BT != 0) {
-            if (RadioToggler.isBluetoothOn()) {
-                nowOn = nowOn or RADIO_BT
-            } else if (RadioToggler.setBluetooth(true)) {
-                enabledBt = true
-                nowOn = nowOn or RADIO_BT
-            }
+        if (decision.attemptBt && RadioToggler.setBluetooth(true)) {
+            nowOn = nowOn or RADIO_BT
         }
 
-        // Persist what WE turned on so finish() restores it even after a process kill.
-        prefs.edit()
+        Log.i(
+            TAG,
+            "prepare(radios=$radios): enabledWifi=${decision.enabledWifi} " +
+                "enabledBt=${decision.enabledBt} nowOn=$nowOn",
+        )
+        return nowOn
+    }
+
+    /**
+     * Persist "what WE turned on" SYNCHRONOUSLY (commit, not apply) so the flags
+     * survive a process kill that lands before an async flush would have. Safe to
+     * block here: every caller runs on RadioService's background HandlerThread or
+     * QuickShareWatcherService's worker, never the main thread.
+     */
+    private fun persistEnabled(
+        prefs: SharedPreferences,
+        enabledWifi: Boolean,
+        enabledBt: Boolean,
+    ) {
+        prefs
+            .edit()
             .putBoolean(KEY_ENABLED_WIFI, enabledWifi)
             .putBoolean(KEY_ENABLED_BT, enabledBt)
-            .apply()
-        // Arm the safety watchdog only if there's something to restore; if nothing
-        // was turned on (both were already on), there's no session to back out.
-        if (enabledWifi || enabledBt) scheduleWatchdog(context) else cancelWatchdog(context)
-        Log.i(TAG, "prepare(want=$want): enabledWifi=$enabledWifi enabledBt=$enabledBt nowOn=$nowOn")
-        return nowOn
+            .commit()
     }
 
     /**
@@ -125,13 +193,16 @@ internal object ShareRadioSession {
      * radios WE turned on in [prepare], restoring the user's original state. Clears
      * the persisted session.
      */
+    @Synchronized
     fun finish(context: Context) {
         val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val enabledWifi = prefs.getBoolean(KEY_ENABLED_WIFI, false)
         val enabledBt = prefs.getBoolean(KEY_ENABLED_BT, false)
         if (enabledWifi) RadioToggler.setWifiSilent(context, false)
         if (enabledBt) RadioToggler.setBluetooth(false)
-        prefs.edit().clear().apply()
+        // commit (not apply): clear the session synchronously so a concurrent
+        // prepare/restore can't observe a half-cleared state after we return.
+        prefs.edit().clear().commit()
         cancelWatchdog(context)
         Log.i(TAG, "finish: restored wifi=$enabledWifi bt=$enabledBt")
     }
@@ -142,6 +213,7 @@ internal object ShareRadioSession {
      * Wi-Fi as the ON state WE set). Called by the boot service to restore the
      * user's original state. No-op if no session is pending. Blocking — off main.
      */
+    @Synchronized
     fun restoreStaleOnBoot(context: Context) {
         val prefs = context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         if (prefs.getBoolean(KEY_ENABLED_WIFI, false) || prefs.getBoolean(KEY_ENABLED_BT, false)) {

@@ -66,7 +66,12 @@ import rikka.shizuku.Shizuku
  * All ADB / Shizuku / ladder calls block → run on a background Thread, render on
  * the UI thread. Self-ADB on ColorOS is compile-only / device-UNVERIFIED; running
  * this screen's steps 1→2→3 IS the verification.
+ *
+ * The whole UI is built programmatically in onCreate (dp sizes, colors, and the
+ * step-by-step button wiring), so this developer-only diagnostic screen suppresses
+ * the length / complexity / magic-number rules that boilerplate inherently trips.
  */
+@Suppress("MagicNumber", "LongMethod", "CyclomaticComplexMethod")
 internal class SelfTestActivity : Activity() {
     // statusText — multi-line label at the top; live radio + self-ADB + Shizuku
     // state plus the last action's result.
@@ -153,8 +158,8 @@ internal class SelfTestActivity : Activity() {
             TextView(this).apply {
                 text =
                     "Auto-turns Wi‑Fi/Bluetooth ON when Google Quick Share opens, and " +
-                        "restores them after. Tap below and enable \"Bada Quick Share " +
-                        "auto-detect\" under Accessibility (one-time; survives reboots)."
+                    "restores them after. Tap below and enable \"Bada Quick Share " +
+                    "auto-detect\" under Accessibility (one-time; survives reboots)."
                 setPadding(0, pad / 2, 0, pad / 2)
                 textSize = 12f
             },
@@ -207,11 +212,11 @@ internal class SelfTestActivity : Activity() {
             TextView(this).apply {
                 text =
                     "Pairing is done via a NOTIFICATION so the pairing dialog stays open:\n" +
-                        "1. Tap 'Open Wireless debugging settings' and turn Wireless debugging ON.\n" +
-                        "2. Tap '1. Start pairing' — it posts a notification with a reply box.\n" +
-                        "3. In Settings tap 'Pair device with pairing code' (a 6-digit code appears).\n" +
-                        "4. Pull DOWN the notification shade, type the 6 digits into the notification " +
-                        "reply, and send. Do NOT close the dialog. The result shows in the notification."
+                    "1. Tap 'Open Wireless debugging settings' and turn Wireless debugging ON.\n" +
+                    "2. Tap '1. Start pairing' — it posts a notification with a reply box.\n" +
+                    "3. In Settings tap 'Pair device with pairing code' (a 6-digit code appears).\n" +
+                    "4. Pull DOWN the notification shade, type the 6 digits into the notification " +
+                    "reply, and send. Do NOT close the dialog. The result shows in the notification."
                 setPadding(0, pad / 2, 0, pad / 2)
                 textSize = 12f
             },
@@ -289,8 +294,8 @@ internal class SelfTestActivity : Activity() {
             TextView(this).apply {
                 text =
                     "If step 2 doesn't stick: run this ONCE from a PC with the phone " +
-                        "connected over ADB. WRITE_SECURE_SETTINGS persists across reboots " +
-                        "— no per-boot step:"
+                    "connected over ADB. WRITE_SECURE_SETTINGS persists across reboots " +
+                    "— no per-boot step:"
                 setPadding(0, pad, 0, pad / 4)
                 textSize = 12f
             },

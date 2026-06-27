@@ -67,6 +67,7 @@ internal object AdbWifiRadio {
      * works (libadb `autoConnect` discovers the adbd port via mDNS + TLS itself —
      * no manual host/port). Idempotent. @return true if a self-ADB shell connected.
      */
+    @Suppress("ReturnCount")
     fun ensureReady(context: Context): Boolean {
         if (!isPaired(context)) {
             lastStatus = "NOT PAIRED — pair once via the notification, then this works across reboots"
@@ -94,6 +95,7 @@ internal object AdbWifiRadio {
      * TLS connect itself. @return true only if the command ran (connection OK).
      * Sets [lastStatus] (incl. the real connect error) either way.
      */
+    @Suppress("ReturnCount")
     fun setWifi(
         context: Context,
         on: Boolean,
@@ -113,7 +115,7 @@ internal object AdbWifiRadio {
         }
         lastStatus =
             "self-ADB connect/exec failed — paired but adbd unreachable. " +
-                "last error: ${AdbWifiManager.lastError ?: "?"}"
+            "last error: ${AdbWifiManager.lastError ?: "?"}"
         Log.w(TAG, "setWifi: $lastStatus")
         return false
     }
