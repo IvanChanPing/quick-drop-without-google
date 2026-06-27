@@ -99,15 +99,6 @@ object NfcColdReceiverPrimer {
             return null
         }
 
-        // Same identity the session will advertise (reuse the cached snapshot so
-        // we don't re-read device-name settings on the HCE thread when possible).
-        val identity =
-            EndpointIdentityHolder.snapshot.get()
-                ?: AdvertisedDeviceNames.createEndpointInfo(context).also {
-                    EndpointIdentityHolder.snapshot.compareAndSet(null, it)
-                }
-        val effectiveIdentity = EndpointIdentityHolder.snapshot.get() ?: identity
-
         val socket =
             synchronized(socketLock) {
                 // Close any prior primed-but-never-adopted socket (e.g. a previous
@@ -116,17 +107,54 @@ object NfcColdReceiverPrimer {
                 ServerSocket(0, ACCEPT_BACKLOG).also { preBoundSocket = it }
             }
 
-        val link =
-            NfcTapLinkHolder.Link(
-                endpointId = BleEndpointIdHolder.bytesFor(),
-                serviceIdHash = NearbyServiceId.hashPrefix,
-                endpointInfo = effectiveIdentity.serialize(),
-                address = ip,
-                port = socket.localPort,
-            )
+        val link = buildLink(context, ip, socket.localPort)
         NfcTapLinkHolder.set(link)
         DiagnosticLog.w(TAG, "prime: live tag ready ${ip.hostAddress}:${socket.localPort} (cold tap == warm)")
         return link
+    }
+
+    /**
+     * Publish the live receiver link for a WARM session — one already running with
+     * its TCP listener bound on [port] — so an NFC tap answers a real
+     * `deym + Wi-Fi-LAN rxAdv` tag without cold-priming a second socket. Called by
+     * [ReceiverForegroundService] right after the session binds. Returns the
+     * published link, or `null` when there is no Wi-Fi-LAN IPv4 to advertise (the
+     * receiver isn't reachable over Wi-Fi-LAN, so we leave the tag empty).
+     */
+    fun publishWarmLink(
+        context: Context,
+        port: Int,
+    ): NfcTapLinkHolder.Link? {
+        val ip = firstWifiLanIpv4(context) ?: return null
+        val link = buildLink(context, ip, port)
+        NfcTapLinkHolder.set(link)
+        DiagnosticLog.w(TAG, "publishWarmLink: live tag ${ip.hostAddress}:$port")
+        return link
+    }
+
+    /**
+     * Build the [NfcTapLinkHolder.Link] advertised over NFC for the given live
+     * [ip]/[port], reusing the cached [EndpointIdentityHolder] snapshot so we
+     * don't re-read device-name settings on the HCE thread when possible.
+     */
+    private fun buildLink(
+        context: Context,
+        ip: Inet4Address,
+        port: Int,
+    ): NfcTapLinkHolder.Link {
+        val identity =
+            EndpointIdentityHolder.snapshot.get()
+                ?: AdvertisedDeviceNames.createEndpointInfo(context).also {
+                    EndpointIdentityHolder.snapshot.compareAndSet(null, it)
+                }
+        val effectiveIdentity = EndpointIdentityHolder.snapshot.get() ?: identity
+        return NfcTapLinkHolder.Link(
+            endpointId = BleEndpointIdHolder.bytesFor(),
+            serviceIdHash = NearbyServiceId.hashPrefix,
+            endpointInfo = effectiveIdentity.serialize(),
+            address = ip,
+            port = port,
+        )
     }
 
     /**
@@ -166,7 +194,8 @@ object NfcColdReceiverPrimer {
         return cm.allNetworks
             .asSequence()
             .filter { network ->
-                cm.getNetworkCapabilities(network)
+                cm
+                    .getNetworkCapabilities(network)
                     ?.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) == true
             }.mapNotNull { network -> cm.getLinkProperties(network) }
             .flatMap { linkProperties -> linkProperties.linkAddresses.asSequence() }

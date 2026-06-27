@@ -8,7 +8,6 @@ package dev.bluehouse.bada.nfc
 import android.content.Intent
 import android.nfc.cardemulation.HostApduService
 import android.os.Bundle
-import dev.bluehouse.bada.diag.DiagnosticUploader
 import dev.bluehouse.bada.discovery.diagnostics.DiagnosticLog
 import dev.bluehouse.bada.protocol.nfc.NfcTapLinkHolder
 import dev.bluehouse.bada.protocol.nfc.QuickShareNfcCodec
@@ -50,7 +49,11 @@ import java.security.SecureRandom
  * `BIND_NFC_SERVICE` permission. **NOT device-tested** (no NFC hardware in
  * the build environment); the byte formats are smali-verified but the
  * end-to-end tap is unvalidated.
+ *
+ * APDU parsing is inherently byte-index heavy and uses one guard-return per
+ * malformed-input case, so the class suppresses detekt's MagicNumber / ReturnCount.
  */
+@Suppress("MagicNumber", "ReturnCount")
 public class BadaTapHceService : HostApduService() {
     private val secureRandom = SecureRandom()
 
@@ -76,11 +79,7 @@ public class BadaTapHceService : HostApduService() {
         if (apdu[0] == QuickShareNfcCodec.CLA_PROPRIETARY &&
             apdu[1] == QuickShareNfcCodec.INS_ADVERTISEMENT
         ) {
-            val response = handleAdvertisement(apdu)
-            // Auto-ship the receive-tap diagnostics (was our HCE invoked? did we
-            // prime a live tag or return empty?) so it's debuggable without adb.
-            DiagnosticUploader.upload(this, reason = "nfc-recv-tap")
-            return response
+            return handleAdvertisement(apdu)
         }
 
         return QuickShareNfcCodec.SW_INS_NOT_SUPPORTED
@@ -167,7 +166,11 @@ public class BadaTapHceService : HostApduService() {
                 encryptionKey = encryptionKey,
             )
 
-        DiagnosticLog.w(TAG, "ADVERTISEMENT -> hhwv tag(${nfcTag.size}B) rxAdv(${rxAdv.size}B) ${link.address.hostAddress}:${link.port}")
+        DiagnosticLog.w(
+            TAG,
+            "ADVERTISEMENT -> hhwv tag(${nfcTag.size}B) rxAdv(${rxAdv.size}B) " +
+                "${link.address.hostAddress}:${link.port}",
+        )
         return QuickShareNfcCodec.encodeHhwvResponse(
             QuickShareNfcCodec.HhwvResponse(nfcTag = nfcTag, rxAdv = rxAdv),
         ) + QuickShareNfcCodec.SW_OK

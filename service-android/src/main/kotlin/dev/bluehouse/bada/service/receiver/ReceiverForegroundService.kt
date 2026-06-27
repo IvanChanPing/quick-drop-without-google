@@ -32,6 +32,7 @@ import dev.bluehouse.bada.discovery.diagnostics.DiagnosticLog
 import dev.bluehouse.bada.discovery.medium.MediumRegistries
 import dev.bluehouse.bada.protocol.endpoint.BleServiceData
 import dev.bluehouse.bada.protocol.endpoint.EndpointInfo
+import dev.bluehouse.bada.protocol.nfc.NfcTapLinkHolder
 import dev.bluehouse.bada.service.downloads.DownloadsWriterFactory
 import dev.bluehouse.bada.service.receiver.consent.ConsentBroadcastReceiver
 import dev.bluehouse.bada.service.receiver.consent.ConsentCoordinator
@@ -412,6 +413,13 @@ public class ReceiverForegroundService : Service() {
                 // longer needed: NsdManager owns the system mDNS
                 // responder, which has its own multicast filter
                 // exemption.
+                //
+                // Publish the live NFC tap-to-receive link (#NFC) so a tap on
+                // this already-running receiver answers a real tag pointing at
+                // the bound port — the warm counterpart of NfcColdReceiverPrimer.
+                // A cold tap that primed + adopted a socket lands on the same
+                // port, so this is consistent either way; no-op without Wi-Fi-LAN.
+                NfcColdReceiverPrimer.publishWarmLink(applicationContext, newSession.boundPort)
                 startMdnsGate(newSession)
             } catch (
                 @Suppress("SwallowedException") t: Throwable,
@@ -895,6 +903,12 @@ public class ReceiverForegroundService : Service() {
         stopActiveReceiverSession()
         unregisterConsentReceiverIfNeeded()
 
+        // The receiver is no longer live: clear the NFC tap-to-receive link so a
+        // tap answers an empty tag (no stale port), and release any cold-tap
+        // primed-but-unadopted socket so a refused FGS wake doesn't leak it.
+        NfcTapLinkHolder.clear()
+        NfcColdReceiverPrimer.discardUnadopted()
+
         // Detach the ProcessLifecycleOwner observer first — once the
         // scanner is stopped, any late foreground/background callback
         // would just be a no-op on a stopped scanner, but holding the
@@ -929,6 +943,17 @@ public class ReceiverForegroundService : Service() {
          * is hardcoded into the package, not exported.
          */
         public const val ACTION_STOP: String = "dev.bluehouse.bada.service.receiver.ACTION_STOP"
+
+        /**
+         * Action string for the NFC cold tap-to-receive wake. Fired by
+         * [dev.bluehouse.bada.nfc.BadaTapHceService] when a tap arrives while no
+         * receiver is live: the HCE callback pre-binds + advertises a socket via
+         * [NfcColdReceiverPrimer] and starts this service with this action, which
+         * (like any non-stop start) brings up the receiver session — the session
+         * then ADOPTS the primed socket so the sender's already-queued connection
+         * is accepted on the advertised port. Not exported.
+         */
+        public const val ACTION_NFC_WAKE: String = "dev.bluehouse.bada.service.receiver.ACTION_NFC_WAKE"
 
         /**
          * Intent extra carrying a serialized [EndpointInfo] when the

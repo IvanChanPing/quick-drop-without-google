@@ -121,6 +121,16 @@
          as the helper. See the :radio-helper module + RadioHelperClient. -->
     <uses-permission android:name="dev.bluehouse.bada.radiohelper.permission.BIND_RADIO" />
 
+    <!-- NFC tap-to-share (#NFC). NFC is install-time normal protection;
+         BIND_NFC_SERVICE on the HCE service below is the actual gate and is
+         auto-granted to the system NFC service. The hce feature is
+         required=false so the app still installs on phones without NFC
+         hardware (the HCE service is simply never bound there). -->
+    <uses-permission android:name="android.permission.NFC" />
+    <uses-feature
+        android:name="android.hardware.nfc.hce"
+        android:required="false" />
+
     <!-- Wi-Fi local-only hotspot bandwidth-upgrade medium (#50). Both
          lines are required by WifiManager.startLocalOnlyHotspot on
          API 26+ — CHANGE_WIFI_STATE is install-time normal protection
@@ -334,6 +344,34 @@
             android:name=".send.ShowQrActivity"
             android:exported="false"
             android:label="@string/show_qr_title" />
+
+        <!--
+          Quick Share NFC tap-to-share HCE receiver (AID F00000FE2C).
+
+          A stock Quick Share sender in reader-mode (or Bada's own reader-mode)
+          tapped to this phone SELECTs F00000FE2C and reads our hhwv response
+          (deym NfcTag + Wi-Fi-LAN rxInstantConnectionAdv), then connects to our
+          live TcpReceiverServer over Wi-Fi-LAN. The HCE only emits a real tag
+          while a receiver is live (gated in code via NfcTapLinkHolder); a cold
+          tap pre-binds a socket and fires ACTION_NFC_WAKE so the session comes
+          up and adopts it (single cold tap == warm).
+
+          exported=true + BIND_NFC_SERVICE: only the system NFC service binds and
+          routes APDUs here, so this is not a third-party-callable surface. The
+          HOST_APDU_SERVICE intent-filter + host_apdu_service meta-data register
+          the AID group with the platform.
+        -->
+        <service
+            android:name=".nfc.BadaTapHceService"
+            android:exported="true"
+            android:permission="android.permission.BIND_NFC_SERVICE">
+            <intent-filter>
+                <action android:name="android.nfc.cardemulation.action.HOST_APDU_SERVICE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.nfc.cardemulation.host_apdu_service"
+                android:resource="@xml/bada_tap_apduservice" />
+        </service>
 
         <!--
           Consent trampoline (#22) — the screen-on, lock-screen-bypassing

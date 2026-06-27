@@ -469,6 +469,13 @@ public interface TcpServerFactory {
         /**
          * Production factory: builds a stock [TcpReceiverServer] bound
          * on `0.0.0.0` (all interfaces) so any Wi-Fi peer can connect.
+         *
+         * If an NFC cold tap pre-bound a listener via [NfcColdReceiverPrimer]
+         * (the HCE callback advertised that socket's port in the NFC tag), the
+         * server ADOPTS it so the accept loop drains the connection the sender
+         * already queued on the advertised port — making a single cold tap
+         * behave like a warm receiver. [takePreBoundSocket] returns `null` on
+         * the normal (non-NFC) path, so a fresh ephemeral port is bound as before.
          */
         @JvmStatic
         public fun default(logger: (String) -> Unit = {}): TcpServerFactory =
@@ -484,6 +491,7 @@ public interface TcpServerFactory {
                         factoryProvider = factoryProvider,
                         secureRandomProvider = secureRandomProvider,
                         mediumRegistry = mediumRegistry,
+                        preBoundSocket = NfcColdReceiverPrimer.takePreBoundSocket(),
                         logger = logger,
                     )
             }

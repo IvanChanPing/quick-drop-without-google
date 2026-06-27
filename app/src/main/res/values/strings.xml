@@ -518,4 +518,8 @@
     <string name="qs_tile_subtitle_off">Off</string>
     <string name="qs_tile_content_desc_on">Bada is discoverable to nearby devices</string>
     <string name="qs_tile_content_desc_off">Bada is not discoverable</string>
+
+    <!-- NFC tap-to-share HCE service description, shown in the system NFC /
+         card-emulation settings list of registered apps. -->
+    <string name="nfc_tap_hce_service_description">Bada Quick Share tap-to-share</string>
 </resources>

@@ -9,7 +9,6 @@ import android.app.Activity
 import android.nfc.NfcAdapter
 import android.nfc.Tag
 import android.nfc.tech.IsoDep
-import dev.bluehouse.bada.diag.DiagnosticUploader
 import dev.bluehouse.bada.discovery.diagnostics.DiagnosticLog
 import dev.bluehouse.bada.protocol.endpoint.EndpointInfo
 import dev.bluehouse.bada.protocol.endpoint.NearbyServiceId
@@ -35,7 +34,12 @@ import java.net.InetAddress
  *
  * Public `android.nfc` APIs only. **NOT device-tested** (no NFC hardware
  * in the build environment).
+ *
+ * The APDU builders/parsers are inherently byte-index heavy, so the class
+ * suppresses detekt's MagicNumber — the per-byte protocol comments document each
+ * value better than a named constant per offset would.
  */
+@Suppress("MagicNumber")
 public class BadaTapReader(
     private val activity: Activity,
     private val onPeerTapped: (TappedPeer) -> Unit,
@@ -50,6 +54,7 @@ public class BadaTapReader(
 ) {
     /** Raw SELECT/ADVERTISEMENT bytes of the in-flight exchange, for [onTapDiagnostic]. */
     private var lastExchangeSummary: String = ""
+
     /**
      * A peer discovered via an NFC tap, ready to be injected into the send
      * flow.
@@ -112,10 +117,6 @@ public class BadaTapReader(
             } finally {
                 runCatching { isoDep.close() }
             }
-        // Auto-ship the tap diagnostics (SELECT/ADVERTISEMENT outcome) so a
-        // failed send-tap is debuggable without adb. Runs on this binder thread's
-        // caller via a background thread inside the uploader. Best-effort.
-        DiagnosticUploader.upload(activity, reason = "nfc-send-tap")
         // On-screen, no-internet observability: surface EVERY tap outcome to the UI.
         val outcome =
             when (result) {
@@ -154,7 +155,9 @@ public class BadaTapReader(
      * @property Failed SELECT rejected (not a QS receiver) or an IsoDep I/O error.
      */
     private sealed interface TapResult {
-        data class Resolved(val peer: TappedPeer) : TapResult
+        data class Resolved(
+            val peer: TappedPeer,
+        ) : TapResult
 
         object Woke : TapResult
 

@@ -50,10 +50,11 @@ internal object NfcPreferredService {
         activity: Activity,
         prefer: Boolean,
     ): Boolean {
-        val adapter = NfcAdapter.getDefaultAdapter(activity) ?: run {
-            DiagnosticLog.w(TAG, "no NFC adapter -> cannot ${if (prefer) "claim" else "release"} tap AID")
-            return false
-        }
+        val adapter =
+            NfcAdapter.getDefaultAdapter(activity) ?: run {
+                DiagnosticLog.w(TAG, "no NFC adapter -> cannot ${if (prefer) "claim" else "release"} tap AID")
+                return false
+            }
         return runCatching {
             val cardEmulation = CardEmulation.getInstance(adapter)
             val name = ComponentName(activity, component)

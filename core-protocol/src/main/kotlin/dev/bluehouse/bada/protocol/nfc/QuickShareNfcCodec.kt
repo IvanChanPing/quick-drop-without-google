@@ -34,7 +34,13 @@ import java.net.InetAddress
  * This object is pure-JVM (no `android.*`) so it lives in `:core-protocol`
  * and is reachable from both the HCE service (`:app`) and the receiver
  * service (`:service-android`).
+ *
+ * The wire constants here (APDU header bytes, TLV tags, fixed field offsets and
+ * lengths) are inherently numeric, so the object suppresses detekt's MagicNumber —
+ * the per-byte protocol comments document each value better than a named constant
+ * per offset would.
  */
+@Suppress("MagicNumber")
 public object QuickShareNfcCodec {
     // ---- AID + APDU constants (verified §memory: NfcAdvertisingChimeraService) ----
 
@@ -181,7 +187,7 @@ public object QuickShareNfcCodec {
      * skipped. Mirrors `dfga.a` (§4) but only extracts the LAN tuple we
      * use; we tolerate (skip) DE types we do not consume.
      */
-    @Suppress("ReturnCount", "CyclomaticComplexMethod")
+    @Suppress("ReturnCount", "CyclomaticComplexMethod", "NestedBlockDepth")
     public fun parseWifiLanEndpoint(rxAdv: ByteArray): WifiLanEndpoint? {
         var offset = 0
         while (offset + 2 <= rxAdv.size) {
@@ -380,6 +386,7 @@ public object QuickShareNfcCodec {
     }
 
     /** Parse an `hhww` request (§1). Returns `null` on malformed input. */
+    @Suppress("ReturnCount")
     public fun parseHhwwRequest(bytes: ByteArray): HhwwRequest? {
         val fields = parseProtoFields(bytes) ?: return null
         val serviceId = fields[1]?.let { decodeUtf8(it) } ?: return null
@@ -424,6 +431,7 @@ public object QuickShareNfcCodec {
     }
 
     /** Parse an `hhwv` response (§1). Returns `null` on malformed input. */
+    @Suppress("ReturnCount")
     public fun parseHhwvResponse(bytes: ByteArray): HhwvResponse? {
         val fields = parseProtoFields(bytes) ?: return null
         val nfcTag = fields[1] ?: return null

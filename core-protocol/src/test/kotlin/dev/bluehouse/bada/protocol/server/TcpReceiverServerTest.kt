@@ -100,6 +100,42 @@ class TcpReceiverServerTest {
         }
 
     @Test
+    fun `start adopts a pre-bound ServerSocket on its existing port`() =
+        runBlocking {
+            // Mirror the NFC cold-tap primer: bind a listener up front (e.g. in
+            // the HCE callback) and advertise its port, then hand that exact
+            // socket to the server, which must accept on the SAME port rather
+            // than binding a fresh one.
+            val preBound = java.net.ServerSocket(0, 8, InetAddress.getLoopbackAddress())
+            val advertisedPort = preBound.localPort
+
+            val scope = makeScope()
+            val server =
+                TcpReceiverServer(
+                    parentScope = scope,
+                    factoryProvider = { TempFileDestinationFactory() },
+                    secureRandomProvider = { SecureRandom() },
+                    bindAddress = InetAddress.getLoopbackAddress(),
+                    preBoundSocket = preBound,
+                )
+            servers += server
+
+            val port = server.start()
+            assertThat(port).isEqualTo(advertisedPort)
+            assertThat(server.boundPort).isEqualTo(advertisedPort)
+
+            // A client connecting to the advertised port is accepted by the
+            // adopted listener.
+            Socket(InetAddress.getLoopbackAddress(), advertisedPort).use { sock ->
+                assertThat(sock.isConnected).isTrue()
+            }
+
+            server.stop()
+            // The server owns the adopted socket: stop() must close it.
+            assertThat(preBound.isClosed).isTrue()
+        }
+
+    @Test
     fun `boundPort throws before start`() {
         val server = makeServer()
         runCatching { server.boundPort }.also { result ->

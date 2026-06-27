@@ -119,6 +119,14 @@ import java.util.concurrent.atomic.AtomicLong
  *   (`InetAddress.getByName("0.0.0.0")` -- accept on every interface).
  *   Tests typically pass `InetAddress.getLoopbackAddress()` to avoid
  *   binding to the host's external NIC.
+ * @param preBoundSocket Optional already-bound listener to ADOPT instead
+ *   of binding a fresh one. Used by the NFC cold tap-to-receive path
+ *   (`NfcColdReceiverPrimer`): the HCE callback binds a [ServerSocket]
+ *   synchronously and advertises its port in the NFC tag, then the
+ *   receiver session adopts that exact socket here so the accept loop
+ *   drains the connection the sender already queued on the advertised
+ *   port. When non-null, [bindAddress] is ignored (the socket is already
+ *   bound) and the server takes ownership: [stop] closes it.
  * @param logger diagnostic sink for per-connection protocol events.
  */
 public class TcpReceiverServer(
@@ -127,6 +135,7 @@ public class TcpReceiverServer(
     private val secureRandomProvider: () -> SecureRandom = { SecureRandom() },
     private val mediumRegistry: MediumRegistry = MediumRegistry.DefaultWifiLan,
     private val bindAddress: InetAddress? = null,
+    private val preBoundSocket: ServerSocket? = null,
     private val logger: (String) -> Unit = {},
 ) {
     /**
@@ -307,18 +316,19 @@ public class TcpReceiverServer(
             check(!stopped) { "TcpReceiverServer has already been stopped" }
             started = true
 
-            // Open the listener on the IO dispatcher; bind() can block
-            // briefly on slow systems, and constructing ServerSocket
-            // itself performs the bind eagerly.
+            // Adopt a pre-bound listener (NFC cold-tap primer) when supplied;
+            // otherwise open one on the IO dispatcher (bind() can block briefly
+            // on slow systems, and constructing ServerSocket binds eagerly).
             val socket =
-                withContext(Dispatchers.IO) {
-                    // Args: port = 0 (kernel-assigned ephemeral), backlog = ACCEPT_BACKLOG.
-                    if (bindAddress != null) {
-                        ServerSocket(0, ACCEPT_BACKLOG, bindAddress)
-                    } else {
-                        ServerSocket(0, ACCEPT_BACKLOG)
+                preBoundSocket
+                    ?: withContext(Dispatchers.IO) {
+                        // Args: port = 0 (kernel-assigned ephemeral), backlog = ACCEPT_BACKLOG.
+                        if (bindAddress != null) {
+                            ServerSocket(0, ACCEPT_BACKLOG, bindAddress)
+                        } else {
+                            ServerSocket(0, ACCEPT_BACKLOG)
+                        }
                     }
-                }
             serverSocket = socket
 
             acceptJob =
