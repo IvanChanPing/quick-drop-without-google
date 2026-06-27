@@ -744,6 +744,31 @@ class NearbyPeerDiscoveryTest {
             collector.cancel()
         }
 
+    @Test
+    fun `displayName falls back to a generic label and never leaks the LAN address`() {
+        // A nameless LAN-only peer (hidden EndpointInfo → no device name on the
+        // wire, no endpointId, no BLE advertisement). The stableId is a raw LAN
+        // address tuple; displayName() must NOT surface it (issue: raw IP shown
+        // in the picker) and must fall back to a generic label instead.
+        val peer =
+            NearbyPeer(
+                stableId = "lan:192.168.1.50:41234",
+                endpointId = null,
+                endpointInfo = endpointInfo(name = null, hidden = true),
+                lanEndpoint =
+                    NearbyPeer.LanEndpoint(
+                        instanceNames = setOf("instance-x"),
+                        addresses = listOf(InetAddress.getByName("192.168.1.50")),
+                        port = 41234,
+                    ),
+            )
+
+        val name = peer.displayName()
+        assertThat(name).isEqualTo("Quick Share device")
+        assertThat(name).doesNotContain("192.168.1.50")
+        assertThat(name.startsWith("lan:")).isFalse()
+    }
+
     private fun endpointInfo(
         name: String?,
         hidden: Boolean = false,
