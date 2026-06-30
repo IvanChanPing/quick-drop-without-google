@@ -1,3 +1,33 @@
+## [2026-06-30] Automatic update check + notification (download or open GitHub)
+Adds a proactive auto-update feature on top of the existing MANUAL "Check for updates" screen.
+The app now polls GitHub Releases (IvanChanPing/Bada) **every 6 hours** in the background and, when a
+newer version than the installed `versionName` exists, posts an **"Update available"** notification.
+
+**Adaptive notification actions** (as requested — "if GitHub built the APK it's pullable, otherwise it
+just takes you to GitHub"):
+- **"View on GitHub"** — always shown; opens the release page in a browser.
+- **"Download & install"** — shown ONLY when the release has an `.apk` asset attached. Streams that APK
+  straight into a `PackageInstaller` session (no temp file) for a true drop-in in-place update (the
+  release ships the same `dev.superdrop.debug` variant + shared key as installed). Tapping the body opens
+  the existing in-app Check-for-updates screen.
+
+**Mechanism / why:**
+- New `UpdateCheckWorker` (WorkManager `PeriodicWork`, scheduled in `BadaApplication.onCreate`, unique
+  name `bada-update-check`, `NetworkType.CONNECTED`). WorkManager persists the schedule across reboots
+  with no user action, so the poll self-restarts on boot (no per-boot manual step).
+- The 6-hourly poll de-duplicates: it only notifies once per new version (`UpdatePreferences.lastNotifiedVersion`).
+  A `setAutoCheckEnabled` flag (default on) lets a future Settings toggle disable it.
+
+**Files:** added dep `androidx.work:work-runtime-ktx` 2.9.1 (`gradle/libs.versions.toml`, `app/build.gradle.kts`);
+extended `update/UpdateChecker.kt` (parse `assets[]` → `LatestRelease.apkAssetUrl`) and
+`update/UpdatePreferences.kt`; new `update/UpdateNotifier.kt`, `UpdateDownloadInstaller.kt`,
+`UpdateInstallActivity.kt`, `UpdateInstallReceiver.kt`, `UpdateCheckWorker.kt`; wired `BadaApplication.kt`,
+`AndroidManifest.xml` (Activity + Receiver), 15 new `update_*` strings.
+
+**Status:** COMPILE-built; on-device UNVERIFIED (worker trigger, notification render, download +
+install-confirm dialog, one-time unknown-sources grant). On-device test script in
+`docs/AUTO_UPDATE_NOTIFY_JOURNAL.md`.
+
 ## [2026-06-22] GitHub Actions APK build + first-run Radio Helper install
 Two coupled additions so the repo produces an installable APK and Super Drop sets up its helper itself.
 

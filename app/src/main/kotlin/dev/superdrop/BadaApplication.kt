@@ -6,10 +6,17 @@
 package dev.superdrop
 
 import android.app.Application
+import androidx.work.Constraints
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
 import dev.superdrop.consent.ConsentDialogActivity
 import dev.superdrop.consent.ConsentTrampolineActivity
 import dev.superdrop.discovery.diagnostics.DiagnosticLog
 import dev.superdrop.service.receiver.ReceiverForegroundService
+import dev.superdrop.update.UpdateCheckWorker
+import java.util.concurrent.TimeUnit
 
 /**
  * Application bootstrap that wires the `:app`-side activity classes
@@ -44,5 +51,36 @@ class BadaApplication : Application() {
         // (getExternalFilesDir(null)); a filesDir fallback would write logs
         // the collector never picks up.
         getExternalFilesDir(null)?.let { DiagnosticLog.configureFileSink(it) }
+
+        scheduleAutomaticUpdateCheck()
+    }
+
+    /**
+     * Enqueue the 6-hourly automatic GitHub update check ([UpdateCheckWorker]).
+     *
+     * Uses a UNIQUE PeriodicWork so re-running onCreate (every process start)
+     * never stacks duplicate jobs, and `ExistingPeriodicWorkPolicy.UPDATE` so a
+     * future interval/constraint change is picked up without losing the
+     * persisted schedule. The CONNECTED network constraint means a run only
+     * fires when there is connectivity to reach GitHub. WorkManager persists the
+     * schedule across reboots, so the poll self-restarts on boot with no user
+     * action.
+     */
+    private fun scheduleAutomaticUpdateCheck() {
+        val request =
+            PeriodicWorkRequestBuilder<UpdateCheckWorker>(6, TimeUnit.HOURS)
+                .setConstraints(
+                    Constraints
+                        .Builder()
+                        .setRequiredNetworkType(NetworkType.CONNECTED)
+                        .build(),
+                ).build()
+        WorkManager
+            .getInstance(this)
+            .enqueueUniquePeriodicWork(
+                UpdateCheckWorker.UNIQUE_WORK_NAME,
+                ExistingPeriodicWorkPolicy.UPDATE,
+                request,
+            )
     }
 }

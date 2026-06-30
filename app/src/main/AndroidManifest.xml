@@ -322,6 +322,23 @@
             android:parentActivityName=".MainActivity" />
 
         <!--
+          Invisible trampoline for the update notification's
+          "Download & install" action. Has NO UI of its own (translucent
+          theme); it only gates the one-time "install unknown apps" grant and
+          then kicks off UpdateDownloadInstaller (download → system installer).
+          noHistory + excludeFromRecents so it never lingers in the task list.
+          exported=false: only the app's own notification PendingIntent
+          launches it.
+        -->
+        <activity
+            android:name=".update.UpdateInstallActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" />
+
+        <!--
           Sender share-intent target (#24).
 
           ACTION_SEND (single attachment) and ACTION_SEND_MULTIPLE
@@ -528,6 +545,14 @@
              confirm dialog and toasts the result. -->
         <receiver
             android:name="dev.superdrop.helper.HelperInstallReceiver"
+            android:exported="false" />
+
+        <!-- Receives PackageInstaller status for the auto-update "Download &
+             install" flow (UpdateDownloadInstaller). Not exported — only the
+             app's own session PendingIntent targets it; it launches the system
+             install confirm dialog and toasts the result. -->
+        <receiver
+            android:name="dev.superdrop.update.UpdateInstallReceiver"
             android:exported="false" />
 
     </application>
