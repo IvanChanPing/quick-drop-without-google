@@ -116,6 +116,15 @@
          phones without NFC hardware (the service is simply never bound
          there). -->
     <uses-permission android:name="android.permission.NFC" />
+    <!-- Name Card (tap-to-share contacts): the "Use my phone info" button in the
+         My Name Card setup screen reads the device "Me" contact name and the SIM
+         line number to pre-fill the card. Both are runtime-requested on demand and
+         purely optional (the user can type the card manually); a denial is handled
+         gracefully. READ_PHONE_NUMBERS is the modern (API 33+) number read;
+         READ_PHONE_STATE backs the legacy getLine1Number() path below API 33. -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <uses-permission android:name="android.permission.READ_PHONE_NUMBERS" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
     <!-- Bind the universal radio-helper's RadioService (signature-protected
          BIND_RADIO) to silently force Wi-Fi/Bluetooth ON for an NFC
          tap-to-receive wake (RadioHelperClient SESSION mode). Granted only when
@@ -319,6 +328,17 @@
             android:name=".update.CheckForUpdatesActivity"
             android:exported="false"
             android:label="@string/update_activity_label"
+            android:parentActivityName=".MainActivity" />
+
+        <!--
+          My Name Card setup screen (tap-to-share contacts). Opened from the
+          "Name Card" row in Settings; lets the user enter the contact card
+          shared when two phones tap. Not exported (in-app navigation only).
+        -->
+        <activity
+            android:name=".namecard.NameCardSetupActivity"
+            android:exported="false"
+            android:label="@string/name_card_activity_label"
             android:parentActivityName=".MainActivity" />
 
         <!--

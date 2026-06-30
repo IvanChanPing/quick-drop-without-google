@@ -1,3 +1,16 @@
+## [2026-06-30] Name Card (tap-to-share contacts) — P2: "My Name Card" setup screen
+Adds the Settings entry point and the profile the tap-to-share feature shares. A new clickable
+**"Name Card"** row in Settings (`settings_name_card_row`) opens **`NameCardSetupActivity`** (My
+Name Card): name / phone / email fields, a **"Use my phone info"** button that pre-fills empty
+fields from the device "Me" contact + SIM number (permission-gated), and Save/Clear. Backed by
+`NameCardProfileStore` (SharedPreferences) and `NameCardResolver`, whose fallback precedence is
+in-app card → device "Me"/SIM (`AndroidDeviceContactSources`) → bare number → nothing. New files in
+`dev.superdrop.namecard` + `activity_name_card_setup.xml`, a row in `fragment_settings.xml`, strings,
+a manifest activity, and READ_CONTACTS/READ_PHONE_NUMBERS/READ_PHONE_STATE perms (runtime, optional).
+`:app:assembleDebug` BUILD SUCCESSFUL; `NameCardResolverTest` 7/7 pass. The screen's on-screen render
+and the live "Use my phone info" read are device-UNVERIFIED (no display in the build env). NFC/BLE
+exchange + the receive screen are later phases.
+
 ## [2026-06-30] Name Card (tap-to-share contacts) — P1: wire model + codec
 Groundwork for a NameDrop-style "tap two phones to swap contacts" feature (design +
 feasibility in `docs/NAMEDROP_CONTACT_EXCHANGE_JOURNAL.md`). This commit adds only the

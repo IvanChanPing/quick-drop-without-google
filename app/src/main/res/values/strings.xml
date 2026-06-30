@@ -590,4 +590,25 @@
          Share tap-to-share receiver (AID F00000FE2C). A tapping Quick Share
          sender reads our live receiver identity + Wi-Fi-LAN address. -->
     <string name="nfc_tap_hce_service_description">Super Drop tap to share</string>
+
+    <!-- ===== Name Card (tap-to-share contacts) ===== -->
+    <!-- Settings row that opens the Name Card setup screen. -->
+    <string name="settings_name_card_row_title">Name Card</string>
+    <string name="settings_name_card_row_subtitle">Set up the contact card you share by tapping phones</string>
+    <!-- NameCardSetupActivity (the setup page) -->
+    <string name="name_card_activity_label">Name Card</string>
+    <string name="name_card_setup_title">My Name Card</string>
+    <string name="name_card_setup_subtitle">Shared with another Super Drop phone when you tap them together. Leave blank to fall back to your phone’s own name and number.</string>
+    <string name="name_card_field_name">Name</string>
+    <string name="name_card_field_phone">Phone</string>
+    <string name="name_card_field_email">Email</string>
+    <string name="name_card_use_phone_info">Use my phone info</string>
+    <string name="name_card_use_phone_info_filled">Filled from your phone</string>
+    <string name="name_card_use_phone_info_empty">Nothing found on your phone to fill</string>
+    <string name="name_card_use_phone_info_denied">Permission denied — enter your details manually</string>
+    <string name="name_card_save">Save</string>
+    <string name="name_card_saved">Name card saved</string>
+    <string name="name_card_clear">Clear</string>
+    <string name="name_card_cleared">Name card cleared</string>
+    <string name="name_card_save_empty">Enter a name, phone, or email first</string>
 </resources>

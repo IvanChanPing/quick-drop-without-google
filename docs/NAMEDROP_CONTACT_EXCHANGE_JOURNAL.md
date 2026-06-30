@@ -15,9 +15,23 @@ log). Key finding: the contact-card *send* side is ~90% already built (`SuperDro
 is a working Type-4 NDEF tag HCE on the standard NDEF AID `D2760000850101`); the *receive*
 side does not exist yet. Identified the make-or-break Android NFC-role feasibility unknowns.
 
-**NEXT STEP:** P1 DONE + verified (see below). Next = P2: "My Name Card" settings screen + the
-source-fallback resolver (in-app card → SIM number + "Me" profile → bare number). Then P3 NFC
-trigger, P4 BLE, P5 receive activity + save, P6 manifest/perms, P7 diagnostics + on-device test script.
+**NEXT STEP:** P1 + P2 DONE (see below). Next = **P3: NFC trigger** — new name-card AID HCE + reader
+that just WAKES both apps (carries a tiny BLE bootstrap token, not the card), reusing the
+F00000FE2C/cold-wake patterns; must not disturb the two existing AIDs. Then P4 BLE exchange, P5
+receive activity (NameDrop-look) + save-to-contacts, P6 radio-helper BT-on, P7 diagnostics + test script.
+
+**P2 STATUS (2026-06-30, compile-verified here):** Settings → **"Name Card"** row → **My Name Card**
+setup page. Files (app `dev.superdrop.namecard`): `NameCardProfileStore` (SharedPreferences),
+`NameCardResolver` (fallback precedence: in-app → device "Me"/SIM → bare number → null;
+decoupled via `storedCard:()->NameCard?` + `DeviceContactSources` for testability),
+`AndroidDeviceContactSources` (real reads: ContactsContract.Profile + SubscriptionManager.getPhoneNumber
+A33+/TelephonyManager.getLine1Number, SecurityException→null), `NameCardSetupActivity` (name/phone/email
+fields + "Use my phone info" perm-gated prefill + Save/Clear). UI: `res/layout/activity_name_card_setup.xml`
++ clickable `settings_name_card_row` card in `fragment_settings.xml` + strings + manifest activity +
+perms (READ_CONTACTS/READ_PHONE_NUMBERS/READ_PHONE_STATE). Wired in `SettingsFragment.onViewCreated`.
+VERIFIED: `:app:assembleDebug` BUILD SUCCESSFUL; `NameCardResolverTest` 7/7 pass; codec 14/14 still pass.
+UNVERIFIED (no display here): the screen's actual render + the live "Use my phone info" permission/read
+path → user device-test. APK at repo root `super-drop-debug.apk`.
 
 **P1 STATUS (2026-06-30, VERIFIED here):** `NameCard` model + wire codec built in `core-protocol`
 (`dev.superdrop.protocol.namecard.NameCard` + `NameCardField`), pure-JVM TLV format (1-byte version +

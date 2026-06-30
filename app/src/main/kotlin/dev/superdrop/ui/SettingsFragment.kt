@@ -5,6 +5,7 @@
  */
 package dev.superdrop.ui
 
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
@@ -25,6 +26,7 @@ import dev.superdrop.bugreport.BugReportPreferences
 import dev.superdrop.nfc.NfcTapDiagnosticsPreferences
 import dev.superdrop.nfc.NfcTapSharePreferences
 import dev.superdrop.consent.FullScreenIntentPermission
+import dev.superdrop.namecard.NameCardSetupActivity
 import dev.superdrop.service.downloads.SaveLocationDisplayName
 import dev.superdrop.service.downloads.SaveLocationPreferences
 import dev.superdrop.service.receiver.AdvertisedDeviceNames
@@ -98,6 +100,11 @@ internal class SettingsFragment : Fragment(R.layout.fragment_settings) {
         savedInstanceState: Bundle?,
     ) {
         super.onViewCreated(view, savedInstanceState)
+
+        // "Name Card" row → My Name Card setup page (tap-to-share contacts).
+        view.findViewById<View>(R.id.settings_name_card_row).setOnClickListener {
+            startActivity(Intent(requireContext(), NameCardSetupActivity::class.java))
+        }
 
         view.findViewById<Button>(R.id.main_save_location_pick).setOnClickListener {
             saveLocationLauncher.launch(null)
