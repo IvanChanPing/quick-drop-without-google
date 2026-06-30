@@ -528,6 +528,21 @@ P5 saves via **`ContactsContract` directly**: a `WRITE_CONTACTS` raw-contact ins
 always works). This sidesteps vCard parsing entirely. vCard is ONLY for the FUTURE native-Quick-Share
 send path (a phone without our app) — see that note. (Resolved 2026-06-30.)
 
+## FOLLOW-UPS (2026-06-30) — auto-open contact, comment cleanup, tester app
+1. **Auto-open saved contact:** after a direct save, `NameCardSaver.saveDirect` returns the saved
+   contact's view Uri; `NameCardTransferActivity` fires `ACTION_VIEW` then finishes. Requesting it
+   needs READ too → the Accept handler now requests **WRITE_CONTACTS + READ_CONTACTS**
+   (RequestMultiplePermissions) so the auto-open actually fires. Commits 70971d0 + 861d7b8.
+2. **Over-sharing cleanup:** stripped cross-project/Google-internal comparisons, repo-provenance,
+   process-phase (P4/P5) refs, and "user reported" backstory from the namecard/nfc KDoc (commit 70971d0).
+3. **Tester app (NEW, separate project `/root/agent-work/projects/namecard-tester`,
+   `com.namecard.tester`):** one-button page → fake full-screen NameDrop transfer screen (same look)
+   → really saves a fake contact (ContactsContract + READ/WRITE prompt) + opens it. Dep-free build.sh;
+   APK at project root, git-init'd (commit 6eaadb4). **Served (verified HTTP 200 + md5 match):**
+   `https://204-168-163-118.sslip.io/trackers/static/namecard-tester.apk` (Caddy file_server at
+   /root/agent-work/projects/tracker-bridge/static — see memory `reference_serve_apk_via_caddy_url`).
+   Build + download VERIFIED; on-device flow/save device-UNVERIFIED.
+
 ## REVIEW PASS #2 (2026-06-30) — deeper runtime-reachability check
 Asked again to check for misses. Found + FIXED a real reachability gap, plus polish:
 - **FIXED (real): auto-save was unreachable.** `saveAndFinish` only did the direct ContactsContract
