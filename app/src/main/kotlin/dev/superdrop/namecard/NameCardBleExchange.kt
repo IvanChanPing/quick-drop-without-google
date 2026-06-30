@@ -57,7 +57,8 @@ import java.util.concurrent.atomic.AtomicBoolean
  *    and runs a GATT server with one READ|WRITE characteristic that serves our
  *    [NameCard] (read) and receives the peer's (write).
  *  - [startClient] — the READER phone (the initiator). Scans for the token,
- *    connects, READs the peer's card, then (if [sendMine]) WRITEs ours.
+ *    connects, READs the peer's card, then holds for the user's choice:
+ *    [shareBack] WRITEs ours (Share) or [declineShare] closes (Receive Only).
  *
  * Both deliver the peer's card via [onPeerCard]. The reader then chooses Share
  * ([shareBack]) or Receive-Only ([declineShare]) on the held connection, driven by

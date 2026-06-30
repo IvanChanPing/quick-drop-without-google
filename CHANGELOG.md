@@ -1,3 +1,11 @@
+## [2026-06-30] Name Card — review pass: auto-save now reachable + full-screen polish
+A deeper review-pass found the "automatically save" path was unreachable: the transfer screen only did
+the direct ContactsContract insert when WRITE_CONTACTS was already granted, but nothing requested it —
+so every receive opened the system Add-contact screen instead. Now `NameCardTransferActivity` requests
+WRITE_CONTACTS on Accept and saves directly on grant (off the UI thread), falling back to the system
+Add-contact screen only on denial. Also hides the action bar for the full-screen NameDrop look, and
+fixed remaining stale doc comments. `:app:assembleDebug` BUILD SUCCESSFUL; tests pass. Device-UNVERIFIED.
+
 ## [2026-06-30] Name Card — P7: on/off toggle (+ P6 confirmed done)
 Adds a master on/off switch for the tap-to-share-contacts feature: `NameCardPreferences`
 (default ON) surfaced as the **"Share my card when phones tap"** switch on the My Name Card setup

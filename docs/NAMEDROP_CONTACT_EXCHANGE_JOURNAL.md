@@ -528,6 +528,24 @@ P5 saves via **`ContactsContract` directly**: a `WRITE_CONTACTS` raw-contact ins
 always works). This sidesteps vCard parsing entirely. vCard is ONLY for the FUTURE native-Quick-Share
 send path (a phone without our app) — see that note. (Resolved 2026-06-30.)
 
+## REVIEW PASS #2 (2026-06-30) — deeper runtime-reachability check
+Asked again to check for misses. Found + FIXED a real reachability gap, plus polish:
+- **FIXED (real): auto-save was unreachable.** `saveAndFinish` only did the direct ContactsContract
+  insert when WRITE_CONTACTS was *already* granted — but nothing ever requested it, so EVERY receive
+  fell to the system Add-contact screen (not the "automatically save" the user wanted). Now the transfer
+  screen REQUESTS WRITE_CONTACTS on Accept (`writeContactsPermission` launcher) → direct off-main insert
+  on grant, system Add-contact only on denial. WRITE_CONTACTS already declared in the manifest.
+- **FIXED (polish): full-screen look.** `NameCardTransferActivity` now `supportActionBar?.hide()` so the
+  NameDrop screen has no title-bar chrome.
+- **FIXED: 4th stale doc** (`sendMine` bullet in the BLE header).
+- **Documented, not fixed (acceptable v1, watch on device):** (1) the GATT `addService` isn't awaited
+  before advertising — near-instant for a single no-descriptor characteristic, far faster than the
+  client's scan→connect→discover, so practically safe; if "characteristic not found" appears on device,
+  await onServiceAdded. (2) Reader with NO own card tapping "Share" → declineShare (sends nothing) +
+  saves theirs (resolver almost always yields a SIM/device fallback, so rare). (3) >30s dawdle on the
+  choice screen closes the BLE session first.
+VERIFIED: `:app:assembleDebug` BUILD SUCCESSFUL; core-protocol + namecard tests pass.
+
 ## P6 + P7 + FINAL REVIEW PASS (2026-06-30)
 **P6 (radio-helper auto-BT-on at trigger): DONE — folded into the P5 review pass** (ShareRadioController
 requestRadiosOn(RADIO_BT) + 5s heartbeat + restore, both sides). Nothing else was left in P6.

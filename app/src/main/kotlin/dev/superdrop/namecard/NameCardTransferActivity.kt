@@ -5,7 +5,9 @@
  */
 package dev.superdrop.namecard
 
+import android.Manifest
 import android.animation.ObjectAnimator
+import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
@@ -14,7 +16,7 @@ import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.PathInterpolator
 import android.widget.Button
 import android.widget.TextView
-import android.bluetooth.BluetoothManager
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import dev.superdrop.R
 import dev.superdrop.discovery.diagnostics.DiagnosticLog
@@ -60,6 +62,22 @@ internal class NameCardTransferActivity : AppCompatActivity() {
     private val shareRadios by lazy { ShareRadioController(this, "NameCardTransfer") }
     private val btHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
+    /** Card awaiting save once the WRITE_CONTACTS prompt returns. */
+    private var pendingSaveCard: NameCard? = null
+
+    /**
+     * WRITE_CONTACTS request fired on Accept so the card can be saved DIRECTLY
+     * (auto, no extra screen). On grant → direct insert; on denial → fall back to
+     * the system Add-contact screen (no permission). Then finish either way.
+     */
+    private val writeContactsPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            val card = pendingSaveCard ?: return@registerForActivityResult
+            pendingSaveCard = null
+            persistCard(card, granted)
+            finish()
+        }
+
     private val glow by lazy { findViewById<View>(R.id.nameCardGlow) }
     private val avatar by lazy { findViewById<TextView>(R.id.nameCardAvatar) }
     private val nameView by lazy { findViewById<TextView>(R.id.nameCardName) }
@@ -72,6 +90,8 @@ internal class NameCardTransferActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Full-screen NameDrop look: no action bar / title chrome.
+        supportActionBar?.hide()
         setContentView(R.layout.activity_name_card_transfer)
         startGlowLoop()
 
@@ -165,15 +185,30 @@ internal class NameCardTransferActivity : AppCompatActivity() {
 
     private fun saveAndFinish(card: NameCard) {
         if (NameCardSaver.hasWritePermission(this)) {
-            // ContactsProvider insert is IPC — run it off the UI thread (no ANR).
-            // applicationContext so it survives this Activity finishing immediately.
+            persistCard(card, granted = true)
+            finish()
+        } else {
+            // Ask for WRITE_CONTACTS so we can save directly (auto). The result handler
+            // persists + finishes; on denial it falls back to the system Add-contact screen.
+            pendingSaveCard = card
+            writeContactsPermission.launch(Manifest.permission.WRITE_CONTACTS)
+        }
+    }
+
+    /** Save [card]: direct ContactsContract insert (off the UI thread) if [granted], else the
+     *  system Add-contact screen. */
+    private fun persistCard(
+        card: NameCard,
+        granted: Boolean,
+    ) {
+        if (granted) {
+            // ContactsProvider insert is IPC — off the UI thread (no ANR). applicationContext
+            // so it survives this Activity finishing immediately.
             val appCtx = applicationContext
             Thread { NameCardSaver.saveDirect(appCtx, card) }.start()
         } else {
-            // No WRITE_CONTACTS: hand off to the system Add-contact screen (no permission).
             runCatching { startActivity(NameCardSaver.systemInsertIntent(card)) }
         }
-        finish()
     }
 
     /** Bind [card] into the panel and play the entrance tween. */
