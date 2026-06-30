@@ -7,9 +7,11 @@ package dev.superdrop.namecard
 
 import android.Manifest
 import android.content.ContentProviderOperation
+import android.content.ContentUris
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.provider.ContactsContract
 import androidx.core.content.ContextCompat
 import dev.superdrop.discovery.diagnostics.DiagnosticLog
@@ -20,8 +22,8 @@ import dev.superdrop.protocol.namecard.NameCard
  * Android contact for the tap-to-share feature (see
  * `docs/NAMEDROP_CONTACT_EXCHANGE_JOURNAL.md`).
  *
- * Deliberately does NOT go through a vCard `.vcf` file (the user reported vCard
- * import is flaky on modern Android, and our card already has structured
+ * Deliberately does NOT go through a vCard `.vcf` file (vCard file import is
+ * unreliable across OEM Contacts apps, and the card already has structured
  * fields). Instead:
  *  - [saveDirect] — a `ContactsContract` raw-contact insert (needs WRITE_CONTACTS).
  *    Seamless, stays in Super Drop.
@@ -43,15 +45,16 @@ internal object NameCardSaver {
             PackageManager.PERMISSION_GRANTED
 
     /**
-     * Insert [card] directly via ContactsContract. Returns true on success.
-     * Builds a new raw contact (no account = device/local) with a structured
-     * name + phone + email as present. Catches all errors → false (caller falls
-     * back to [systemInsertIntent]).
+     * Insert [card] directly via ContactsContract. Builds a new raw contact
+     * (no account = device/local) with a structured name + phone + email as
+     * present. Returns the saved contact's viewable [Uri] (for opening it in the
+     * Contacts app), or `null` on any failure (caller falls back to
+     * [systemInsertIntent]).
      */
     fun saveDirect(
         context: Context,
         card: NameCard,
-    ): Boolean {
+    ): Uri? {
         val ops = ArrayList<ContentProviderOperation>()
         // Raw contact anchor (index 0); subsequent rows back-reference it.
         ops.add(
@@ -98,14 +101,38 @@ internal object NameCardSaver {
             )
         }
         return try {
-            context.contentResolver.applyBatch(ContactsContract.AUTHORITY, ops)
+            val results = context.contentResolver.applyBatch(ContactsContract.AUTHORITY, ops)
             DiagnosticLog.w(TAG, "saved contact directly (${ops.size - 1} fields)")
-            true
+            results.firstOrNull()?.uri?.let { rawContactUri -> viewUriFor(context, rawContactUri) }
         } catch (@Suppress("TooGenericExceptionCaught") t: Throwable) {
             DiagnosticLog.w(TAG, "saveDirect failed: ${t.message}")
-            false
+            null
         }
     }
+
+    /**
+     * Resolve the aggregated-contact view [Uri] (content://…/contacts/<id>) for a
+     * freshly inserted raw-contact [Uri], so the caller can open it in Contacts.
+     * Returns `null` if the contact id can't be read.
+     */
+    private fun viewUriFor(
+        context: Context,
+        rawContactUri: Uri,
+    ): Uri? =
+        try {
+            context.contentResolver
+                .query(rawContactUri, arrayOf(ContactsContract.RawContacts.CONTACT_ID), null, null, null)
+                ?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        ContentUris.withAppendedId(ContactsContract.Contacts.CONTENT_URI, cursor.getLong(0))
+                    } else {
+                        null
+                    }
+                }
+        } catch (@Suppress("TooGenericExceptionCaught") t: Throwable) {
+            DiagnosticLog.w(TAG, "viewUriFor failed: ${t.message}")
+            null
+        }
 
     /**
      * The system "Add contact" screen prefilled from [card]. No permission

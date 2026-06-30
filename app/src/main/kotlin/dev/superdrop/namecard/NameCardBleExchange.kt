@@ -45,9 +45,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 /**
  * **Name Card Bluetooth exchange** — carries the actual contact card between two
  * Super Drop phones AFTER an NFC tap has triggered them and shared a rendezvous
- * token ([NameCardBootstrap]). See `docs/NAMEDROP_CONTACT_EXCHANGE_JOURNAL.md`.
+ * token ([NameCardBootstrap]). NFC is only the trigger; Bluetooth carries the card.
  *
- * Mirrors Google's gestureexchange shape (NFC = trigger, Bluetooth = payload).
  * The two phones meet by the 16-byte token from the tap, not a Bluetooth MAC
  * (Android hides the local MAC): the **server** advertises the token in BLE
  * service data; the **client** scans for exactly that token.
@@ -70,8 +69,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  *
  * ## STATUS — COMPILE-ONLY / UNVERIFIED
  * There is no Bluetooth radio or second phone in the build env, so NONE of the
- * BLE path is exercised here. The Android BLE API usage mirrors the repo's
- * verified `BleAdvertiser` + `BleGattInitialControlServer` idioms, but connect /
+ * BLE path is exercised here. Standard Android BLE APIs; connect /
  * advertise / scan / MTU / long-read behaviour is device-verified only (on-device
  * test script). Driven by [NameCardExchangeService] (server) and
  * [NameCardTransferActivity] (client); a [ShareRadioController] in each forces

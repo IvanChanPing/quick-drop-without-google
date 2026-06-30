@@ -17,8 +17,7 @@ import dev.superdrop.protocol.namecard.NameCardBootstrap
  * Drop **Name Card** proprietary AID [NAME_CARD_AID]. When another Super Drop
  * phone (in reader-mode) taps this phone, this service answers the bootstrap
  * exchange so BOTH apps wake and learn a shared rendezvous token; the actual
- * contact swap happens afterwards over Bluetooth (P4). See
- * `docs/NAMEDROP_CONTACT_EXCHANGE_JOURNAL.md`.
+ * contact swap happens afterwards over Bluetooth.
  *
  * The tap is only a TRIGGER — this never carries the contact card, only a tiny
  * [NameCardBootstrap] (version + 16-byte token via [NameCardBootstrapHolder]).

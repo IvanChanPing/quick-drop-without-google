@@ -18,13 +18,11 @@ import java.io.IOException
  * reader-mode and, on a tap to another Super Drop phone's [NameCardHceService],
  * runs the bootstrap exchange (SELECT Name Card AID → EXCHANGE) to read the
  * peer's rendezvous [NameCardBootstrap]. The parsed token is handed to
- * [onPeerBootstrap] and recorded in [NameCardBootstrapHolder] so the Bluetooth
- * layer (P4) can connect by scanning for it. See
- * `docs/NAMEDROP_CONTACT_EXCHANGE_JOURNAL.md`.
+ * [onPeerBootstrap], which opens [NameCardTransferActivity] to connect over
+ * Bluetooth by scanning for that token.
  *
  * Why a foreground reader: Android assigns NFC roles only when one side is an
- * explicit reader, and reader-mode requires a resumed Activity (the verified
- * Android constraint — see the journal's wall/correction notes). The person
+ * explicit reader, and reader-mode requires a resumed Activity. The person
  * sharing has the app foreground; the other phone can be idle (its background
  * [NameCardHceService] answers). `enableReaderMode` also suppresses this phone's
  * own card so the roles are deterministic.

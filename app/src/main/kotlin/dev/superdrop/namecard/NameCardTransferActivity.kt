@@ -75,7 +75,6 @@ internal class NameCardTransferActivity : AppCompatActivity() {
             val card = pendingSaveCard ?: return@registerForActivityResult
             pendingSaveCard = null
             persistCard(card, granted)
-            finish()
         }
 
     private val glow by lazy { findViewById<View>(R.id.nameCardGlow) }
@@ -186,29 +185,40 @@ internal class NameCardTransferActivity : AppCompatActivity() {
     private fun saveAndFinish(card: NameCard) {
         if (NameCardSaver.hasWritePermission(this)) {
             persistCard(card, granted = true)
-            finish()
         } else {
             // Ask for WRITE_CONTACTS so we can save directly (auto). The result handler
-            // persists + finishes; on denial it falls back to the system Add-contact screen.
+            // persists; on denial it falls back to the system Add-contact screen.
             pendingSaveCard = card
             writeContactsPermission.launch(Manifest.permission.WRITE_CONTACTS)
         }
     }
 
-    /** Save [card]: direct ContactsContract insert (off the UI thread) if [granted], else the
-     *  system Add-contact screen. */
+    /**
+     * Save [card] and finish. With permission: a direct ContactsContract insert off
+     * the UI thread, then OPEN the saved contact in the Contacts app. Without: the
+     * system Add-contact screen (which itself opens the contact on save). [persistCard]
+     * owns the finish in every branch.
+     */
     private fun persistCard(
         card: NameCard,
         granted: Boolean,
     ) {
-        if (granted) {
-            // ContactsProvider insert is IPC — off the UI thread (no ANR). applicationContext
-            // so it survives this Activity finishing immediately.
-            val appCtx = applicationContext
-            Thread { NameCardSaver.saveDirect(appCtx, card) }.start()
-        } else {
+        if (!granted) {
             runCatching { startActivity(NameCardSaver.systemInsertIntent(card)) }
+            finish()
+            return
         }
+        // ContactsProvider insert is IPC — off the UI thread (no ANR). applicationContext
+        // so it survives this Activity finishing.
+        val appCtx = applicationContext
+        Thread {
+            val contactUri = NameCardSaver.saveDirect(appCtx, card)
+            runOnUiThread {
+                // Auto-open the saved contact's page in the Contacts app.
+                contactUri?.let { runCatching { startActivity(Intent(Intent.ACTION_VIEW, it)) } }
+                finish()
+            }
+        }.start()
     }
 
     /** Bind [card] into the panel and play the entrance tween. */

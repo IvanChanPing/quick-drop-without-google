@@ -1,3 +1,11 @@
+## [2026-06-30] Name Card — auto-open saved contact + comment cleanup
+After a received card is saved directly (WRITE_CONTACTS granted), the transfer screen now opens the
+saved contact's page in the Contacts app (`NameCardSaver.saveDirect` returns the contact view Uri;
+`NameCardTransferActivity` fires ACTION_VIEW then finishes). The system Add-contact fallback already
+shows the contact on save. Also stripped over-sharing from code comments (cross-project / Google-internal
+comparisons, repo-provenance, process-phase "P4/P5" refs, "user reported" backstory). `:app:assembleDebug`
+BUILD SUCCESSFUL. Device-UNVERIFIED.
+
 ## [2026-06-30] Name Card — review pass: auto-save now reachable + full-screen polish
 A deeper review-pass found the "automatically save" path was unreachable: the transfer screen only did
 the direct ContactsContract insert when WRITE_CONTACTS was already granted, but nothing requested it —
