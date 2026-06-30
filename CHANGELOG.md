@@ -1,3 +1,15 @@
+## [2026-06-30] Name Card (tap-to-share contacts) — P4: Bluetooth card exchange
+Adds `NameCardBleExchange` (`dev.superdrop.namecard`) — the Bluetooth carrier that swaps the actual
+contact card after the NFC tap (NFC = trigger, Bluetooth = payload, like Google's gestureexchange).
+The card phone (`startServer`) BLE-advertises the rendezvous token + runs a GATT server with one
+READ|WRITE characteristic (serves our card, receives the peer's); the reader phone (`startClient`)
+scan-filters by that token, connects, reads the peer card, and — if not Receive-Only — writes ours.
+Permission-gated (BLUETOOTH_ADVERTISE/SCAN/CONNECT, already declared; graceful skip), MTU 247 + offset
+reads for a full card, heavy DiagnosticLog, full teardown. Built on the repo's verified BleAdvertiser +
+BleGattInitialControlServer idioms (not the Nearby/Weave stack). `:app:assembleDebug` BUILD SUCCESSFUL.
+COMPILE-ONLY: no Bluetooth radio / second phone in the build env, so all BLE behaviour is
+device-UNVERIFIED; and it is not yet wired to the trigger/UI (that's P5).
+
 ## [2026-06-30] Name Card (tap-to-share contacts) — P3: NFC trigger plumbing
 Adds the NFC tap that *triggers* a contact exchange (the card itself rides Bluetooth, P4).
 New `NameCardBootstrap` in `:core-protocol` — a fixed 17-byte tap token (version + 16-byte random

@@ -15,11 +15,26 @@ log). Key finding: the contact-card *send* side is ~90% already built (`SuperDro
 is a working Type-4 NDEF tag HCE on the standard NDEF AID `D2760000850101`); the *receive*
 side does not exist yet. Identified the make-or-break Android NFC-role feasibility unknowns.
 
-**NEXT STEP:** P1, P2, P2.1, P3 DONE (see below). Next = **P4: Bluetooth (BLE) rendezvous** — woken
-apps advertise/scan a BLE service filtered by the NFC bootstrap token (`NameCardBootstrapHolder.activeToken`
-/ `peerTapListener`), connect, and swap `NameCard`s (GATT; TCP shortcut on same Wi-Fi). Then P5 receive
-activity (NameDrop-look, full-screen, no overlay perm, exits when done) + ContactsContract save (NOT
-vCard), P6 radio-helper BT-on at trigger, P7 diagnostics + on-device test script.
+**NEXT STEP:** P1, P2, P2.1, P3, P4 DONE (see below). Next = **P5: tie it together + UI** — (a) a
+foreground-service host + controller that, on the NFC trigger (HCE card side → `startServer`; reader
+side via `NameCardBootstrapHolder.peerTapListener` → `startClient`), runs `NameCardBleExchange`; (b) the
+full-screen NameDrop-look **transfer/exchange Activity** (plain Activity, NO overlay perm, exits when
+done) showing the incoming card + Receive Only / Share; (c) save received card via **ContactsContract**
+(WRITE_CONTACTS insert, system Add-Contact fallback — NOT vCard). Then P6 radio-helper BT-on at trigger,
+P7 diagnostics + on-device test script + a Settings toggle.
+
+**P4 STATUS (2026-06-30, COMPILE-ONLY / UNVERIFIED):** `NameCardBleExchange` (app `dev.superdrop.namecard`)
+— the Bluetooth carrier for the card after the tap. `startServer(localCard, token, onPeerCard)` =
+card phone: BLE-advertises the token in service data + GATT server with ONE READ|WRITE characteristic
+(serves our card on read, receives peer's on write). `startClient(token, localCard, sendMine, onPeerCard)`
+= reader phone: ScanFilter by service-data token → connect → requestMtu(247) → READ peer card → if
+`sendMine` WRITE ours (`sendMine=false` = Receive Only). `stop()` tears everything down. UUIDs:
+service `f0534443-0001-…-534443415244`, char `…0002…`, adv service-data `0000fe2d-…`. Permission-gated
+(BLUETOOTH_ADVERTISE/SCAN/CONNECT, already declared), graceful skip if missing/BT off. Heavy DiagnosticLog.
+Built with the repo's verified BleAdvertiser + BleGattInitialControlServer idioms (NOT the Weave stack).
+VERIFIED: `:app:assembleDebug` BUILD SUCCESSFUL (clean). UNVERIFIED: ALL BLE behaviour (no radio/2 phones)
+— connect/advertise/scan/MTU/long-read = device-test (P7). NOT yet CALLED — wiring to the trigger +
+consent UI + FGS host is P5 (so it's compile-only + unwired by design).
 
 **P3 STATUS (2026-06-30, compile-verified):** NFC trigger plumbing — the tap WAKES both apps + shares a
 rendezvous token, no card data on NFC. Files: `core-protocol` `NameCardBootstrap` (fixed 17B
@@ -510,6 +525,26 @@ BUILD SUCCESSFUL. On-screen render device-UNVERIFIED.
 See memory `project_superdrop_namecard_quickshare_send_plan_2026_06_30`. Summary: vCard 3.0 (.vcf,
 `text/x-vcard`) via `ACTION_SEND` + FileProvider `EXTRA_STREAM` → Quick Share chooser; send-only,
 no NFC/BLE; build a `NameCard→vCard` converter (pure, in `:core-protocol`) when we do it.
+
+## P4 PRE-BUILD RISK PASS (2026-06-30) — Bluetooth rendezvous (BLE GATT)
+- REUSE vs new: existing `BleGattInitialControlServer/Client` are wired into the Nearby/Weave/multiplex
+  transport — TOO heavy for a tiny "read one card, write one card" swap. DECISION: write a dedicated
+  `NameCardBleExchange` using the VERIFIED Android BLE idioms from `BleAdvertiser` + that GATT server
+  (openGattServer, BluetoothGattServerCallback, offset reads, BLUETOOTH_CONNECT gating,
+  @SuppressLint("MissingPermission")). Do NOT reuse the Weave machinery.
+- ROLES: card phone (HCE/tapped) = GATT **server** + advertiser (token in adv service data); reader
+  phone = GATT **client** + scanner (ScanFilter by service-data token). Matches the NFC roles.
+- EXCHANGE: ONE characteristic, READ|WRITE. Client connects → requestMtu → READ (peer's card) → if
+  consented WRITE (own card) → both have both. Server serves local card on read (offset-aware), receives
+  peer card on write.
+- PERMS: already declared (BLUETOOTH_ADVERTISE/SCAN/CONNECT + ACCESS_FINE_LOCATION) — runtime-checked,
+  graceful skip if missing.
+- UNKNOWNS (device-only, cannot test here): BLE connect/advertise/scan on the user's OEMs; long-read /
+  MTU for a ~200B card (request MTU 247; server offset reads); two-active-HCE arbitration (from P3).
+  → heavy DiagnosticLog throughout; on-device test script (P7).
+- LIFECYCLE: tear down advertiser + GATT server/client after the swap or timeout; no leaks.
+- WIRING: P4 builds the transport; arming it from the NFC trigger + the consent UI + a foreground
+  service host is P5 (so P4's manager is not yet called — explicitly compile-only + unwired).
 
 ## BUILD ORDER (P3 next)
 P1 (device-independent, unit-testable HERE): NameCard model + wire codec + profile store. 
