@@ -88,6 +88,17 @@
 
             </LinearLayout>
 
+            <!-- settings_name_card_dot — 8dp red dot (same as the update badge) shown
+                 when no Name Card is set up yet. Toggled in SettingsFragment by
+                 NameCardProfileStore.isConfigured(). -->
+            <View
+                android:id="@+id/settings_name_card_dot"
+                android:layout_width="8dp"
+                android:layout_height="8dp"
+                android:layout_marginStart="12dp"
+                android:background="@drawable/update_badge_dot"
+                android:visibility="gone" />
+
             <!-- chevron — ">" affordance signalling this row opens a sub-page -->
             <TextView
                 android:layout_width="wrap_content"

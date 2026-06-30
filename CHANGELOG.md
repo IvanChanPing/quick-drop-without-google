@@ -1,3 +1,12 @@
+## [2026-06-30] Name Card — P2.1: red dot on the Settings row when not set up
+The "Name Card" Settings row now shows the same 8dp red dot as the update badge
+(`settings_name_card_dot`, `@drawable/update_badge_dot`) when no card has been set up.
+`SettingsFragment.refreshNameCardDot()` (called from `onStart`) toggles it from
+`NameCardProfileStore.isConfigured()`, so it clears as soon as the user saves a card and returns.
+Reflects the in-app card only (a device SIM/"Me" fallback still counts as "not set up").
+`:app:assembleDebug` BUILD SUCCESSFUL; dot render device-UNVERIFIED. Also saved a future plan note
+for sending a contact to a native Quick Share phone as a vCard (not built).
+
 ## [2026-06-30] Name Card (tap-to-share contacts) — P2: "My Name Card" setup screen
 Adds the Settings entry point and the profile the tap-to-share feature shares. A new clickable
 **"Name Card"** row in Settings (`settings_name_card_row`) opens **`NameCardSetupActivity`** (My

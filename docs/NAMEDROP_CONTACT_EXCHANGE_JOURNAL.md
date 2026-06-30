@@ -463,7 +463,31 @@ CORRECTED feasibility (from [[reference_nfc_two_phone_role_control_2026_06_02]] 
 - OBSERVABILITY: DiagnosticLog + on-screen tap/connect outcome from the start (reuse DiagnosticUploader pattern).
 - VERIFY REACHABILITY: compile + unit-test the device-independent core HERE; NFC/BLE/2-phone = user test script.
 
-## BUILD ORDER (starting now)
+## CLARIFICATIONS round 4 (user, 2026-06-30)
+- **Transfer/exchange screen: NO overlay permission.** It's a normal **full-screen Activity** the tap
+  drags you INTO the app for, and it EXITS when done. (Confirms P5 = plain Activity, NOT SYSTEM_ALERT_WINDOW.)
+- **The active-transfer UI looks like NameDrop** (the glow/light-beam + card while transferring). → P5.
+- **Name Card settings row gets the red dot when NOT set up** — DONE (P2.1, below).
+- **FUTURE / plan-mode (save-for-later, NOT building now):** make it work with **native Quick Share** —
+  since stock Quick Share has no contact feature, do NOT reuse our NFC/BLE method; instead a SEND-ONLY
+  path that just sends your contact as a **vCard (.vcf, `text/x-vcard`)** over the normal Quick Share/
+  Sharesheet (`ACTION_SEND` + FileProvider `EXTRA_STREAM`). Full plan in memory
+  `project_superdrop_namecard_quickshare_send_plan_2026_06_30` + the FUTURE section here. Researched,
+  unbuilt.
+
+## P2.1 (2026-06-30, compile-verified) — red dot on the Name Card row when not set up
+`settings_name_card_dot` (8dp `@drawable/update_badge_dot`, the SAME red dot as the update badge) added
+to the row, before the chevron; `visibility=gone` default. `SettingsFragment.refreshNameCardDot()`
+(called from `onStart`) shows it when `NameCardProfileStore.isConfigured()` is false (in-app card only;
+a device SIM/"Me" fallback still counts as "not set up"). Clears on return after a save. `:app:assembleDebug`
+BUILD SUCCESSFUL. On-screen render device-UNVERIFIED.
+
+## FUTURE — native Quick Share contact send (plan only, not built)
+See memory `project_superdrop_namecard_quickshare_send_plan_2026_06_30`. Summary: vCard 3.0 (.vcf,
+`text/x-vcard`) via `ACTION_SEND` + FileProvider `EXTRA_STREAM` → Quick Share chooser; send-only,
+no NFC/BLE; build a `NameCard→vCard` converter (pure, in `:core-protocol`) when we do it.
+
+## BUILD ORDER (P3 next)
 P1 (device-independent, unit-testable HERE): NameCard model + wire codec + profile store. 
 P2: "My Name Card" settings screen + source-fallback resolver. P3: name-card HCE (new AID) + reader +
 bootstrap token + cold-wake. P4: BLE GATT exchange (+TCP shortcut) + negotiation. P5: NameCardActivity

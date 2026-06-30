@@ -26,6 +26,7 @@ import dev.superdrop.bugreport.BugReportPreferences
 import dev.superdrop.nfc.NfcTapDiagnosticsPreferences
 import dev.superdrop.nfc.NfcTapSharePreferences
 import dev.superdrop.consent.FullScreenIntentPermission
+import dev.superdrop.namecard.NameCardProfileStore
 import dev.superdrop.namecard.NameCardSetupActivity
 import dev.superdrop.service.downloads.SaveLocationDisplayName
 import dev.superdrop.service.downloads.SaveLocationPreferences
@@ -265,6 +266,20 @@ internal class SettingsFragment : Fragment(R.layout.fragment_settings) {
         refreshFullScreenIntentSection()
         refreshBugReportSwitch()
         refreshTransferSwitches()
+        refreshNameCardDot()
+    }
+
+    /**
+     * Show the small red dot on the "Name Card" row when the user hasn't set up
+     * a card yet (mirrors the update badge). Re-checked on every onStart so it
+     * clears immediately after the user saves a card in [NameCardSetupActivity]
+     * and returns. The dot reflects the IN-APP card only — a device fallback
+     * (SIM/"Me") still counts as "not set up" so we nudge the user to fill it in.
+     */
+    private fun refreshNameCardDot() {
+        val dot = view?.findViewById<View>(R.id.settings_name_card_dot) ?: return
+        val configured = NameCardProfileStore.from(requireContext()).isConfigured()
+        dot.visibility = if (configured) View.GONE else View.VISIBLE
     }
 
     /**
