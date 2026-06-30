@@ -542,6 +542,12 @@ send path (a phone without our app) — see that note. (Resolved 2026-06-30.)
    `https://204-168-163-118.sslip.io/trackers/static/namecard-tester.apk` (Caddy file_server at
    /root/agent-work/projects/tracker-bridge/static — see memory `reference_serve_apk_via_caddy_url`).
    Build + download VERIFIED; on-device flow/save device-UNVERIFIED.
+   **Tester v2 (commit 6d3cc7e):** iOS look + edge-to-edge (insets pad buttons above nav bar) + iOS
+   pill buttons + bigger avatar (~156dp) w/ RANDOM emoji + photo-full-bleed mode, and **LIVE CONFIG**
+   — all tunables read at launch from `namecard-tester-config.json` (served next to the APK) so
+   restyling = edit JSON + reopen, NO rebuild. Config URL:
+   `https://204-168-163-118.sslip.io/trackers/static/namecard-tester-config.json`. User must reinstall
+   the v2 APK ONCE to get live-config; thereafter JSON-only tweaks. (Answers "are things hooked?" = now yes.)
 
 ## REVIEW PASS #2 (2026-06-30) — deeper runtime-reachability check
 Asked again to check for misses. Found + FIXED a real reachability gap, plus polish:
