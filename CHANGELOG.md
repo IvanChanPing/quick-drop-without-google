@@ -1,3 +1,10 @@
+## [2026-06-30] Update indicator: red dot on the Settings tab
+Mirrors the existing overflow-menu kebab red dot onto the bottom-nav **Settings** tab when an
+update is pending, so the hint is visible without opening the overflow menu. `MainActivity` gains a
+`mainBottomNav` field + `applySettingsTabDot()` (Material `getOrCreateBadge(R.id.nav_settings)` /
+`removeBadge`), driven from the same `applyUpdateBadge(state)` as the kebab dot. Compile-built; the
+dot's on-screen render is device-UNVERIFIED. (Also ported into the upstream PR copy, bada-debrand.)
+
 ## [2026-06-30] Automatic update check + notification (download or open GitHub)
 Adds a proactive auto-update feature on top of the existing MANUAL "Check for updates" screen.
 The app now polls GitHub Releases (IvanChanPing/Bada) **every 6 hours** in the background and, when a
