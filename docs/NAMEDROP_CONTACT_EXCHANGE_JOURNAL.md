@@ -15,7 +15,33 @@ log). Key finding: the contact-card *send* side is ~90% already built (`SuperDro
 is a working Type-4 NDEF tag HCE on the standard NDEF AID `D2760000850101`); the *receive*
 side does not exist yet. Identified the make-or-break Android NFC-role feasibility unknowns.
 
-**NEXT STEP:** P1, P2, P2.1, P3, P4 DONE (see below). Next = **P5: tie it together + UI** — (a) a
+**NEXT STEP:** P1–P5 DONE (full chain wired, compile-only). **NEXT = the USER on-device tests** per
+`docs/NAMECARD_ON_DEVICE_TEST.md` (two phones) — this is the first time the NFC+BLE path can be
+exercised; nothing past P1/P2-resolver is verifiable in the build env. After device results: fix what
+the logs show, then P6 (radio-helper auto-BT-on at trigger), P7 (Settings toggle + polish), then mirror
+to bada-debrand as the upstream PR. Known refinement: optional two-way per-tap consent on the server side.
+
+**P5 STATUS (2026-06-30, COMPILE-ONLY — full chain wired):** end-to-end tie-together.
+- **Trigger→server:** `NameCardHceService` EXCHANGE → `NameCardExchangeService.start(token)` (FGS,
+  connectedDevice) → `NameCardBleExchange.startServer` (advertise token + serve card) → on peer write →
+  launch `NameCardTransferActivity` (server role) + stop.
+- **Trigger→client:** `MainActivity` arms `NameCardTapReader` in onResume (disarms onPause) → on tap,
+  `onPeerBootstrap` → `NameCardTransferActivity.clientIntent(token)` → the Activity runs
+  `NameCardBleExchange.startClient` → reads peer card → shows it + **Receive Only**/**Share**
+  (`shareBack`/`declineShare`). BLE client refactored for consent-before-send.
+- **UI:** `NameCardTransferActivity` (full-screen, plain Activity, NO overlay perm, unlocked-only) +
+  `activity_name_card_transfer.xml` + `name_card_glow`/`name_card_avatar_bg` drawables + strings.
+  Glow = looping alpha tween; entrance = fade+rise overshoot PathInterpolator (NOT a physics bounce).
+- **Save:** `NameCardSaver` — ContactsContract direct insert (WRITE_CONTACTS, off-main thread → no ANR)
+  OR system Add-contact `ACTION_INSERT` fallback (no perm). NOT vCard.
+- Manifest: transfer Activity (singleTop, excludeFromRecents) + exchange Service (FGS connectedDevice) +
+  WRITE_CONTACTS perm. VERIFIED: `:app:assembleDebug` BUILD SUCCESSFUL (clean); resolver 7/7, codec 14/14,
+  bootstrap 5/5 still pass; APK at repo root.
+- CONSENT model (v1): reader (tapper) gets per-tap Receive Only/Share; card phone (idle presenter)
+  auto-shares on read + chooses whether to Save. Documented; two-way per-tap consent is a later refinement.
+- CROSS-CUTTING flagged: MainActivity reader-mode suppresses THIS phone's own HCE while the main screen
+  is foreground (iPhone-NDEF/Quick Share HCE are used from other screens → unaffected); both-app-open =
+  both readers = no tap (one must be idle). ALL NFC/BLE behaviour device-UNVERIFIED → test script. — (a) a
 foreground-service host + controller that, on the NFC trigger (HCE card side → `startServer`; reader
 side via `NameCardBootstrapHolder.peerTapListener` → `startClient`), runs `NameCardBleExchange`; (b) the
 full-screen NameDrop-look **transfer/exchange Activity** (plain Activity, NO overlay perm, exits when

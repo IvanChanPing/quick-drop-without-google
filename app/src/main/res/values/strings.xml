@@ -614,4 +614,14 @@
     <string name="name_card_clear">Clear</string>
     <string name="name_card_cleared">Name card cleared</string>
     <string name="name_card_save_empty">Enter a name, phone, or email first</string>
+    <!-- Transfer/exchange screen (NameCardTransferActivity) + exchange service -->
+    <string name="name_card_transfer_connecting">Connecting…</string>
+    <string name="name_card_transfer_failed">Couldn’t connect</string>
+    <string name="name_card_transfer_share">Share</string>
+    <string name="name_card_transfer_receive_only">Receive Only</string>
+    <string name="name_card_transfer_save">Save</string>
+    <string name="name_card_transfer_done">Done</string>
+    <string name="name_card_transfer_no_name">(No name)</string>
+    <string name="name_card_exchange_channel">Name Card exchange</string>
+    <string name="name_card_exchange_notification">Sharing your name card…</string>
 </resources>

@@ -88,6 +88,10 @@ internal class NameCardBleExchange(
     private var scanCallback: ScanCallback? = null
     private var clientGatt: BluetoothGatt? = null
 
+    // Held between READ (peer card surfaced) and the user's Share/Receive-Only choice.
+    private var pendingGatt: BluetoothGatt? = null
+    private var pendingCharacteristic: BluetoothGattCharacteristic? = null
+
     /**
      * Card side: advertise [token] and serve [localCard] over GATT. Calls
      * [onPeerCard] when the connecting peer writes its card. Returns false if BLE
@@ -159,8 +163,6 @@ internal class NameCardBleExchange(
      */
     fun startClient(
         token: ByteArray,
-        localCard: NameCard,
-        sendMine: Boolean,
         onPeerCard: (NameCard) -> Unit,
     ): Boolean {
         if (!running.compareAndSet(false, true)) return false
@@ -189,7 +191,7 @@ internal class NameCardBleExchange(
             ScanSettings.Builder()
                 .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
                 .build()
-        val cb = scanCallbackImpl(localCard, sendMine, onPeerCard)
+        val cb = scanCallbackImpl(onPeerCard)
         scanCallback = cb
         return try {
             scanner.startScan(listOf(filter), settings, cb)
@@ -202,9 +204,39 @@ internal class NameCardBleExchange(
         }
     }
 
+    /**
+     * Reader side, after the user taps **Share**: write our [localCard] to the
+     * held connection so the peer (server) receives it too. The connection is
+     * torn down once the write completes ([onCharacteristicWrite] → [stop]).
+     */
+    fun shareBack(localCard: NameCard) {
+        val gatt = pendingGatt
+        val characteristic = pendingCharacteristic
+        if (gatt == null || characteristic == null) {
+            DiagnosticLog.w(TAG, "shareBack: no held connection → stop")
+            stop()
+            return
+        }
+        characteristic.value = localCard.serialize()
+        if (!gatt.writeCharacteristic(characteristic)) {
+            DiagnosticLog.w(TAG, "shareBack: writeCharacteristic returned false → stop")
+            stop()
+        } else {
+            DiagnosticLog.w(TAG, "client: Share → writing our card")
+        }
+    }
+
+    /** Reader side, **Receive Only**: don't send our card; close the connection. */
+    fun declineShare() {
+        DiagnosticLog.w(TAG, "client: Receive Only → not sharing our card")
+        stop()
+    }
+
     /** Tear down all BLE handles. Idempotent. */
     fun stop() {
         running.set(false)
+        pendingGatt = null
+        pendingCharacteristic = null
         runCatching { scanCallback?.let { scanner?.stopScan(it) } }
         scanner = null
         scanCallback = null
@@ -263,8 +295,6 @@ internal class NameCardBleExchange(
     // ---- client callbacks ----
 
     private fun scanCallbackImpl(
-        localCard: NameCard,
-        sendMine: Boolean,
         onPeerCard: (NameCard) -> Unit,
     ): ScanCallback =
         object : ScanCallback() {
@@ -276,7 +306,7 @@ internal class NameCardBleExchange(
                 // First match wins; stop scanning and connect.
                 runCatching { scanCallback?.let { scanner?.stopScan(it) } }
                 DiagnosticLog.w(TAG, "client: token match ${result.device.address?.takeLast(5)} → connecting")
-                clientGatt = result.device.connectGatt(appContext, false, gattClientCallback(localCard, sendMine, onPeerCard))
+                clientGatt = result.device.connectGatt(appContext, false, gattClientCallback(onPeerCard))
             }
 
             override fun onScanFailed(errorCode: Int) {
@@ -285,8 +315,6 @@ internal class NameCardBleExchange(
         }
 
     private fun gattClientCallback(
-        localCard: NameCard,
-        sendMine: Boolean,
         onPeerCard: (NameCard) -> Unit,
     ): BluetoothGattCallback =
         object : BluetoothGattCallback() {
@@ -331,20 +359,15 @@ internal class NameCardBleExchange(
                 characteristic: BluetoothGattCharacteristic,
                 status: Int,
             ) {
+                // Hold the connection open for the user's Share / Receive-Only choice.
+                pendingGatt = gatt
+                pendingCharacteristic = characteristic
                 val peer = characteristic.value?.let { NameCard.parse(it) }
                 if (peer != null) {
-                    DiagnosticLog.w(TAG, "client: read peer card")
+                    DiagnosticLog.w(TAG, "client: read peer card → awaiting Share/Receive-Only")
                     onPeerCard(peer)
                 } else {
                     DiagnosticLog.w(TAG, "client: peer card unreadable")
-                }
-                if (sendMine) {
-                    @Suppress("DEPRECATION")
-                    characteristic.value = localCard.serialize()
-                    @Suppress("DEPRECATION")
-                    gatt.writeCharacteristic(characteristic)
-                } else {
-                    DiagnosticLog.w(TAG, "client: receive-only → not sending our card")
                     stop()
                 }
             }

@@ -1,3 +1,18 @@
+## [2026-06-30] Name Card (tap-to-share contacts) — P5: full chain wired + NameDrop transfer screen
+Ties the feature together end-to-end (compile-only — device-test via docs/NAMECARD_ON_DEVICE_TEST.md).
+- Trigger→server: `NameCardHceService` (tap) starts `NameCardExchangeService` (FGS, connectedDevice)
+  → `NameCardBleExchange.startServer`; on the peer's card it launches the transfer screen.
+- Trigger→client: `MainActivity` arms `NameCardTapReader` while foreground (onResume/onPause); a tap
+  opens `NameCardTransferActivity`, which runs the BLE client, reads the peer card, and offers
+  **Receive Only** / **Share** (BLE client refactored for consent-before-send: shareBack/declineShare).
+- `NameCardTransferActivity` — full-screen, NameDrop-style (top glow light-beam tween, avatar + name/
+  phone/email, overshoot entrance — no physics bounce). Plain Activity: no overlay permission, only
+  shows while unlocked. New layout + `name_card_glow`/`name_card_avatar_bg` drawables + strings.
+- `NameCardSaver` — saves the received card via ContactsContract (direct insert with WRITE_CONTACTS,
+  off the UI thread; system Add-contact ACTION_INSERT fallback) — NOT a vCard import.
+- Manifest: transfer Activity + exchange Service + WRITE_CONTACTS. `:app:assembleDebug` BUILD SUCCESSFUL;
+  resolver 7/7 + codec 14/14 + bootstrap 5/5 pass. ALL NFC/BLE behaviour is device-UNVERIFIED.
+
 ## [2026-06-30] Name Card (tap-to-share contacts) — P4: Bluetooth card exchange
 Adds `NameCardBleExchange` (`dev.superdrop.namecard`) — the Bluetooth carrier that swaps the actual
 contact card after the NFC tap (NFC = trigger, Bluetooth = payload, like Google's gestureexchange).

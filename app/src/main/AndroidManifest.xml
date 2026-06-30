@@ -125,6 +125,10 @@
     <uses-permission android:name="android.permission.READ_CONTACTS" />
     <uses-permission android:name="android.permission.READ_PHONE_NUMBERS" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <!-- Name Card: save a received contact directly via ContactsContract. Runtime,
+         optional — if not granted, the receive screen falls back to the system
+         Add-contact screen (ACTION_INSERT), which needs no permission. -->
+    <uses-permission android:name="android.permission.WRITE_CONTACTS" />
     <!-- Bind the universal radio-helper's RadioService (signature-protected
          BIND_RADIO) to silently force Wi-Fi/Bluetooth ON for an NFC
          tap-to-receive wake (RadioHelperClient SESSION mode). Granted only when
@@ -340,6 +344,33 @@
             android:exported="false"
             android:label="@string/name_card_activity_label"
             android:parentActivityName=".MainActivity" />
+
+        <!--
+          Name Card transfer screen (tap-to-share contacts). Full-screen page that
+          a tap drags you into; shows the received card + Receive Only / Share (or
+          Save). Plain Activity — NO overlay permission, NO lock-screen bypass (it
+          only ever appears while unlocked). Launched in-app by the reader (client
+          role) and by NameCardExchangeService (server role). Not exported.
+          singleTop so a second tap reuses the open screen.
+        -->
+        <activity
+            android:name=".namecard.NameCardTransferActivity"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:excludeFromRecents="true"
+            android:label="@string/name_card_activity_label" />
+
+        <!--
+          Name Card exchange foreground service (card/server side). Started by
+          NameCardHceService on a tap to run the BLE GATT server (advertise token
+          + serve our card) and, when the peer writes its card, launch the
+          transfer screen. FGS type connectedDevice (Bluetooth); the app already
+          holds the connectedDevice FGS-type gate permission. Not exported.
+        -->
+        <service
+            android:name=".namecard.NameCardExchangeService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
 
         <!--
           Invisible trampoline for the update notification's

@@ -44,6 +44,8 @@ import dev.superdrop.ui.ElasticBottomNavigationView
 import dev.superdrop.ui.SendReceiveFragment
 import dev.superdrop.ui.SettingsFragment
 import dev.superdrop.update.CenteredImageSpan
+import dev.superdrop.namecard.NameCardTransferActivity
+import dev.superdrop.nfc.NameCardTapReader
 import dev.superdrop.update.CheckForUpdatesActivity
 import dev.superdrop.update.UpdateRepository
 import dev.superdrop.update.UpdateState
@@ -139,6 +141,17 @@ class MainActivity : AppCompatActivity() {
      * grant "install unknown apps" — [onResume] completes it on return.
      */
     private var pendingHelperInstall: Boolean = false
+
+    /**
+     * NFC reader for the Name Card tap-to-share-contacts feature, armed while
+     * MainActivity is foreground so "app open = ready to tap and read another
+     * phone's card" (no button). On a tap it reads the peer's rendezvous token
+     * and opens [NameCardTransferActivity] (client role) to run the Bluetooth
+     * swap. NOTE: reader-mode suppresses THIS phone's own HCE while the main
+     * screen is foreground — fine because the iPhone-NDEF / Quick Share HCE
+     * services are used from other screens, not here. Device-UNVERIFIED.
+     */
+    private var nameCardReader: NameCardTapReader? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -298,6 +311,30 @@ class MainActivity : AppCompatActivity() {
             pendingHelperInstall = false
             HelperInstaller.installBundledHelper(this)
         }
+        armNameCardReader()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        nameCardReader?.disable()
+    }
+
+    /**
+     * Arm the Name Card NFC reader while foreground (tap-to-share-contacts). On a
+     * tap it reads the other phone's token and opens the transfer screen. Created
+     * lazily; safe to re-arm on every resume.
+     */
+    private fun armNameCardReader() {
+        val reader =
+            nameCardReader ?: NameCardTapReader(
+                activity = this,
+                onPeerBootstrap = { bootstrap ->
+                    runOnUiThread {
+                        startActivity(NameCardTransferActivity.clientIntent(this, bootstrap.token))
+                    }
+                },
+            ).also { nameCardReader = it }
+        reader.enable()
     }
 
     /**

@@ -69,7 +69,12 @@ public class NameCardHceService : HostApduService() {
                 return SW_LOCKED
             }
             val bootstrap = NameCardBootstrapHolder.newSession()
-            DiagnosticLog.w(TAG, "Name Card EXCHANGE → bootstrap(${bootstrap.serialize().size}B), app woken")
+            // Wake the card-side Bluetooth server (foreground service) so the tapping
+            // phone can read our card over BLE using this token.
+            runCatching {
+                dev.superdrop.namecard.NameCardExchangeService.start(this, bootstrap.token)
+            }.onFailure { DiagnosticLog.w(TAG, "EXCHANGE: start exchange service failed: ${it.message}") }
+            DiagnosticLog.w(TAG, "Name Card EXCHANGE → bootstrap(${bootstrap.serialize().size}B) + server FGS")
             return bootstrap.serialize() + SW_OK
         }
 
