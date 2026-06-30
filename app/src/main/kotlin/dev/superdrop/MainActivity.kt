@@ -44,6 +44,7 @@ import dev.superdrop.ui.ElasticBottomNavigationView
 import dev.superdrop.ui.SendReceiveFragment
 import dev.superdrop.ui.SettingsFragment
 import dev.superdrop.update.CenteredImageSpan
+import dev.superdrop.namecard.NameCardPreferences
 import dev.superdrop.namecard.NameCardTransferActivity
 import dev.superdrop.nfc.NameCardTapReader
 import dev.superdrop.update.CheckForUpdatesActivity
@@ -325,6 +326,12 @@ class MainActivity : AppCompatActivity() {
      * lazily; safe to re-arm on every resume.
      */
     private fun armNameCardReader() {
+        // Respect the master on/off switch (My Name Card screen). When off, don't
+        // arm the reader so tapping another phone does nothing.
+        if (!NameCardPreferences.from(this).isEnabled()) {
+            nameCardReader?.disable()
+            return
+        }
         val reader =
             nameCardReader ?: NameCardTapReader(
                 activity = this,

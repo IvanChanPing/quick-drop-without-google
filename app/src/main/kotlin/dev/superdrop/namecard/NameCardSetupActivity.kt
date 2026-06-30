@@ -13,6 +13,7 @@ import android.widget.EditText
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.appcompat.widget.SwitchCompat
 import dev.superdrop.R
 
 /**
@@ -66,6 +67,13 @@ internal class NameCardSetupActivity : AppCompatActivity() {
         nameInput.setText(store.displayName().orEmpty())
         phoneInput.setText(store.phoneNumber().orEmpty())
         emailInput.setText(store.email().orEmpty())
+
+        // "Share my card when phones tap" master switch.
+        val enablePrefs = NameCardPreferences.from(this)
+        findViewById<SwitchCompat>(R.id.nameCardEnableSwitch).apply {
+            isChecked = enablePrefs.isEnabled()
+            setOnCheckedChangeListener { _, checked -> enablePrefs.setEnabled(checked) }
+        }
 
         findViewById<Button>(R.id.nameCardSaveButton).setOnClickListener { save() }
         findViewById<Button>(R.id.nameCardClearButton).setOnClickListener { clear() }

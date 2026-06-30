@@ -59,8 +59,9 @@ import java.util.concurrent.atomic.AtomicBoolean
  *  - [startClient] — the READER phone (the initiator). Scans for the token,
  *    connects, READs the peer's card, then (if [sendMine]) WRITEs ours.
  *
- * Both deliver the peer's card via [onPeerCard]. `sendMine`/the read-only choice
- * is the Receive-Only vs Share decision (driven by the P5 UI).
+ * Both deliver the peer's card via [onPeerCard]. The reader then chooses Share
+ * ([shareBack]) or Receive-Only ([declineShare]) on the held connection, driven by
+ * [NameCardTransferActivity].
  *
  * Permissions (already declared): BLUETOOTH_ADVERTISE (server), BLUETOOTH_SCAN
  * (client), BLUETOOTH_CONNECT (both GATT). Runtime-checked; a missing one logs
@@ -70,9 +71,10 @@ import java.util.concurrent.atomic.AtomicBoolean
  * There is no Bluetooth radio or second phone in the build env, so NONE of the
  * BLE path is exercised here. The Android BLE API usage mirrors the repo's
  * verified `BleAdvertiser` + `BleGattInitialControlServer` idioms, but connect /
- * advertise / scan / MTU / long-read behaviour is device-verified only (P7 test
- * script). Also: this manager is not yet CALLED — arming it from the NFC trigger
- * + the consent UI + a foreground-service host is P5.
+ * advertise / scan / MTU / long-read behaviour is device-verified only (on-device
+ * test script). Driven by [NameCardExchangeService] (server) and
+ * [NameCardTransferActivity] (client); a [ShareRadioController] in each forces
+ * Bluetooth on (+ heartbeat) before this runs.
  */
 internal class NameCardBleExchange(
     context: Context,
@@ -164,8 +166,10 @@ internal class NameCardBleExchange(
     }
 
     /**
-     * Reader side: scan for [token], connect, READ the peer card, then WRITE
-     * [localCard] iff [sendMine]. Calls [onPeerCard] with the read peer card.
+     * Reader side: scan for [token], connect, and READ the peer card, delivering
+     * it via [onPeerCard]. The connection is then HELD open for the user's choice:
+     * [shareBack] writes our card back (Share) or [declineShare] closes it
+     * (Receive Only). A [MAX_SESSION_MS] backstop auto-closes if neither is called.
      */
     fun startClient(
         token: ByteArray,

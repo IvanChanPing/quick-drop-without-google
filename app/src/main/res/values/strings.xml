@@ -602,6 +602,7 @@
     <string name="name_card_activity_label">Name Card</string>
     <string name="name_card_setup_title">My Name Card</string>
     <string name="name_card_setup_subtitle">Shared with another Super Drop phone when you tap them together. Leave blank to fall back to your phone’s own name and number.</string>
+    <string name="name_card_enable_title">Share my card when phones tap</string>
     <string name="name_card_field_name">Name</string>
     <string name="name_card_field_phone">Phone</string>
     <string name="name_card_field_email">Email</string>

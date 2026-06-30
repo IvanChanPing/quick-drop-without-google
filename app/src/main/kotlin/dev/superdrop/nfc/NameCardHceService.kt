@@ -9,6 +9,7 @@ import android.app.KeyguardManager
 import android.nfc.cardemulation.HostApduService
 import android.os.Bundle
 import dev.superdrop.discovery.diagnostics.DiagnosticLog
+import dev.superdrop.namecard.NameCardPreferences
 import dev.superdrop.protocol.namecard.NameCardBootstrap
 
 /**
@@ -33,8 +34,9 @@ import dev.superdrop.protocol.namecard.NameCardBootstrap
  * locked/lost phone never leaks anything.
  *
  * Being invoked here also wakes our process (the platform binds the service on a
- * tap even from cold) — P4 reads [NameCardBootstrapHolder.activeToken] to start
- * the Bluetooth rendezvous.
+ * tap even from cold); on EXCHANGE it starts
+ * [dev.superdrop.namecard.NameCardExchangeService] with the minted token to run
+ * the Bluetooth rendezvous (advertise + serve the card).
  *
  * Public `android.nfc.cardemulation` APIs + the auto-granted `BIND_NFC_SERVICE`.
  * Status: compile-only here (no NFC hardware / second phone) — device-verified by
@@ -50,6 +52,13 @@ public class NameCardHceService : HostApduService() {
         extras: Bundle?,
     ): ByteArray {
         if (apdu == null || apdu.size < MIN_APDU_LEN) return SW_WRONG_LENGTH
+
+        // Master switch: when the user has turned the feature off, decline every
+        // tap (no token, nothing served) so this phone is not tappable as a card.
+        if (!NameCardPreferences.from(this).isEnabled()) {
+            DiagnosticLog.w(TAG, "tap ignored — Name Card feature disabled in settings")
+            return SW_FILE_NOT_FOUND
+        }
 
         // SELECT by name → match our Name Card AID.
         if (apdu[1] == INS_SELECT && apdu[2] == P1_SELECT_BY_NAME) {

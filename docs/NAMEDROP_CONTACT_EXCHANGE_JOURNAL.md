@@ -528,6 +528,28 @@ P5 saves via **`ContactsContract` directly**: a `WRITE_CONTACTS` raw-contact ins
 always works). This sidesteps vCard parsing entirely. vCard is ONLY for the FUTURE native-Quick-Share
 send path (a phone without our app) — see that note. (Resolved 2026-06-30.)
 
+## P6 + P7 + FINAL REVIEW PASS (2026-06-30)
+**P6 (radio-helper auto-BT-on at trigger): DONE — folded into the P5 review pass** (ShareRadioController
+requestRadiosOn(RADIO_BT) + 5s heartbeat + restore, both sides). Nothing else was left in P6.
+
+**P7 (Settings toggle): DONE.** New `NameCardPreferences` (master on/off, default ON). Surfaced as the
+**"Share my card when phones tap"** switch (`nameCardEnableSwitch`) on the My Name Card setup screen.
+Honored at BOTH entry points: `NameCardHceService` returns FILE_NOT_FOUND for every APDU when OFF (no
+token, not tappable as a card); `MainActivity.armNameCardReader` doesn't arm (and disables) the reader
+when OFF. Default ON; zero battery cost when off (HCE answers nothing, no FGS/BLE/reader). Diagnostics
+were already covered (DiagnosticLog throughout + the on-device test script), so no separate P7 work there.
+
+**FINAL REVIEW PASS — verified, no functional gaps found:**
+- Dangling refs to the removed holder fields: NONE in code (one stale KDoc link fixed).
+- All `name_card*` string refs resolve; all 4 components in the manifest; `:app:assembleDebug` clean.
+- Re-read NameCardBleExchange end-to-end: consent hold (read→shareBack/declineShare) + the 3 timeouts +
+  radio-helper are coherent. Fixed 3 stale KDoc comments (sendMine / "not yet called" / activeToken link).
+- Known minor edge (acceptable v1, documented): if the reader takes >30s (MAX_SESSION_MS) on the
+  Share/Receive-Only screen the BLE session auto-closes first → Share then no-ops (still saves theirs).
+- STILL PENDING (separate task, not P6/P7): mirror to bada-debrand as the upstream PR; the on-device
+  two-phone test (the only real verification — everything remains device-UNVERIFIED).
+VERIFIED: `:app:assembleDebug` BUILD SUCCESSFUL; core-protocol + app namecard tests pass.
+
 ## P5 REVIEW PASS (2026-06-30) — gaps found + fixed
 User asked to double-check P5. Re-read the code; found and FIXED:
 - **Radio-helper + HEARTBEAT (user caught this — was MISSING).** The BLE swap needs Bluetooth ON. Now

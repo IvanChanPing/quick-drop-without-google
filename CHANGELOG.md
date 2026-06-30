@@ -1,3 +1,12 @@
+## [2026-06-30] Name Card — P7: on/off toggle (+ P6 confirmed done)
+Adds a master on/off switch for the tap-to-share-contacts feature: `NameCardPreferences`
+(default ON) surfaced as the **"Share my card when phones tap"** switch on the My Name Card setup
+screen. Honored at both entry points — when OFF, `NameCardHceService` answers no taps (returns
+FILE_NOT_FOUND, no token/serving) and `MainActivity` doesn't arm the reader — so the feature is a
+complete no-op with zero battery cost. (P6 = radio-helper auto-BT-on at trigger was already folded
+into the P5 review pass.) Also a final review-pass docs cleanup (stale KDoc comments). `:app:assembleDebug`
+BUILD SUCCESSFUL; core-protocol + namecard tests pass. Device-UNVERIFIED.
+
 ## [2026-06-30] Name Card — P5 review pass: radio-helper heartbeat + timeouts + cleanup
 Review pass over P5 found and fixed gaps:
 - **Radio helper + heartbeat** (was missing): both the exchange service and the transfer screen now
