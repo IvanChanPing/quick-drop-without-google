@@ -169,6 +169,12 @@ dependencies {
     // ZXing (`zxing-android-embedded`) is intentionally not used.
     implementation(libs.zxing.core)
 
+    // WorkManager — runs the automatic update check (UpdateCheckWorker): a
+    // 6-hourly PeriodicWork, scheduled in BadaApplication.onCreate, that polls
+    // GitHub Releases and posts an "update available" notification. WorkManager
+    // persists the schedule across reboots with no user action.
+    implementation(libs.androidx.work.runtime.ktx)
+
     // NOTE: the self-ADB Wi-Fi stack (libadb-android + Conscrypt + BouncyCastle)
     // was MOVED OUT of :app into :radio-helper. The radios are toggled by the
     // standalone helper APK (which targets API 28 for the legacy capability and

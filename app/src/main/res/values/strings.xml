@@ -29,6 +29,21 @@
     <string name="update_subtitle_latest_version">%1$s</string>
     <string name="update_button_check_again">Check again</string>
     <string name="update_button_update">Update</string>
+    <!-- Automatic update check: notification + download/install flow. -->
+    <string name="update_notification_channel_name">App updates</string>
+    <string name="update_notification_channel_desc">Notifies you when a newer version of Bada is available on GitHub.</string>
+    <string name="update_notification_title">Bada update available</string>
+    <string name="update_notification_text">Version %1$s is ready to install</string>
+    <string name="update_notification_action_github">View on GitHub</string>
+    <string name="update_notification_action_download">Download &amp; install</string>
+    <string name="update_downloading_title">Downloading update…</string>
+    <string name="update_downloading_text">Bada %1$s</string>
+    <string name="update_download_failed_title">Update download failed</string>
+    <string name="update_download_failed_text">Couldn\'t download the update. Tap the notification to try again or open GitHub.</string>
+    <string name="update_install_need_unknown_sources">Allow Bada to install apps, then tap Download again.</string>
+    <string name="update_install_started">Downloading update…</string>
+    <string name="update_install_success">Bada updated</string>
+    <string name="update_install_failed">Couldn\'t install the update</string>
     <string name="credit_placeholder_text">credit</string>
 
     <!--
