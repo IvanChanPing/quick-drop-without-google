@@ -1,3 +1,14 @@
+## [2026-06-30] Name Card (tap-to-share contacts) — P1: wire model + codec
+Groundwork for a NameDrop-style "tap two phones to swap contacts" feature (design +
+feasibility in `docs/NAMEDROP_CONTACT_EXCHANGE_JOURNAL.md`). This commit adds only the
+device-independent core: `dev.superdrop.protocol.namecard.NameCard` (+ `NameCardField`) in
+`:core-protocol` — a compact, forward-compatible TLV blob (1-byte version + type/len(2 BE)/value
+records; known types name/phone/email; unknown TLVs preserved; null-on-malformed; strict UTF-8)
+that the two apps will swap over Bluetooth *after* an NFC tap triggers them. Pure-JVM, 14
+`NameCardTest` cases (round-trip, optional/number-only fallback, forward-compat, malformed→null)
+ALL PASS (`:core-protocol:test` BUILD SUCCESSFUL). NFC/BLE/UI are later phases (compile-only here,
+device-verified by the user). Not yet in the bada-debrand upstream-PR copy.
+
 ## [2026-06-30] Update indicator: red dot on the Settings tab
 Mirrors the existing overflow-menu kebab red dot onto the bottom-nav **Settings** tab when an
 update is pending, so the hint is visible without opening the overflow menu. `MainActivity` gains a
