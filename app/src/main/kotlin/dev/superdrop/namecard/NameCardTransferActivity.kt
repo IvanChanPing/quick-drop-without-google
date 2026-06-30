@@ -14,10 +14,13 @@ import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.PathInterpolator
 import android.widget.Button
 import android.widget.TextView
+import android.bluetooth.BluetoothManager
 import androidx.appcompat.app.AppCompatActivity
 import dev.superdrop.R
 import dev.superdrop.discovery.diagnostics.DiagnosticLog
 import dev.superdrop.protocol.namecard.NameCard
+import dev.superdrop.service.radio.RadioHelperClient
+import dev.superdrop.service.radio.ShareRadioController
 
 /**
  * **Name Card transfer screen** — the full-screen, NameDrop-style page shown when
@@ -51,6 +54,11 @@ import dev.superdrop.protocol.namecard.NameCard
 internal class NameCardTransferActivity : AppCompatActivity() {
     private var exchange: NameCardBleExchange? = null
     private var localCard: NameCard? = null
+    private var peerReceived = false
+
+    /** Forces Bluetooth on for the swap + the 5s helper heartbeat (client role); restored on destroy. */
+    private val shareRadios by lazy { ShareRadioController(this, "NameCardTransfer") }
+    private val btHandler = android.os.Handler(android.os.Looper.getMainLooper())
 
     private val glow by lazy { findViewById<View>(R.id.nameCardGlow) }
     private val avatar by lazy { findViewById<TextView>(R.id.nameCardAvatar) }
@@ -104,18 +112,42 @@ internal class NameCardTransferActivity : AppCompatActivity() {
         connecting.visibility = View.VISIBLE
         cardPanel.visibility = View.INVISIBLE
 
+        // Force Bluetooth on via the helper (+ 5s heartbeat); start scanning once BT is
+        // actually on (immediately if already on, else after a grace for the helper toggle).
+        shareRadios.requestRadiosOn(RadioHelperClient.RADIO_BT)
+        startClientWhenBtReady(token, attempt = 0)
+
+        // Don't sit on "Connecting…" forever if no peer is found / BLE never connects.
+        connecting.postDelayed({
+            if (!peerReceived && !isFinishing) {
+                DiagnosticLog.w(TAG, "client: connect timeout → no peer")
+                connecting.text = getString(R.string.name_card_transfer_failed)
+                exchange?.stop()
+            }
+        }, CONNECT_TIMEOUT_MS)
+    }
+
+    private fun startClientWhenBtReady(
+        token: ByteArray,
+        attempt: Int,
+    ) {
+        if (isFinishing) return
+        val adapter = getSystemService(BluetoothManager::class.java)?.adapter
+        if (adapter?.isEnabled != true && attempt < MAX_BT_WAIT_ATTEMPTS) {
+            DiagnosticLog.w(TAG, "client: BT not on yet (attempt $attempt) → waiting for helper")
+            btHandler.postDelayed({ startClientWhenBtReady(token, attempt + 1) }, BT_GRACE_MS)
+            return
+        }
         val ble = NameCardBleExchange(this)
         exchange = ble
-        val started =
-            ble.startClient(token) { peer ->
-                runOnUiThread { onPeerCardReceived(peer) }
-            }
+        val started = ble.startClient(token) { peer -> runOnUiThread { onPeerCardReceived(peer) } }
         if (!started) {
             connecting.text = getString(R.string.name_card_transfer_failed)
         }
     }
 
     private fun onPeerCardReceived(peer: NameCard) {
+        peerReceived = true
         connecting.visibility = View.GONE
         showCard(peer)
         // Share = send my card back too; Receive Only = take theirs only. Both save theirs.
@@ -198,8 +230,11 @@ internal class NameCardTransferActivity : AppCompatActivity() {
     }
 
     override fun onDestroy() {
+        btHandler.removeCallbacksAndMessages(null)
         exchange?.stop()
         exchange = null
+        // Stop the heartbeat + restore radios the helper turned on for this swap.
+        shareRadios.restoreRadios()
         super.onDestroy()
     }
 
@@ -217,6 +252,9 @@ internal class NameCardTransferActivity : AppCompatActivity() {
         private const val GLOW_MS = 1100L
         private const val GLOW_MIN = 0.35f
         private const val GLOW_MAX = 1.0f
+        private const val CONNECT_TIMEOUT_MS = 18_000L
+        private const val BT_GRACE_MS = 1_500L
+        private const val MAX_BT_WAIT_ATTEMPTS = 2
 
         /** Reader side: open the screen to run the BLE client for [token]. */
         fun clientIntent(

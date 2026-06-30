@@ -1,3 +1,19 @@
+## [2026-06-30] Name Card — P5 review pass: radio-helper heartbeat + timeouts + cleanup
+Review pass over P5 found and fixed gaps:
+- **Radio helper + heartbeat** (was missing): both the exchange service and the transfer screen now
+  force Bluetooth on via `ShareRadioController.requestRadiosOn(RADIO_BT)` (which runs the 5s keep-alive
+  heartbeat → radios restore ~20s after the last beat on a crash) and `restoreRadios()` on stop. A short
+  BT-ready grace covers the helper's async enable before BLE starts. (BIND_RADIO perm + helper queries
+  were already declared.)
+- **Timeouts** (were missing → stuck UI / battery): BLE manager 30s auto-stop backstop; client 18s
+  "Couldn't connect"; server foreground-service 33s stopSelf. Stops the server advertising forever on a
+  Receive-Only/no-connect and the client hanging on "Connecting…".
+- **Dead code removed**: NameCardBootstrapHolder reduced to the token minter (the unused
+  activeToken/recordPeer/peerTapListener bridge fields are gone — the token flows NFC-response→Intent).
+- Confirmed not-bugs: connectedDevice FGS permission is present (merges from service-android); BLE
+  runtime perms are requested by onboarding; the contact insert is off the UI thread.
+`:app:assembleDebug` BUILD SUCCESSFUL; core-protocol tests pass. Still all device-UNVERIFIED.
+
 ## [2026-06-30] Name Card (tap-to-share contacts) — P5: full chain wired + NameDrop transfer screen
 Ties the feature together end-to-end (compile-only — device-test via docs/NAMECARD_ON_DEVICE_TEST.md).
 - Trigger→server: `NameCardHceService` (tap) starts `NameCardExchangeService` (FGS, connectedDevice)

@@ -10,7 +10,10 @@ second phone). This is the script to verify it for real. You need **two Android 
 3. Tap the row → **My Name Card** → enter Name / Phone / Email (or tap **Use my phone info**) → **Save**.
 4. Back on Settings, confirm the **red dot is gone**.
 5. Repeat on the second phone with different details.
-6. First run will need: NFC enabled, Bluetooth enabled. Grant any Bluetooth permission prompts.
+6. First run will need: NFC enabled. **Bluetooth** is force-enabled at tap time via the bundled
+   **Radio Helper** (install it when prompted; same signing key) — but for the first test it's simplest
+   to have Bluetooth already ON. Grant any Bluetooth permission prompts (onboarding requests them).
+   The helper also runs a 5s heartbeat and restores Bluetooth to its prior state after the swap.
 
 ## 1. The tap (core flow)
 - **Phone A:** leave it **unlocked**, on its home screen or any screen, app **closed** (it's the "card").

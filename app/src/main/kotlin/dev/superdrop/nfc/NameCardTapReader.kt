@@ -77,7 +77,6 @@ internal class NameCardTapReader(
         }
         DiagnosticLog.w(TAG, "Name Card tap resolved peer token (${bootstrap.token.size}B)")
         onTapDiagnostic("Name Card tap: peer resolved → connecting over Bluetooth")
-        NameCardBootstrapHolder.recordPeer(bootstrap)
         onPeerBootstrap(bootstrap)
     }
 

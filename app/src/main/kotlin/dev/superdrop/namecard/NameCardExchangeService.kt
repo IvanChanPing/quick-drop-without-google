@@ -13,10 +13,14 @@ import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
+import android.bluetooth.BluetoothManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import dev.superdrop.R
 import dev.superdrop.discovery.diagnostics.DiagnosticLog
+import dev.superdrop.protocol.namecard.NameCard
+import dev.superdrop.service.radio.RadioHelperClient
+import dev.superdrop.service.radio.ShareRadioController
 
 /**
  * **Name Card exchange foreground service (card/server side).** Started from
@@ -37,6 +41,10 @@ import dev.superdrop.discovery.diagnostics.DiagnosticLog
  */
 internal class NameCardExchangeService : Service() {
     private var exchange: NameCardBleExchange? = null
+    private val timeoutHandler = android.os.Handler(android.os.Looper.getMainLooper())
+
+    /** Forces Bluetooth on for the swap + runs the 5s helper heartbeat; restored on stop. */
+    private val shareRadios by lazy { ShareRadioController(this, TAG) }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -65,6 +73,40 @@ internal class NameCardExchangeService : Service() {
             return START_NOT_STICKY
         }
 
+        // Force Bluetooth on via the helper (+ start the 5s keep-alive heartbeat so a
+        // crash mid-swap restores radios ~20s after the last beat, not minutes later).
+        shareRadios.requestRadiosOn(RadioHelperClient.RADIO_BT)
+        // The helper enables BT asynchronously; start serving once BT is actually on
+        // (immediately if already on, else after a short grace for the helper toggle).
+        startServerWhenBtReady(localCard, token, attempt = 0)
+
+        // Backstop: stop if the tapping phone never connects/exchanges (e.g. Receive-Only,
+        // which never reaches onPeerCard) so we don't advertise + foreground forever.
+        timeoutHandler.postDelayed({
+            DiagnosticLog.w(TAG, "server: exchange timeout → stop")
+            stopSelf()
+        }, SERVE_TIMEOUT_MS)
+        return START_NOT_STICKY
+    }
+
+    private fun startServerWhenBtReady(
+        localCard: NameCard,
+        token: ByteArray,
+        attempt: Int,
+    ) {
+        val adapter = getSystemService(BluetoothManager::class.java)?.adapter
+        if (adapter?.isEnabled == true || attempt >= MAX_BT_WAIT_ATTEMPTS) {
+            startServerNow(localCard, token)
+            return
+        }
+        DiagnosticLog.w(TAG, "server: BT not on yet (attempt $attempt) → waiting for helper")
+        timeoutHandler.postDelayed({ startServerWhenBtReady(localCard, token, attempt + 1) }, BT_GRACE_MS)
+    }
+
+    private fun startServerNow(
+        localCard: NameCard,
+        token: ByteArray,
+    ) {
         val ble = NameCardBleExchange(this)
         exchange = ble
         val started =
@@ -77,16 +119,17 @@ internal class NameCardExchangeService : Service() {
                 stopSelf()
             }
         if (!started) {
-            DiagnosticLog.w(TAG, "startServer failed → stop")
+            DiagnosticLog.w(TAG, "startServer failed (BT off / no perm) → stop")
             stopSelf()
-            return START_NOT_STICKY
         }
-        return START_NOT_STICKY
     }
 
     override fun onDestroy() {
+        timeoutHandler.removeCallbacksAndMessages(null)
         exchange?.stop()
         exchange = null
+        // Stop the heartbeat + restore the radios the helper turned on.
+        shareRadios.restoreRadios()
         super.onDestroy()
     }
 
@@ -121,6 +164,13 @@ internal class NameCardExchangeService : Service() {
         private const val CHANNEL_ID = "name_card_exchange"
         private const val NOTIFICATION_ID = 4310
         private const val EXTRA_TOKEN = "token"
+
+        /** Stop the service if no exchange completes (> the BLE manager's own backstop). */
+        private const val SERVE_TIMEOUT_MS = 33_000L
+
+        /** Grace between retries while the helper turns Bluetooth on, and the cap. */
+        private const val BT_GRACE_MS = 1_500L
+        private const val MAX_BT_WAIT_ATTEMPTS = 2
 
         /** Start the server-side exchange for [token] (from the HCE tap). */
         fun start(

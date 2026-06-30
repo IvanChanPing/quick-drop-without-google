@@ -528,6 +528,26 @@ P5 saves via **`ContactsContract` directly**: a `WRITE_CONTACTS` raw-contact ins
 always works). This sidesteps vCard parsing entirely. vCard is ONLY for the FUTURE native-Quick-Share
 send path (a phone without our app) — see that note. (Resolved 2026-06-30.)
 
+## P5 REVIEW PASS (2026-06-30) — gaps found + fixed
+User asked to double-check P5. Re-read the code; found and FIXED:
+- **Radio-helper + HEARTBEAT (user caught this — was MISSING).** The BLE swap needs Bluetooth ON. Now
+  both sides force it on via `ShareRadioController.requestRadiosOn(RadioHelperClient.RADIO_BT)` (which
+  also runs the **5s keep-alive heartbeat** → radios restore ~20s after the last beat if we crash) and
+  `restoreRadios()` on stop/destroy. Server = `NameCardExchangeService`; client = `NameCardTransferActivity`.
+  Helper enables BT async → added a BT-ready grace (≤2×1.5s) before starting BLE. BIND_RADIO perm +
+  helper `<queries>` already in the manifest (from file-share) → no manifest change.
+- **Timeouts (were MISSING → stuck UI + battery).** Added: BLE manager 30s backstop auto-`stop()`;
+  client Activity 18s "Couldn't connect"; server FGS 33s `stopSelf`. (Without these: Receive-Only or a
+  no-connect left the server advertising forever / the client on "Connecting…" forever.)
+- **Dead wiring removed.** `NameCardBootstrapHolder.peerTapListener`/`recordPeer`/`activeToken` were never
+  read (token flows NFC-response→Intent, not via the holder) → holder reduced to `newSession()` (token
+  minter); dropped the `recordPeer` call in `NameCardTapReader`.
+- **VERIFIED-not-a-bug:** `FOREGROUND_SERVICE_CONNECTED_DEVICE` IS declared (service-android lib manifest
+  merges in) + the existing ReceiverForegroundService uses the same `connectedDevice` type → the new FGS
+  won't crash on API34. BLE runtime perms ARE requested by onboarding (PermissionRequirements). ANR: the
+  ContactsContract insert already moved off-main.
+VERIFIED: `:app:assembleDebug` BUILD SUCCESSFUL (clean) + core-protocol tests pass. All still device-UNVERIFIED.
+
 ## CLARIFICATIONS round 4 (user, 2026-06-30)
 - **Transfer/exchange screen: NO overlay permission.** It's a normal **full-screen Activity** the tap
   drags you INTO the app for, and it EXITS when done. (Confirms P5 = plain Activity, NOT SYSTEM_ALERT_WINDOW.)

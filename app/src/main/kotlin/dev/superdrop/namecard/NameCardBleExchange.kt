@@ -33,6 +33,8 @@ import android.bluetooth.le.ScanSettings
 import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.Handler
+import android.os.Looper
 import android.os.ParcelUuid
 import androidx.core.content.ContextCompat
 import dev.superdrop.discovery.diagnostics.DiagnosticLog
@@ -77,6 +79,9 @@ internal class NameCardBleExchange(
 ) {
     private val appContext = context.applicationContext
     private val running = AtomicBoolean(false)
+
+    /** Safety-timeout handler: auto-[stop] a session that never completes (battery backstop). */
+    private val mainHandler = Handler(Looper.getMainLooper())
 
     // Server-side handles.
     private var advertiser: BluetoothLeAdvertiser? = null
@@ -148,6 +153,7 @@ internal class NameCardBleExchange(
         advertiseCallback = cb
         return try {
             advertiser.startAdvertising(advertiseSettings(), advertiseData(token), cb)
+            mainHandler.postDelayed({ stop() }, MAX_SESSION_MS)
             DiagnosticLog.w(TAG, "server: advertising token + GATT serving card(${cardBytes.size}B)")
             true
         } catch (@Suppress("TooGenericExceptionCaught") t: Throwable) {
@@ -195,6 +201,7 @@ internal class NameCardBleExchange(
         scanCallback = cb
         return try {
             scanner.startScan(listOf(filter), settings, cb)
+            mainHandler.postDelayed({ stop() }, MAX_SESSION_MS)
             DiagnosticLog.w(TAG, "client: scanning for token")
             true
         } catch (@Suppress("TooGenericExceptionCaught") t: Throwable) {
@@ -235,6 +242,7 @@ internal class NameCardBleExchange(
     /** Tear down all BLE handles. Idempotent. */
     fun stop() {
         running.set(false)
+        mainHandler.removeCallbacksAndMessages(null)
         pendingGatt = null
         pendingCharacteristic = null
         runCatching { scanCallback?.let { scanner?.stopScan(it) } }
@@ -421,6 +429,9 @@ internal class NameCardBleExchange(
 
         /** Default ATT MTU to request so a ~200-byte card writes in one go. */
         private const val REQUESTED_MTU = 247
+
+        /** Battery backstop: auto-stop a session (advertise/scan/GATT) that never completes. */
+        private const val MAX_SESSION_MS = 30_000L
 
         /** GATT service holding the single Name Card read/write characteristic. */
         val SERVICE_UUID: UUID = UUID.fromString("f0534443-0001-4000-8000-534443415244")
