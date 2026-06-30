@@ -15,10 +15,26 @@ log). Key finding: the contact-card *send* side is ~90% already built (`SuperDro
 is a working Type-4 NDEF tag HCE on the standard NDEF AID `D2760000850101`); the *receive*
 side does not exist yet. Identified the make-or-break Android NFC-role feasibility unknowns.
 
-**NEXT STEP:** P1 + P2 DONE (see below). Next = **P3: NFC trigger** — new name-card AID HCE + reader
-that just WAKES both apps (carries a tiny BLE bootstrap token, not the card), reusing the
-F00000FE2C/cold-wake patterns; must not disturb the two existing AIDs. Then P4 BLE exchange, P5
-receive activity (NameDrop-look) + save-to-contacts, P6 radio-helper BT-on, P7 diagnostics + test script.
+**NEXT STEP:** P1, P2, P2.1, P3 DONE (see below). Next = **P4: Bluetooth (BLE) rendezvous** — woken
+apps advertise/scan a BLE service filtered by the NFC bootstrap token (`NameCardBootstrapHolder.activeToken`
+/ `peerTapListener`), connect, and swap `NameCard`s (GATT; TCP shortcut on same Wi-Fi). Then P5 receive
+activity (NameDrop-look, full-screen, no overlay perm, exits when done) + ContactsContract save (NOT
+vCard), P6 radio-helper BT-on at trigger, P7 diagnostics + on-device test script.
+
+**P3 STATUS (2026-06-30, compile-verified):** NFC trigger plumbing — the tap WAKES both apps + shares a
+rendezvous token, no card data on NFC. Files: `core-protocol` `NameCardBootstrap` (fixed 17B
+version+16B token codec, `NameCardBootstrapTest` 5/5); app `dev.superdrop.nfc`: `NameCardHceService`
+(HCE card on proprietary AID **F0534443415244** = "F0"+"SDCARD"; SELECT→9000, EXCHANGE→bootstrap;
+**unlock-gated in code** via KeyguardManager→6982 when locked; mints token via holder),
+`NameCardTapReader` (foreground reader-mode SELECT+EXCHANGE→parse peer bootstrap→callback+holder),
+`NameCardBootstrapHolder` (@Volatile bridge: newSession/recordPeer/activeToken/peerTapListener).
+Manifest HCE service + `res/xml/superdrop_namecard_apduservice.xml` + string. Distinct AID from the
+iPhone NDEF (D2760000850101) + Quick Share (F00000FE2C) AIDs — all three coexist.
+VERIFIED: `:app:assembleDebug` BUILD SUCCESSFUL; bootstrap 5/5, codec 14/14.
+NOT wired yet (P4/P5): nothing arms `NameCardTapReader` (needs the foreground "share" entry, P5) or
+consumes `activeToken`/`peerTapListener` to start BLE (P4). So the HCE card is LIVE (registered, answers
+taps when unlocked) but the follow-through (BLE swap + UI) lands in P4/P5. NFC tap behaviour itself is
+device-UNVERIFIED (no NFC/2 phones here).
 
 **P2 STATUS (2026-06-30, compile-verified here):** Settings → **"Name Card"** row → **My Name Card**
 setup page. Files (app `dev.superdrop.namecard`): `NameCardProfileStore` (SharedPreferences),
@@ -462,6 +478,14 @@ CORRECTED feasibility (from [[reference_nfc_two_phone_role_control_2026_06_02]] 
   guards (Observe Mode A15+, getPhoneNumber A33+); permission-denied paths; BT-off path (radio-helper).
 - OBSERVABILITY: DiagnosticLog + on-screen tap/connect outcome from the start (reuse DiagnosticUploader pattern).
 - VERIFY REACHABILITY: compile + unit-test the device-independent core HERE; NFC/BLE/2-phone = user test script.
+
+## DECISION — saving received contacts: NO vCard import for our own flow (user hit vCard-save trouble)
+User reports trouble SAVING vCards on Android (import is OEM/Contacts-app flaky). RESOLUTION: our
+RECEIVE flow does NOT use vCard at all — the NameCard carries STRUCTURED fields (name/phone/email), so
+P5 saves via **`ContactsContract` directly**: a `WRITE_CONTACTS` raw-contact insert, OR the system
+**Add-Contact** screen prefilled via `ContactsContract.Intents.Insert` (`ACTION_INSERT`, NO permission,
+always works). This sidesteps vCard parsing entirely. vCard is ONLY for the FUTURE native-Quick-Share
+send path (a phone without our app) — see that note. (Resolved 2026-06-30.)
 
 ## CLARIFICATIONS round 4 (user, 2026-06-30)
 - **Transfer/exchange screen: NO overlay permission.** It's a normal **full-screen Activity** the tap

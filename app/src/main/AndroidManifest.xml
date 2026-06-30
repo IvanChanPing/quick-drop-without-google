@@ -477,6 +477,28 @@
         </service>
 
         <!--
+          Name Card tap HCE (proprietary AID F0534443415244). The card side of
+          the NameDrop-style tap-to-share-contacts feature: another Super Drop
+          phone in reader-mode SELECTs this AID + EXCHANGEs to read our rendezvous
+          token (NameCardHceService), waking both apps; the contact card itself is
+          then swapped over Bluetooth. Distinct AID from the iPhone NDEF service
+          and the Quick Share tap service so all three coexist. The card answers
+          only while the device is unlocked (gated in code). exported=true +
+          BIND_NFC_SERVICE: only the system NFC service binds/routes APDUs here.
+        -->
+        <service
+            android:name=".nfc.NameCardHceService"
+            android:exported="true"
+            android:permission="android.permission.BIND_NFC_SERVICE">
+            <intent-filter>
+                <action android:name="android.nfc.cardemulation.action.HOST_APDU_SERVICE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.nfc.cardemulation.host_apdu_service"
+                android:resource="@xml/superdrop_namecard_apduservice" />
+        </service>
+
+        <!--
           Consent trampoline (#22) — the screen-on, lock-screen-bypassing
           dialog opened by tapping the consent notification body.
 

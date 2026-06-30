@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  HCE descriptor for the Super Drop Name Card tap (tap-to-share contacts).
+
+  Declares the proprietary Name Card AID F0534443415244 ("F0" + ASCII "SDCARD")
+  that another Super Drop phone in reader-mode SELECTs, then issues the EXCHANGE
+  command to read our rendezvous bootstrap token (NameCardHceService). The tap is
+  only a trigger; the contact card itself is swapped afterwards over Bluetooth.
+
+  Distinct AID from the iPhone NDEF-link service (D2760000850101) and the Quick
+  Share tap service (F00000FE2C), so all three HostApduServices coexist on the
+  one NFC controller.
+
+  category="other"  -> no default-payment role required.
+  requireDeviceUnlock="false" -> the platform routes the tap to us even from the
+  lock screen, but NameCardHceService GATES on KeyguardManager.isDeviceLocked in
+  code (returns 6982 + no token while locked), so a locked phone never shares a
+  card. (Code gating is used instead of requireDeviceUnlock="true" so we don't
+  trigger the platform's "unlock then tap again" two-tap flow.)
+-->
+<host-apdu-service xmlns:android="http://schemas.android.com/apk/res/android"
+    android:description="@string/nfc_namecard_hce_service_description"
+    android:requireDeviceUnlock="false">
+    <aid-group android:description="@string/nfc_namecard_hce_service_description"
+        android:category="other">
+        <aid-filter android:name="F0534443415244" />
+    </aid-group>
+</host-apdu-service>

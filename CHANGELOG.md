@@ -1,3 +1,16 @@
+## [2026-06-30] Name Card (tap-to-share contacts) — P3: NFC trigger plumbing
+Adds the NFC tap that *triggers* a contact exchange (the card itself rides Bluetooth, P4).
+New `NameCardBootstrap` in `:core-protocol` — a fixed 17-byte tap token (version + 16-byte random
+rendezvous token; `NameCardBootstrapTest` 5/5). App `dev.superdrop.nfc`: `NameCardHceService` (HCE
+"card" on the proprietary AID **F0534443415244**; SELECT→9000, EXCHANGE→bootstrap; **answers only
+while unlocked** — KeyguardManager-gated, returns 6982 when locked so a locked phone never shares),
+`NameCardTapReader` (foreground reader-mode that reads a peer's token), `NameCardBootstrapHolder`
+(@Volatile bridge to the upcoming Bluetooth layer). Manifest HCE service +
+`superdrop_namecard_apduservice.xml` + string. Distinct AID from the iPhone NDEF (D2760000850101) and
+Quick Share (F00000FE2C) services so all three coexist. `:app:assembleDebug` BUILD SUCCESSFUL; codec
+14/14 + bootstrap 5/5. The HCE card is registered/live; arming the reader + consuming the token over
+Bluetooth are P4/P5. Real NFC tap behaviour is device-UNVERIFIED (no NFC/two phones in the build env).
+
 ## [2026-06-30] Name Card — P2.1: red dot on the Settings row when not set up
 The "Name Card" Settings row now shows the same 8dp red dot as the update badge
 (`settings_name_card_dot`, `@drawable/update_badge_dot`) when no card has been set up.

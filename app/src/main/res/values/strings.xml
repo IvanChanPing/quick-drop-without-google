@@ -592,6 +592,9 @@
     <string name="nfc_tap_hce_service_description">Super Drop tap to share</string>
 
     <!-- ===== Name Card (tap-to-share contacts) ===== -->
+    <!-- HCE service description shown in system NFC settings for the Name Card
+         tap (proprietary AID F0534443415244). -->
+    <string name="nfc_namecard_hce_service_description">Super Drop Name Card</string>
     <!-- Settings row that opens the Name Card setup screen. -->
     <string name="settings_name_card_row_title">Name Card</string>
     <string name="settings_name_card_row_subtitle">Set up the contact card you share by tapping phones</string>
