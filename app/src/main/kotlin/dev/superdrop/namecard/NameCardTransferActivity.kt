@@ -66,15 +66,16 @@ internal class NameCardTransferActivity : AppCompatActivity() {
     private var pendingSaveCard: NameCard? = null
 
     /**
-     * WRITE_CONTACTS request fired on Accept so the card can be saved DIRECTLY
-     * (auto, no extra screen). On grant → direct insert; on denial → fall back to
-     * the system Add-contact screen (no permission). Then finish either way.
+     * Contacts permissions fired on Accept: WRITE_CONTACTS to save directly (auto,
+     * no extra screen) + READ_CONTACTS so the saved contact can be opened in the
+     * Contacts app afterwards. Saves directly if WRITE is granted (auto-open works
+     * when READ is too); on WRITE denial → the system Add-contact screen.
      */
-    private val writeContactsPermission =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+    private val contactsPermission =
+        registerForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { result ->
             val card = pendingSaveCard ?: return@registerForActivityResult
             pendingSaveCard = null
-            persistCard(card, granted)
+            persistCard(card, granted = result[Manifest.permission.WRITE_CONTACTS] == true)
         }
 
     private val glow by lazy { findViewById<View>(R.id.nameCardGlow) }
@@ -186,10 +187,12 @@ internal class NameCardTransferActivity : AppCompatActivity() {
         if (NameCardSaver.hasWritePermission(this)) {
             persistCard(card, granted = true)
         } else {
-            // Ask for WRITE_CONTACTS so we can save directly (auto). The result handler
-            // persists; on denial it falls back to the system Add-contact screen.
+            // Ask for WRITE_CONTACTS (save) + READ_CONTACTS (open the saved contact). The
+            // result handler persists; on WRITE denial it falls back to the system Add-contact screen.
             pendingSaveCard = card
-            writeContactsPermission.launch(Manifest.permission.WRITE_CONTACTS)
+            contactsPermission.launch(
+                arrayOf(Manifest.permission.WRITE_CONTACTS, Manifest.permission.READ_CONTACTS),
+            )
         }
     }
 
