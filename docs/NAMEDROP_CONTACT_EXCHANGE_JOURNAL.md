@@ -528,6 +528,25 @@ P5 saves via **`ContactsContract` directly**: a `WRITE_CONTACTS` raw-contact ins
 always works). This sidesteps vCard parsing entirely. vCard is ONLY for the FUTURE native-Quick-Share
 send path (a phone without our app) — see that note. (Resolved 2026-06-30.)
 
+## REAL-APP TO-DO / DESIGN DECISIONS (from tester iteration, 2026-06-30) — NOT yet in the real app
+These came out of driving the tester; they apply to the REAL transfer screen (P5) when revisited:
+1. **Avatar fallback = MONOGRAM (initials), not emoji.** Rationale (user): the phone number is the
+   always-available minimum (works even if nothing else is set up); name→initials next; emoji optional.
+   Order: photo (full-bleed) → monogram(initials) → just the number.
+2. **Pick which number/email to share** — a tappable "+ <number> ⌄" chip under the name that opens a
+   picker (like iOS "Share Your Contact"). User feature request. (Tester demos it.)
+3. **Connecting cue (replace any "Connecting" screen):** the handshake is background; show an **edge
+   glow + top ripple OVER whatever app the user is in**, then open the card. CONFIRMED this needs the
+   **SYSTEM_ALERT_WINDOW overlay permission** → so there must be a **FALLBACK** (TBD: heads-up
+   notification, or just launch our screen immediately with the glow only inside our own window).
+   Decision pending; this is the one real feasibility gate for the ambient cue.
+4. **Transfer choreography:** card **entrance animation** (slide-up or zoom — TBD, tester A/Bs both);
+   on Share, show a brief **"sent" confirmation (ripple)** before opening the contact — don't jump
+   straight to Contacts. (User leans toward showing the "sent" cue.)
+5. **Heads-up notification:** does NOT exist anywhere yet — only ever a planned fallback for the
+   background trigger. Don't claim it's implemented.
+Tester (`/root/agent-work/projects/namecard-tester`) is the live-config sandbox for #1–#4 (commit 212d17e).
+
 ## FOLLOW-UPS (2026-06-30) — auto-open contact, comment cleanup, tester app
 1. **Auto-open saved contact:** after a direct save, `NameCardSaver.saveDirect` returns the saved
    contact's view Uri; `NameCardTransferActivity` fires `ACTION_VIEW` then finishes. Requesting it
