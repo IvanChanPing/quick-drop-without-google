@@ -221,6 +221,20 @@
          killers from severing in-flight transfers. -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
 
+    <!-- Name Card (tap-to-share contacts): the "Use my phone info" button in the
+         My Name Card setup screen reads the device "Me" contact name and the SIM
+         line number to pre-fill the card. Both are runtime-requested on demand and
+         purely optional (the user can type the card manually); a denial is handled
+         gracefully. READ_PHONE_NUMBERS is the modern (API 33+) number read;
+         READ_PHONE_STATE backs the legacy getLine1Number() path below API 33. -->
+    <uses-permission android:name="android.permission.READ_CONTACTS" />
+    <uses-permission android:name="android.permission.READ_PHONE_NUMBERS" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+    <!-- Name Card: save a received contact directly via ContactsContract. Runtime,
+         optional — if not granted, the receive screen falls back to the system
+         Add-contact screen (ACTION_INSERT), which needs no permission. -->
+    <uses-permission android:name="android.permission.WRITE_CONTACTS" />
+
     <!-- #145: probe whether a coresident pre-Bada install is still present so
          the launcher can warn the user to uninstall it. The old install
          registers a duplicate `0xFEF3` GATT advertisement service on the same
@@ -479,6 +493,67 @@
             <meta-data
                 android:name="android.service.quicksettings.TOGGLEABLE_TILE"
                 android:value="true" />
+        </service>
+
+        <!--
+          My Name Card setup screen (tap-to-share contacts). Opened from the
+          "Name Card" row in Settings; lets the user enter the contact card
+          shared when two phones tap. Not exported (in-app navigation only).
+        -->
+        <activity
+            android:name=".namecard.NameCardSetupActivity"
+            android:exported="false"
+            android:label="@string/name_card_activity_label"
+            android:parentActivityName=".MainActivity" />
+
+        <!--
+          Name Card transfer screen (tap-to-share contacts). Full-screen page that
+          a tap drags you into; shows the received card + Receive Only / Share (or
+          Save). Plain Activity — NO overlay permission, NO lock-screen bypass (it
+          only ever appears while unlocked). Launched in-app by the reader (client
+          role) and by NameCardExchangeService (server role). Not exported.
+          singleTop so a second tap reuses the open screen.
+        -->
+        <activity
+            android:name=".namecard.NameCardTransferActivity"
+            android:exported="false"
+            android:launchMode="singleTop"
+            android:excludeFromRecents="true"
+            android:label="@string/name_card_activity_label"
+            android:theme="@style/Theme.Bada.NameCardTransfer" />
+
+        <!--
+          Name Card exchange foreground service (card/server side). Started by
+          NameCardHceService on a tap to run the BLE GATT server (advertise token
+          + serve our card) and, when the peer writes its card, launch the
+          transfer screen. FGS type connectedDevice (Bluetooth); the app already
+          holds the connectedDevice FGS-type gate permission. Not exported.
+        -->
+        <service
+            android:name=".namecard.NameCardExchangeService"
+            android:exported="false"
+            android:foregroundServiceType="connectedDevice" />
+
+        <!--
+          Name Card tap HCE (proprietary AID F0534443415244). The card side of
+          the NameDrop-style tap-to-share-contacts feature: another Bada phone in
+          reader-mode SELECTs this AID + EXCHANGEs to read our rendezvous token
+          (NameCardHceService), waking both apps; the contact card itself is then
+          swapped over Bluetooth. Distinct AID from the iPhone NDEF service and the
+          Quick Share tap service so all three coexist. The card answers only while
+          the device is unlocked (gated in code). exported=true + BIND_NFC_SERVICE:
+          only the system NFC service binds/routes APDUs here.
+        -->
+        <service
+            android:name=".nfc.NameCardHceService"
+            android:exported="true"
+            android:permission="android.permission.BIND_NFC_SERVICE">
+            <intent-filter>
+                <action android:name="android.nfc.cardemulation.action.HOST_APDU_SERVICE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.nfc.cardemulation.host_apdu_service"
+                android:resource="@xml/bada_namecard_apduservice" />
         </service>
 
     </application>

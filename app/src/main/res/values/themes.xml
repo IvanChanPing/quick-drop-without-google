@@ -400,6 +400,23 @@
     </style>
 
     <!--
+      Translucent window for the Name Card transfer screen (NameCardTransferActivity).
+      Like Theme.Bada.ReceiveSheet it floats over whatever is behind it, but with NO dim
+      and no window animation, so the previous screen shows through fully and the only
+      motion is the screen's own view-level entrance/exit. Inherits Theme.Bada, so colors,
+      fonts and button styling are unchanged — this only controls window transparency.
+    -->
+    <style name="Theme.Bada.NameCardTransfer" parent="Theme.Bada">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="windowNoTitle">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:windowAnimationStyle">@null</item>
+    </style>
+
+    <!--
       Toolbar title text style — larger and bolder than the platform
       default to match the vivo / OriginOS native header pattern (the
       "연락처" title on a vivo Contacts screen sits at ~26sp bold,

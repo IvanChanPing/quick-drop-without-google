@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Name Card transfer screen (NameCardTransferActivity) — full-screen, NameDrop-
+  style. A top "light beam" glow strip; a "Connecting…" line (client) until the
+  card arrives; then the CARD — the avatar circle, name, phone, email AND the two
+  action buttons, all inside ONE container (nameCardCard) that animates as a single
+  unit (the two-phase descend+expand entrance, and the Share reverse-exit). Plain
+  Activity (no overlay permission, no lock-screen bypass); the existing app theme
+  is untouched — every animation here is view-level (ObjectAnimator / RuntimeShader).
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:id="@+id/nameCardRoot"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="?android:attr/colorBackground">
+
+    <!-- nameCardGlow — thin horizontal "light beam" across the very top; alpha pulses (tween loop). -->
+    <View
+        android:id="@+id/nameCardGlow"
+        android:layout_width="match_parent"
+        android:layout_height="6dp"
+        android:layout_gravity="top"
+        android:background="@drawable/name_card_glow" />
+
+    <!-- nameCardConnecting — centred "Connecting…" line shown (client) until the card arrives. -->
+    <TextView
+        android:id="@+id/nameCardConnecting"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center"
+        android:text="@string/name_card_transfer_connecting"
+        android:textAppearance="@style/TextAppearance.AppCompat.Medium"
+        android:textColor="?android:attr/textColorSecondary"
+        android:visibility="gone" />
+
+    <!--
+      nameCardCard — THE animated unit. Transparent, full-screen; holds the centred
+      info panel AND the bottom action row so they descend + expand together (and, on
+      Share, fly up + shrink together). Starts invisible; the entrance reveals it.
+    -->
+    <FrameLayout
+        android:id="@+id/nameCardCard"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:visibility="invisible">
+
+        <!-- nameCardPanel — avatar + name + phone + email, centred. -->
+        <LinearLayout
+            android:id="@+id/nameCardPanel"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:gravity="center_horizontal"
+            android:orientation="vertical"
+            android:paddingHorizontal="32dp">
+
+            <!-- nameCardAvatar — large blue circle with the contact's first initial. -->
+            <TextView
+                android:id="@+id/nameCardAvatar"
+                android:layout_width="96dp"
+                android:layout_height="96dp"
+                android:background="@drawable/name_card_avatar_bg"
+                android:gravity="center"
+                android:textColor="#FFFFFF"
+                android:textSize="40sp"
+                android:textStyle="bold"
+                tools:ignore="HardcodedText" />
+
+            <!-- nameCardName — large bold contact name. -->
+            <TextView
+                android:id="@+id/nameCardName"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="20dp"
+                android:textAppearance="@style/TextAppearance.AppCompat.Headline"
+                android:textColor="?android:attr/textColorPrimary"
+                android:textStyle="bold"
+                tools:ignore="HardcodedText" />
+
+            <!-- nameCardPhone — phone number line (hidden if absent). -->
+            <TextView
+                android:id="@+id/nameCardPhone"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:textAppearance="@style/TextAppearance.AppCompat.Medium"
+                android:textColor="?android:attr/textColorSecondary" />
+
+            <!-- nameCardEmail — email line (hidden if absent). -->
+            <TextView
+                android:id="@+id/nameCardEmail"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="4dp"
+                android:textAppearance="@style/TextAppearance.AppCompat.Medium"
+                android:textColor="?android:attr/textColorSecondary" />
+
+        </LinearLayout>
+
+        <!-- Action row pinned to the bottom: secondary (Receive Only / Done) + primary (Share / Save). -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom"
+            android:orientation="horizontal"
+            android:paddingHorizontal="24dp"
+            android:paddingBottom="32dp">
+
+            <!-- nameCardSecondary — left pill: "Receive Only" (client) / "Done" (server). -->
+            <Button
+                android:id="@+id/nameCardSecondary"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1" />
+
+            <Space
+                android:layout_width="12dp"
+                android:layout_height="wrap_content" />
+
+            <!-- nameCardPrimary — right pill: "Share" (client) / "Save" (server). -->
+            <Button
+                android:id="@+id/nameCardPrimary"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1" />
+
+        </LinearLayout>
+
+    </FrameLayout>
+
+</FrameLayout>

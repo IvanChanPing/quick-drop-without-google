@@ -1,0 +1,149 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  My Name Card setup screen (NameCardSetupActivity). Reached from the
+  "Name Card" row in Settings. Lets the user enter the contact card they
+  share when two phones tap (NameDrop-style).
+
+  Visual: a single rounded white panel (@drawable/settings_card_background)
+  matching the Settings cards, with a title, subtitle, three labelled text
+  fields (name / phone / email), and an action row.
+-->
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:fillViewport="true">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:paddingHorizontal="16dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="24dp">
+
+        <!-- Name Card editor panel -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/settings_card_background"
+            android:orientation="vertical"
+            android:padding="20dp">
+
+            <TextView
+                android:id="@+id/nameCardTitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="@string/name_card_setup_title"
+                android:textAppearance="@style/TextAppearance.AppCompat.Subhead"
+                android:textColor="?android:attr/textColorPrimary"
+                android:textStyle="bold" />
+
+            <TextView
+                android:id="@+id/nameCardSubtitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="6dp"
+                android:text="@string/name_card_setup_subtitle"
+                android:textAppearance="@style/TextAppearance.AppCompat.Small"
+                android:textColor="?android:attr/textColorSecondary" />
+
+            <!-- nameCardEnableRow — "Share my card when phones tap" master on/off switch.
+                 When off, this phone won't answer a tap and won't read another's card. -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <TextView
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/name_card_enable_title"
+                    android:textAppearance="@style/TextAppearance.AppCompat.Body2"
+                    android:textColor="?android:attr/textColorPrimary" />
+
+                <androidx.appcompat.widget.SwitchCompat
+                    android:id="@+id/nameCardEnableSwitch"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="12dp" />
+
+            </LinearLayout>
+
+            <!-- nameCardNameInput — "Name" text field -->
+            <EditText
+                android:id="@+id/nameCardNameInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:autofillHints="name"
+                android:hint="@string/name_card_field_name"
+                android:inputType="textPersonName"
+                android:maxLines="1" />
+
+            <!-- nameCardPhoneInput — "Phone" field -->
+            <EditText
+                android:id="@+id/nameCardPhoneInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:autofillHints="phone"
+                android:hint="@string/name_card_field_phone"
+                android:inputType="phone"
+                android:maxLines="1" />
+
+            <!-- nameCardEmailInput — "Email" field -->
+            <EditText
+                android:id="@+id/nameCardEmailInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:autofillHints="emailAddress"
+                android:hint="@string/name_card_field_email"
+                android:inputType="textEmailAddress"
+                android:maxLines="1" />
+
+            <!-- nameCardUsePhoneInfoButton — full-width pill: fills empty fields from the device "Me"/SIM -->
+            <Button
+                android:id="@+id/nameCardUsePhoneInfoButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="16dp"
+                android:text="@string/name_card_use_phone_info" />
+
+            <!-- action row: Clear (secondary) + Save (primary), mirroring the Settings two-pill rows -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:orientation="horizontal">
+
+                <Button
+                    android:id="@+id/nameCardClearButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/name_card_clear" />
+
+                <Space
+                    android:layout_width="12dp"
+                    android:layout_height="wrap_content" />
+
+                <Button
+                    android:id="@+id/nameCardSaveButton"
+                    android:layout_width="0dp"
+                    android:layout_height="wrap_content"
+                    android:layout_weight="1"
+                    android:text="@string/name_card_save"
+                    tools:ignore="ButtonStyle" />
+
+            </LinearLayout>
+
+        </LinearLayout>
+
+    </LinearLayout>
+
+</ScrollView>

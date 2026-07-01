@@ -40,6 +40,9 @@ import dev.bluehouse.bada.ui.CreditActivity
 import dev.bluehouse.bada.ui.ElasticBottomNavigationView
 import dev.bluehouse.bada.ui.SendReceiveFragment
 import dev.bluehouse.bada.ui.SettingsFragment
+import dev.bluehouse.bada.namecard.NameCardPreferences
+import dev.bluehouse.bada.namecard.NameCardTransferActivity
+import dev.bluehouse.bada.nfc.NameCardTapReader
 import dev.bluehouse.bada.update.CenteredImageSpan
 import dev.bluehouse.bada.update.CheckForUpdatesActivity
 import dev.bluehouse.bada.update.UpdateRepository
@@ -121,6 +124,17 @@ class MainActivity : AppCompatActivity() {
      * is detected (or cleared after an in-app upgrade).
      */
     private var mainToolbar: MaterialToolbar? = null
+
+    /**
+     * NFC reader for the Name Card tap-to-share-contacts feature, armed while
+     * MainActivity is foreground so "app open = ready to tap and read another
+     * phone's card" (no button). On a tap it reads the peer's rendezvous token
+     * and opens [NameCardTransferActivity] (client role) to run the Bluetooth
+     * swap. Reader-mode suppresses this phone's own HCE while the main screen is
+     * foreground, which is fine because the iPhone-NDEF / Quick Share HCE services
+     * are used from other screens, not here.
+     */
+    private var nameCardReader: NameCardTapReader? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -271,6 +285,39 @@ class MainActivity : AppCompatActivity() {
                     .setDuration(ICON_PRESS_DURATION_MS)
                     .start()
             }.start()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        armNameCardReader()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        nameCardReader?.disable()
+    }
+
+    /**
+     * Arm the Name Card NFC reader while foreground (tap-to-share-contacts). On a
+     * tap it reads the other phone's token and opens the transfer screen. Created
+     * lazily; safe to re-arm on every resume. Respects the master on/off switch in
+     * the My Name Card screen — when off, the reader stays disabled so tapping does nothing.
+     */
+    private fun armNameCardReader() {
+        if (!NameCardPreferences.from(this).isEnabled()) {
+            nameCardReader?.disable()
+            return
+        }
+        val reader =
+            nameCardReader ?: NameCardTapReader(
+                activity = this,
+                onPeerBootstrap = { bootstrap ->
+                    runOnUiThread {
+                        startActivity(NameCardTransferActivity.clientIntent(this, bootstrap.token))
+                    }
+                },
+            ).also { nameCardReader = it }
+        reader.enable()
     }
 
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
