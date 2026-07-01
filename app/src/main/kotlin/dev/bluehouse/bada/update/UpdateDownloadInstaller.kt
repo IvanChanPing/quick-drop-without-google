@@ -86,16 +86,17 @@ internal object UpdateDownloadInstaller {
         appContext: Context,
         apkUrl: String,
     ) {
-        val connection = (URL(apkUrl).openConnection() as HttpURLConnection).apply {
-            requestMethod = "GET"
-            connectTimeout = CONNECT_TIMEOUT_MS
-            readTimeout = READ_TIMEOUT_MS
-            // GitHub release assets 302-redirect to a CDN host (same https
-            // scheme); HttpURLConnection follows same-protocol redirects.
-            instanceFollowRedirects = true
-            setRequestProperty("User-Agent", "Bada-Android-UpdateInstaller")
-            setRequestProperty("Accept", "application/octet-stream")
-        }
+        val connection =
+            (URL(apkUrl).openConnection() as HttpURLConnection).apply {
+                requestMethod = "GET"
+                connectTimeout = CONNECT_TIMEOUT_MS
+                readTimeout = READ_TIMEOUT_MS
+                // GitHub release assets 302-redirect to a CDN host (same https
+                // scheme); HttpURLConnection follows same-protocol redirects.
+                instanceFollowRedirects = true
+                setRequestProperty("User-Agent", "Bada-Android-UpdateInstaller")
+                setRequestProperty("Accept", "application/octet-stream")
+            }
         try {
             val responseCode = connection.responseCode
             if (responseCode !in 200..299) {
@@ -105,7 +106,8 @@ internal object UpdateDownloadInstaller {
 
             val installer = appContext.packageManager.packageInstaller
             val params =
-                PackageInstaller.SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
+                PackageInstaller
+                    .SessionParams(PackageInstaller.SessionParams.MODE_FULL_INSTALL)
                     .apply {
                         // This APK IS our own package — declaring it lets the
                         // installer treat the operation as an update of us.

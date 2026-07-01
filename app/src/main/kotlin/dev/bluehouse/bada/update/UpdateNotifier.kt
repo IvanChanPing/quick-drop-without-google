@@ -146,8 +146,7 @@ internal object UpdateNotifier {
         return PendingIntent.getActivity(context, REQ_DOWNLOAD, intent, immutableFlags())
     }
 
-    private fun immutableFlags(): Int =
-        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+    private fun immutableFlags(): Int = PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
 
     private const val REQ_OPEN_SCREEN = 1
     private const val REQ_VIEW_GITHUB = 2
