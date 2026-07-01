@@ -52,29 +52,26 @@ internal class UpdateCheckWorker(
 ) : CoroutineWorker(appContext, params) {
     override suspend fun doWork(): Result {
         val prefs = UpdatePreferences.from(applicationContext)
-        if (!prefs.autoCheckEnabled()) return Result.success()
+        if (prefs.autoCheckEnabled()) {
+            // A fetch failure (offline / no release / JSON mismatch) is a no-op:
+            // onSuccess is skipped and we still return success (no retry-spam).
+            UpdateChecker.fetchLatestRelease().onSuccess { release ->
+                // Keep the red-dot badge source-of-truth current regardless of notify.
+                prefs.saveLatestRelease(release.version, release.releaseUrl)
 
-        val release =
-            UpdateChecker.fetchLatestRelease().getOrElse {
-                // Transient/absent release: try again on the next periodic run.
-                return Result.success()
+                if (isNewer(release.version, BuildConfig.VERSION_NAME) &&
+                    release.version != prefs.lastNotifiedVersion()
+                ) {
+                    UpdateNotifier.notifyUpdateAvailable(
+                        context = applicationContext,
+                        version = release.version,
+                        releaseUrl = release.releaseUrl,
+                        apkAssetUrl = release.apkAssetUrl,
+                    )
+                    prefs.saveNotifiedVersion(release.version)
+                }
             }
-
-        // Keep the red-dot badge source-of-truth current regardless of notify.
-        prefs.saveLatestRelease(release.version, release.releaseUrl)
-
-        if (isNewer(release.version, BuildConfig.VERSION_NAME) &&
-            release.version != prefs.lastNotifiedVersion()
-        ) {
-            UpdateNotifier.notifyUpdateAvailable(
-                context = applicationContext,
-                version = release.version,
-                releaseUrl = release.releaseUrl,
-                apkAssetUrl = release.apkAssetUrl,
-            )
-            prefs.saveNotifiedVersion(release.version)
         }
-
         return Result.success()
     }
 

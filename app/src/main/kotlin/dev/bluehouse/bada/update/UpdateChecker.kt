@@ -83,18 +83,16 @@ internal object UpdateChecker {
      * "Download & install" drop-in update; when no APK is present, the
      * caller falls back to only sending the user to the GitHub release page.
      */
-    private fun firstApkAssetUrl(assets: JSONArray?): String? {
-        if (assets == null) return null
-        for (index in 0 until assets.length()) {
-            val asset = assets.optJSONObject(index) ?: continue
-            val name = asset.optString("name")
-            val downloadUrl = asset.optString("browser_download_url")
-            if (name.endsWith(".apk", ignoreCase = true) && downloadUrl.isNotBlank()) {
-                return downloadUrl
-            }
+    private fun firstApkAssetUrl(assets: JSONArray?): String? =
+        assets?.let { array ->
+            (0 until array.length())
+                .asSequence()
+                .mapNotNull { array.optJSONObject(it) }
+                .map { it.optString("browser_download_url") to it.optString("name") }
+                .firstOrNull { (url, name) ->
+                    name.endsWith(".apk", ignoreCase = true) && url.isNotBlank()
+                }?.first
         }
-        return null
-    }
 
     private fun openConnection(): HttpURLConnection {
         val connection = URL(RELEASES_LATEST_URL).openConnection() as HttpURLConnection

@@ -64,7 +64,7 @@ class BadaApplication : Application() {
      */
     private fun scheduleAutomaticUpdateCheck() {
         val request =
-            PeriodicWorkRequestBuilder<UpdateCheckWorker>(6, TimeUnit.HOURS)
+            PeriodicWorkRequestBuilder<UpdateCheckWorker>(UPDATE_CHECK_INTERVAL_HOURS, TimeUnit.HOURS)
                 .setConstraints(
                     Constraints
                         .Builder()
@@ -78,5 +78,10 @@ class BadaApplication : Application() {
                 ExistingPeriodicWorkPolicy.UPDATE,
                 request,
             )
+    }
+
+    private companion object {
+        /** How often the automatic update check runs, in hours. */
+        private const val UPDATE_CHECK_INTERVAL_HOURS = 6L
     }
 }

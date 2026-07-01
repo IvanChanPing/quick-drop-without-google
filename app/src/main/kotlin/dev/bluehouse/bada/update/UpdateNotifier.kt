@@ -102,14 +102,15 @@ internal object UpdateNotifier {
     private fun ensureChannel(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
-        if (manager.getNotificationChannel(CHANNEL_ID) != null) return
-        manager.createNotificationChannel(
-            NotificationChannel(
-                CHANNEL_ID,
-                context.getString(R.string.update_notification_channel_name),
-                NotificationManager.IMPORTANCE_DEFAULT,
-            ).apply { description = context.getString(R.string.update_notification_channel_desc) },
-        )
+        if (manager.getNotificationChannel(CHANNEL_ID) == null) {
+            manager.createNotificationChannel(
+                NotificationChannel(
+                    CHANNEL_ID,
+                    context.getString(R.string.update_notification_channel_name),
+                    NotificationManager.IMPORTANCE_DEFAULT,
+                ).apply { description = context.getString(R.string.update_notification_channel_desc) },
+            )
+        }
     }
 
     /** Body tap → the in-app "Check for updates" screen. */

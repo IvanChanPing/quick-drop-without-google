@@ -113,12 +113,7 @@ internal object UpdateDownloadInstaller {
                     }
             val sessionId = installer.createSession(params)
             installer.openSession(sessionId).use { session ->
-                connection.inputStream.use { input ->
-                    session.openWrite("update", 0, declaredLength).use { output ->
-                        input.copyTo(output)
-                        session.fsync(output)
-                    }
-                }
+                writeApkToSession(session, connection, declaredLength)
                 val statusIntent =
                     Intent(appContext, UpdateInstallReceiver::class.java)
                         .setAction(ACTION_INSTALL_STATUS)
@@ -137,6 +132,24 @@ internal object UpdateDownloadInstaller {
             }
         } finally {
             connection.disconnect()
+        }
+    }
+
+    /**
+     * Stream the connection's body into the installer session and fsync it.
+     * Extracted from [streamInstall] to keep that method's block nesting shallow
+     * (detekt NestedBlockDepth) — the three nested `use {}` scopes live here.
+     */
+    private fun writeApkToSession(
+        session: PackageInstaller.Session,
+        connection: HttpURLConnection,
+        declaredLength: Long,
+    ) {
+        connection.inputStream.use { input ->
+            session.openWrite("update", 0, declaredLength).use { output ->
+                input.copyTo(output)
+                session.fsync(output)
+            }
         }
     }
 
@@ -174,13 +187,14 @@ internal object UpdateDownloadInstaller {
     private fun ensureChannel(context: Context) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
         val manager = context.getSystemService(NotificationManager::class.java) ?: return
-        if (manager.getNotificationChannel(CHANNEL_ID) != null) return
-        manager.createNotificationChannel(
-            NotificationChannel(
-                CHANNEL_ID,
-                context.getString(R.string.update_notification_channel_name),
-                NotificationManager.IMPORTANCE_DEFAULT,
-            ).apply { description = context.getString(R.string.update_notification_channel_desc) },
-        )
+        if (manager.getNotificationChannel(CHANNEL_ID) == null) {
+            manager.createNotificationChannel(
+                NotificationChannel(
+                    CHANNEL_ID,
+                    context.getString(R.string.update_notification_channel_name),
+                    NotificationManager.IMPORTANCE_DEFAULT,
+                ).apply { description = context.getString(R.string.update_notification_channel_desc) },
+            )
+        }
     }
 }
