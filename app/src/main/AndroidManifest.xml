@@ -358,7 +358,8 @@
             android:exported="false"
             android:launchMode="singleTop"
             android:excludeFromRecents="true"
-            android:label="@string/name_card_activity_label" />
+            android:label="@string/name_card_activity_label"
+            android:theme="@style/Theme.SuperDrop.NameCardTransfer" />
 
         <!--
           Name Card exchange foreground service (card/server side). Started by

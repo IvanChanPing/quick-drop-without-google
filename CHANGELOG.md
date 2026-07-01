@@ -1,3 +1,26 @@
+## [2026-07-01] Name Card — drop in the tester's card + AirDrop-style animation
+Replaced the Name Card transfer screen's simple fade/rise entrance with the choreography perfected in
+the standalone `namecard-tester` app (its live TUNE sliders are NOT included; the tuned values are baked
+as constants). No change to the tap→BLE→save engine, roles, or contact save — only the entrance/exit/
+ripple visuals were swapped in. Compile + `assembleDebug` VERIFIED (exit 0) on this box; the GPU/UI look
+is device-UNVERIFIED (no display here) — user device-tests it.
+- **Card = one unit.** `activity_name_card_transfer.xml` now wraps the avatar/name/phone/email AND the
+  two action buttons in a single container `nameCardCard`, so they descend + expand (and, on Share, fly
+  up + shrink) together. Added root id `nameCardRoot` for the ripple overlay.
+- **Over the previous screen.** New translucent theme `Theme.SuperDrop.NameCardTransfer` (no dim,
+  windowAnimationStyle=@null) + `overrideActivityTransition(…,0,0)` so the card floats over whatever app/
+  home screen you were on — like the tester — and the only motion is the view-level animation.
+- **Entrance** (`twoPhaseEntrance`): the small card DESCENDS (decelerate) to a stop, then EXPANDS in
+  place (accelerate factor 1.3) around a near-top pivot (0.08). tween + easing, no physics bounce.
+- **Share** (`reverseExit`): the card rises up + shrinks off the top → glow ripple → open contact.
+- **Ripples** (API 33+, guarded; skipped below): `playTriggerRipple` = pre-entrance AirDrop glow/wave on
+  a transparent layer over the previous screen (the "tap happened" cue); `playSendRipple` = the "suck the
+  card up into the island" effect on a flipped snapshot (Receive Only / Save). Verbatim AGSL from the tester.
+- **Roles wired unchanged:** CLIENT Share = shareBack + reverse-exit + ripple + save · Receive Only =
+  send ripple + decline + save · SERVER Save = send ripple + save · Done = reverse-exit + finish.
+- Files: `NameCardTransferActivity.kt`, `res/layout/activity_name_card_transfer.xml`,
+  `res/values/themes.xml`, `AndroidManifest.xml`. (Tester's `mergeToDone` button-merge not ported.)
+
 ## [2026-06-30] Name Card — auto-open saved contact + comment cleanup
 After a received card is saved directly (WRITE_CONTACTS granted), the transfer screen now opens the
 saved contact's page in the Contacts app (`NameCardSaver.saveDirect` returns the contact view Uri;

@@ -400,6 +400,31 @@
     </style>
 
     <!--
+      Theme.SuperDrop.NameCardTransfer — translucent window for the NameDrop-style
+      Name Card transfer page (NameCardTransferActivity). Same "float over whatever is
+      behind it" mechanism as Theme.SuperDrop.ReceiveSheet, but:
+        * NO dim (backgroundDimEnabled=false) — the previous app / home screen shows
+          through FULLY while the card descends + expands, exactly like the standalone
+          namecard-tester did over the home screen (user requirement 2026-07-01).
+        * windowAnimationStyle=@null — the OS window has NO open/close animation, so the
+          ONLY motion is the view-level entrance (twoPhaseEntrance) / Share reverse-exit;
+          paired with overrideActivityTransition(…,0,0) in onCreate.
+      An Activity cannot be made translucent at runtime (window opacity is fixed from the
+      theme at attach), so this theme is the only way to get the over-previous-screen
+      show-through. Inherits Theme.Bada, so all brand colors / fonts / button styling are
+      unchanged — this ONLY controls window transparency, not the visual style.
+    -->
+    <style name="Theme.SuperDrop.NameCardTransfer" parent="Theme.Bada">
+        <item name="android:windowIsTranslucent">true</item>
+        <item name="android:windowBackground">@android:color/transparent</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="windowNoTitle">true</item>
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:backgroundDimEnabled">false</item>
+        <item name="android:windowAnimationStyle">@null</item>
+    </style>
+
+    <!--
       Toolbar title text style — larger and bolder than the platform
       default to match the vivo / OriginOS native header pattern (the
       "연락처" title on a vivo Contacts screen sits at ~26sp bold,

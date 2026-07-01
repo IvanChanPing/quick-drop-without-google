@@ -1,6 +1,47 @@
 # Super Drop — NameDrop-style Contact Exchange (NFC tap → share contact when not sending a file)
 
-## CURRENT STATE / NEXT STEP
+## CURRENT STATE / NEXT STEP (2026-07-01 — tester card+animation ported into the transfer screen)
+**Task:** drop the perfected `namecard-tester` card + animation into the real Name Card page
+(`NameCardTransferActivity`), NO TUNE/sliders, keep the tap→BLE→save engine wired. User decision:
+**finish in `bada-fork` (dev.superdrop) FIRST, then debrand + PR** (do NOT do it in the debrand copy first).
+
+**DONE this session (compile-verify PENDING):**
+- `res/layout/activity_name_card_transfer.xml` — restructured so the card is ONE animated unit
+  `nameCardCard` (holds avatar/name/phone/email + the two buttons); added root id `nameCardRoot`.
+- `res/values/themes.xml` — new `Theme.SuperDrop.NameCardTransfer` (translucent, NO dim,
+  windowAnimationStyle=@null) so the card floats OVER the previous screen like the tester (user
+  requirement). Set on the activity in `AndroidManifest.xml`.
+- `NameCardTransferActivity.kt` — full port: `twoPhaseEntrance` (descend→expand), `reverseExit`
+  (Share), `playTriggerRipple` (pre-entrance over-bg ripple, API33+), `playSendRipple` (suck-up on a
+  flipped snapshot, API33+), `pressAnim`, `RippleBgView`, verbatim AGSL, baked `Anim` constants
+  (tpStopFrac .5 / descent 500 / expand 700 / ease 1.3 / pivotY .08 / start -0.3 / scaleFrom .09 /
+  shareExit 500 / trigger 1100 / sent 1200 + ripple uniforms). overrideActivityTransition(0,0) in
+  onCreate. Roles wired: CLIENT Share→shareBack+reverseExit+ripple+save · Receive Only→sendRipple+
+  decline+save · SERVER Save→sendRipple+save · Done→reverseExit+finish. `committed` guards double-tap.
+  NOTE: tester's `mergeToDone` button-merge was NOT ported (not one of the locked animations).
+- **Compile-verify IS possible on this box**: `cd bada-fork && JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+  ./gradlew :app:compileDebugKotlin -q` (SDK /opt/android-sdk). GPU/UI look stays device-UNVERIFIED.
+
+**⭐ VERIFIED PUSH / PR LAYOUT (mapped 2026-07-01 from live data — was nearly lost when another session
+left this worktree on the wrong branch):**
+- TWO clones: `/root/agent-work/projects/bada-fork` (dev.superdrop, branch `fork/superdrop-ui` = where
+  features are BUILT; ONLY place Name Card exists) and `/root/agent-work/bada-debrand`
+  (dev.bluehouse.bada = the DEBRAND copy; holds `port/debrand-to-bada`, `scrub-base`, `superdrop-pr/*`
+  PR branches). Debrand tools: `/root/agent-work/bada-port-tools/reverse_rebrand.py` + `resolve_merge.py`.
+- Remotes (both): `origin`=github.com/IvanChanPing/Bada (fork, push target), `upstream`=github.com/
+  kyujin-cho/Bada (official, PR base `main`).
+- PUSH recipe (classic PAT + Decodo residential proxy + reset the github.com cred helper first):
+  `set -a; . /root/.config/decodo/gate.env; set +a; CTOK=$(grep '^GH_CLASSIC_PAT=' /root/.config/gh/classic_pat.env|cut -d= -f2-);`
+  `git -c http.proxy="socks5h://$DECODO_GATE_USER:$DECODO_GATE_PASS@gate.decodo.com:7000"`
+  `-c credential.https://github.com.helper= -c credential.https://github.com.helper="!f(){ echo username=IvanChanPing; echo password=$CTOK; };f" push origin <branch>`.
+  (gh's default fine-grained token 403s on push.) PR via `gh pr create --repo kyujin-cho/Bada --base main`.
+  Proof: PRs #227–#234 MERGED, #246 (auto-update) OPEN on kyujin-cho/Bada.
+- Two uncommitted edits on fork/superdrop-ui (themes.xml + manifest) are KEPT (user), part of this port.
+
+**NEXT STEP:** read the background compile result; fix any errors; then commit on fork/superdrop-ui +
+CHANGELOG; hand the user a device test-script for the animation look; LATER debrand via reverse_rebrand → PR.
+
+## EARLIER STATE
 **Goal:** When two phones running Super Drop are tapped back-to-back and *neither* is
 actively sending a file, exchange contact info (name + number) like iPhone NameDrop —
 battery-free in the background. Contact comes from an in-app profile, optionally pulled
