@@ -22,6 +22,8 @@ import android.graphics.Paint
 import android.graphics.RenderEffect
 import android.graphics.RuntimeShader
 import android.graphics.Shader
+import android.nfc.NdefMessage
+import android.nfc.NfcAdapter
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -39,6 +41,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import dev.superdrop.R
 import dev.superdrop.discovery.diagnostics.DiagnosticLog
+import dev.superdrop.nfc.NameCardNdef
 import dev.superdrop.protocol.namecard.NameCard
 import dev.superdrop.service.radio.RadioHelperClient
 import dev.superdrop.service.radio.ShareRadioController
@@ -137,10 +140,40 @@ internal class NameCardTransferActivity : AppCompatActivity() {
         setContentView(R.layout.activity_name_card_transfer)
         startGlowLoop()
 
-        when (intent.getStringExtra(EXTRA_ROLE)) {
-            ROLE_SERVER -> setupServer()
+        when {
+            // Reader-side wake (Name Card v2): the OS launched us via our AAR after a both-background
+            // tap; the rendezvous token is inside the NDEF, not an Intent extra.
+            intent.action == NfcAdapter.ACTION_NDEF_DISCOVERED -> setupClientFromNdef()
+            intent.getStringExtra(EXTRA_ROLE) == ROLE_SERVER -> setupServer()
             else -> setupClient()
         }
+    }
+
+    /**
+     * Reader-side wake path (Name Card v2). Extract the rendezvous token from the AAR-carrying NDEF
+     * the OS delivered, then run the exact same BLE client exchange as the legacy foreground-reader
+     * path. Null token (someone else's tag / malformed) → finish, logged (never silent).
+     */
+    private fun setupClientFromNdef() {
+        val token = readNameCardTokenFromIntent()
+        if (token == null) {
+            DiagnosticLog.w(TAG, "NDEF launch: no Name Card token in message → finish")
+            finish()
+            return
+        }
+        DiagnosticLog.w(TAG, "NDEF launch: Name Card token (${token.size}B) → client exchange")
+        setupClientWithToken(token)
+    }
+
+    /** Pull the first Name Card rendezvous token out of the OS-delivered NDEF messages, or null. */
+    private fun readNameCardTokenFromIntent(): ByteArray? {
+        @Suppress("DEPRECATION")
+        val raw = intent.getParcelableArrayExtra(NfcAdapter.EXTRA_NDEF_MESSAGES) ?: return null
+        for (parcelable in raw) {
+            val msg = parcelable as? NdefMessage ?: continue
+            NameCardNdef.parseToken(msg)?.let { return it }
+        }
+        return null
     }
 
     /**
@@ -178,13 +211,22 @@ internal class NameCardTransferActivity : AppCompatActivity() {
         playTriggerRipple { revealAndEnter() }
     }
 
-    /** CLIENT role: run the exchange, show Connecting…, then the card + Receive Only / Share. */
+    /** CLIENT role (legacy foreground-reader path): token arrives as an Intent extra. */
     private fun setupClient() {
         val token = intent.getByteArrayExtra(EXTRA_TOKEN)
         if (token == null) {
             finish()
             return
         }
+        setupClientWithToken(token)
+    }
+
+    /**
+     * Run the BLE client exchange for [token]: resolve our own card, show Connecting…, scan+connect
+     * once Bluetooth is on, and time out gracefully. Shared by both client entry points — the legacy
+     * foreground-reader ([setupClient]) and the Name Card v2 NDEF wake ([setupClientFromNdef]).
+     */
+    private fun setupClientWithToken(token: ByteArray) {
         localCard =
             NameCardResolver(
                 storedCard = NameCardProfileStore.from(this)::load,

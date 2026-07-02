@@ -133,6 +133,16 @@ android {
         // reads BuildConfig.VERSION_NAME to compare against the latest GitHub release.
         buildConfig = true
     }
+
+    testOptions {
+        unitTests {
+            // Name Card v2's NameCardNdefTest runs under Robolectric (real android.nfc.NdefMessage/
+            // NdefRecord). Include android resources + return default values so non-shadowed platform
+            // calls (e.g. android.util.Log) don't throw "not mocked". Mirrors :discovery-android.
+            isIncludeAndroidResources = true
+            isReturnDefaultValues = true
+        }
+    }
 }
 
 android.applicationVariants.configureEach {
@@ -217,6 +227,47 @@ dependencies {
     // so the ADB client must NOT live here. See radio-helper/build.gradle.kts.
 
     testImplementation(libs.junit4)
+    testImplementation(libs.robolectric)
     androidTestImplementation(libs.androidx.test.junit)
     androidTestImplementation(libs.androidx.test.espresso.core)
+}
+
+// ---------------------------------------------------------------------------
+// Robolectric wiring for Name Card v2's NDEF codec test (NameCardNdefTest), which
+// exercises real android.nfc.NdefMessage/NdefRecord. Mirrors :discovery-android: a
+// dedicated JUnit4 Test task with the offline android-all SDK jar prepended and the
+// mockable-android stub jar filtered out (those stubs throw "Method not mocked").
+// The Robolectric test is excluded from the normal testDebugUnitTest (which uses the
+// stub classpath) and runs only in this task, which testDebugUnitTest finalizes into.
+afterEvaluate {
+    val debugUnitTest = tasks.named<Test>("testDebugUnitTest")
+    val robolectricAndroidAllClasspath =
+        configurations.detachedConfiguration(
+            dependencies.create(
+                libs.robolectric.android.all
+                    .get(),
+            ),
+        )
+    val robolectricDebugUnitTest =
+        tasks.register<Test>("robolectricDebugUnitTest") {
+            val debugClasspath =
+                debugUnitTest
+                    .get()
+                    .classpath
+                    .filter { file -> !file.name.startsWith("mockable-android") }
+            description = "Runs Robolectric JUnit4 tests for :app (Name Card NDEF codec)."
+            group = "verification"
+            testClassesDirs = debugUnitTest.get().testClassesDirs
+            classpath = files(robolectricAndroidAllClasspath) + debugClasspath
+            include("**/NameCardNdefTest.class")
+            shouldRunAfter(debugUnitTest)
+        }
+
+    debugUnitTest.configure {
+        // Robolectric test needs the real android-all SDK, not mockable-android stubs → run it only
+        // in the dedicated task above; exclude it here so the normal task doesn't fail on it.
+        exclude("**/NameCardNdefTest.class")
+        exclude("**/NameCardNdefTest$*.class")
+        finalizedBy(robolectricDebugUnitTest)
+    }
 }

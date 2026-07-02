@@ -116,6 +116,9 @@
          phones without NFC hardware (the service is simply never bound
          there). -->
     <uses-permission android:name="android.permission.NFC" />
+    <!-- Android 17+ (API 37): required for an Activity to receive NFC dispatch intents (Name Card v2
+         reader-side AAR launch). Harmless on lower API levels. -->
+    <uses-permission android:name="android.permission.DISPATCH_NFC_MESSAGE" />
     <!-- Name Card (tap-to-share contacts): the "Use my phone info" button in the
          My Name Card setup screen reads the device "Me" contact name and the SIM
          line number to pre-fill the card. Both are runtime-requested on demand and
@@ -353,13 +356,29 @@
           role) and by NameCardExchangeService (server role). Not exported.
           singleTop so a second tap reuses the open screen.
         -->
+        <!--
+          exported=true + the NDEF_DISCOVERED intent-filter: for Name Card v2, the OS launches this
+          Activity FROM CLOSED on the reading phone via our AAR after a both-background tap. Android
+          maps a TNF_EXTERNAL_TYPE record urn:nfc:ext:superdrop.dev:namecard to the URI
+          vnd.android.nfc://ext/superdrop.dev:namecard, which this filter matches (scheme/host/pathPrefix
+          form is the documented one). Lowercase throughout to avoid case-normalization misses.
+        -->
         <activity
             android:name=".namecard.NameCardTransferActivity"
-            android:exported="false"
+            android:exported="true"
             android:launchMode="singleTop"
             android:excludeFromRecents="true"
             android:label="@string/name_card_activity_label"
-            android:theme="@style/Theme.SuperDrop.NameCardTransfer" />
+            android:theme="@style/Theme.SuperDrop.NameCardTransfer">
+            <intent-filter>
+                <action android:name="android.nfc.action.NDEF_DISCOVERED" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data
+                    android:scheme="vnd.android.nfc"
+                    android:host="ext"
+                    android:pathPrefix="/superdrop.dev:namecard" />
+            </intent-filter>
+        </activity>
 
         <!--
           Name Card exchange foreground service (card/server side). Started by

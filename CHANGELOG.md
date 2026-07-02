@@ -17,6 +17,19 @@ Groundwork for the both-background NDEF+AAR tap trigger (docs/NAMECARD_V2_EXECUT
   READ it starts `NameCardExchangeService` (once, best-effort) mirroring the legacy EXCHANGE. With
   `nameCardV2` OFF (default) the at-rest branch is byte-identical to before → iPhone tap unchanged.
   VERIFIED compileDebugKotlin exit 0. On-device UNVERIFIED.
+- A4: reader-side wake. `AndroidManifest.xml` — `NameCardTransferActivity` now `exported=true` with an
+  `NDEF_DISCOVERED` intent-filter (`vnd.android.nfc://ext/superdrop.dev:namecard`) + `DISPATCH_NFC_MESSAGE`
+  perm, so the OS launches it from CLOSED via our AAR after a tap. The activity parses the token from
+  `EXTRA_NDEF_MESSAGES` and runs the shared `setupClientWithToken` path (refactored out of `setupClient`).
+- A5: `MainActivity.armNameCardReader` no longer arms the legacy foreground `NameCardTapReader` when
+  `nameCardV2` is on (reader-mode would suppress our own card and break the symmetric both-background model).
+- NDEF codec uses the REAL platform `android.nfc.NdefMessage`/`NdefRecord` (was briefly hand-rolled to dodge
+  a missing test dep — corrected per user: add the tool, don't rewrite around it). Robolectric wired into
+  `:app` (already in the catalog + used by `:discovery-android`): testOptions + a dedicated offline
+  `robolectricDebugUnitTest` task. `NameCardNdefTest` pinned `@Config(sdk=[35],
+  application=android.app.Application::class)` — SDK 35 matches the cached android-all jar (36 needs Java 21),
+  stub Application avoids BadaApplication's WorkManager init crashing the sandbox. VERIFIED: assembleDebug +
+  testDebugUnitTest (7/7) + robolectricDebugUnitTest (6/6) exit 0. On-device tap UNVERIFIED.
 
 ## [2026-07-01] Name Card — drop in the tester's card + AirDrop-style animation
 Replaced the Name Card transfer screen's simple fade/rise entrance with the choreography perfected in

@@ -328,7 +328,16 @@ class MainActivity : AppCompatActivity() {
     private fun armNameCardReader() {
         // Respect the master on/off switch (My Name Card screen). When off, don't
         // arm the reader so tapping another phone does nothing.
-        if (!NameCardPreferences.from(this).isEnabled()) {
+        val prefs = NameCardPreferences.from(this)
+        if (!prefs.isEnabled()) {
+            nameCardReader?.disable()
+            return
+        }
+        // Name Card v2 (symmetric, both-background): the reader role is the OS's own NFC poll, and our
+        // NDEF+AAR is served by SuperDropNdefApduService. Arming enableReaderMode here would suppress
+        // this phone's own card emulation and break the both-background model — so in v2 do NOT arm the
+        // legacy foreground reader.
+        if (prefs.isV2Enabled()) {
             nameCardReader?.disable()
             return
         }

@@ -212,7 +212,7 @@ public class SuperDropNdefApduService : HostApduService() {
                     val bootstrap = NameCardBootstrapHolder.newSession()
                     pendingNameCardToken = bootstrap.token
                     Log.d(TAG, "SELECT NDEF app AID -> OK; serving Name Card NDEF (v2 tap)")
-                    NameCardNdef.build(bootstrap.token, packageName)
+                    NameCardNdef.build(bootstrap.token, packageName).toByteArray()
                 }
                 // Otherwise (feature off / locked / no link): empty NDEF = a deliberate dead tap.
                 else -> {

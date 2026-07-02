@@ -5,77 +5,80 @@
  */
 package dev.superdrop.nfc
 
+import android.nfc.NdefMessage
+import android.nfc.NdefRecord
 import org.junit.Assert.assertArrayEquals
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.nio.charset.StandardCharsets
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 
 /**
- * Pure-JVM tests for [NameCardNdef] (Name Card v2 raw NDEF codec — plan Appendix A2/A6).
- * No android.nfc / no Robolectric — the codec is deliberately framework-free so it runs
- * under the repo's plain junit4 test setup.
+ * Tests for [NameCardNdef] (Name Card v2 NDEF codec — plan Appendix A2/A6). Runs under Robolectric
+ * because it exercises the real android.nfc NdefMessage/NdefRecord framework classes. Executed by the
+ * dedicated `:app:robolectricDebugUnitTest` Gradle task (offline android-all SDK).
+ *
+ * Pinned to SDK 35 (Android 15): that matches the cached `android-all-15-robolectric` jar and runs on
+ * Java 17. Without the pin Robolectric picks :app's compileSdk (36), which requires Java 21.
  */
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [35], application = android.app.Application::class)
 class NameCardNdefTest {
     private val token = ByteArray(16) { (it + 1).toByte() }
     private val pkg = "dev.superdrop.debug"
 
     @Test
     fun `build then parseToken round-trips the token`() {
-        val ndef = NameCardNdef.build(token, pkg)
-        assertArrayEquals(token, NameCardNdef.parseToken(ndef))
+        val msg = NameCardNdef.build(token, pkg)
+        assertArrayEquals(token, NameCardNdef.parseToken(msg))
     }
 
     @Test
-    fun `message frames external record first then AAR last`() {
-        val ndef = NameCardNdef.build(token, pkg)
-        // Record 1: MB=1, ME=0, SR=1, TNF=external -> 0x80|0x10|0x04 = 0x94.
-        assertTrue("rec1 MB set", (ndef[0].toInt() and 0x80) != 0)
-        assertTrue("rec1 ME clear", (ndef[0].toInt() and 0x40) == 0)
-        assertTrue("rec1 external TNF", (ndef[0].toInt() and 0x07) == 0x04)
-        // The external type string must be present verbatim (lowercase, matches manifest).
-        val typeStr = "superdrop.dev:namecard".toByteArray(StandardCharsets.US_ASCII)
-        assertTrue("ext type present", indexOf(ndef, typeStr) >= 0)
-        // AAR type + our package must be present (so the reader launches us from closed).
-        assertTrue("aar type present", indexOf(ndef, "android.com:pkg".toByteArray(StandardCharsets.US_ASCII)) >= 0)
-        assertTrue("aar payload = pkg", indexOf(ndef, pkg.toByteArray(StandardCharsets.US_ASCII)) >= 0)
-        // Last record has ME set.
-        assertTrue("some record has ME", ndef.any { (it.toInt() and 0x40) != 0 })
+    fun `build emits external record first then AAR last`() {
+        val msg = NameCardNdef.build(token, pkg)
+        assertEquals(2, msg.records.size)
+        val ext = msg.records[0]
+        assertEquals(NdefRecord.TNF_EXTERNAL_TYPE, ext.tnf)
+        assertArrayEquals("superdrop.dev:namecard".toByteArray(Charsets.US_ASCII), ext.type)
+        assertEquals(17, ext.payload.size)
+        assertEquals(0x01.toByte(), ext.payload[0])
+        // Record 2 is the AAR for our package (must be last so nothing shadows it in dispatch).
+        assertArrayEquals(
+            NdefRecord.createApplicationRecord(pkg).toByteArray(),
+            msg.records[1].toByteArray(),
+        )
     }
 
     @Test
-    fun `parseToken ignores an AAR-only message`() {
-        // Hand-build a lone AAR record (external TNF, type android.com:pkg) -> must be null.
-        val aarType = "android.com:pkg".toByteArray(StandardCharsets.US_ASCII)
-        val aarPayload = pkg.toByteArray(StandardCharsets.US_ASCII)
-        val rec = byteArrayOf((0x80 or 0x40 or 0x10 or 0x04).toByte(), aarType.size.toByte(), aarPayload.size.toByte()) +
-            aarType + aarPayload
-        assertNull(NameCardNdef.parseToken(rec))
+    fun `parseToken ignores the AAR record even though it is external-type`() {
+        val onlyAar = NdefMessage(arrayOf(NdefRecord.createApplicationRecord(pkg)))
+        assertNull(NameCardNdef.parseToken(onlyAar))
     }
 
     @Test
     fun `parseToken rejects a foreign external type`() {
-        val foreignType = "evil.example:namecard".toByteArray(StandardCharsets.US_ASCII)
         val payload = ByteArray(17).also { it[0] = 0x01 }
-        val rec = byteArrayOf((0x80 or 0x40 or 0x10 or 0x04).toByte(), foreignType.size.toByte(), payload.size.toByte()) +
-            foreignType + payload
-        assertNull(NameCardNdef.parseToken(rec))
+        val foreign = NdefMessage(arrayOf(NdefRecord.createExternal("evil.example", "namecard", payload)))
+        assertNull(NameCardNdef.parseToken(foreign))
     }
 
     @Test
-    fun `parseToken rejects wrong version`() {
-        // Same framing as ours but version byte 0x02.
-        val type = "superdrop.dev:namecard".toByteArray(StandardCharsets.US_ASCII)
-        val payload = ByteArray(17).also { it[0] = 0x02 }
-        val rec = byteArrayOf((0x80 or 0x40 or 0x10 or 0x04).toByte(), type.size.toByte(), payload.size.toByte()) +
-            type + payload
-        assertNull(NameCardNdef.parseToken(rec))
-    }
-
-    @Test
-    fun `parseToken returns null on truncated garbage`() {
-        assertNull(NameCardNdef.parseToken(byteArrayOf(0x94.toByte(), 0x16, 0x11, 0x00)))
-        assertNull(NameCardNdef.parseToken(ByteArray(0)))
+    fun `parseToken rejects wrong version and wrong payload size`() {
+        val badVersion = ByteArray(17).also { it[0] = 0x02 }
+        val short = ByteArray(5).also { it[0] = 0x01 }
+        assertNull(
+            NameCardNdef.parseToken(
+                NdefMessage(arrayOf(NdefRecord.createExternal("superdrop.dev", "namecard", badVersion))),
+            ),
+        )
+        assertNull(
+            NameCardNdef.parseToken(
+                NdefMessage(arrayOf(NdefRecord.createExternal("superdrop.dev", "namecard", short))),
+            ),
+        )
     }
 
     @Test
@@ -87,13 +90,5 @@ class NameCardNdefTest {
             threw = true
         }
         assertTrue(threw)
-    }
-
-    private fun indexOf(haystack: ByteArray, needle: ByteArray): Int {
-        outer@ for (i in 0..haystack.size - needle.size) {
-            for (j in needle.indices) if (haystack[i + j] != needle[j]) continue@outer
-            return i
-        }
-        return -1
     }
 }
