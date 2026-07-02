@@ -1,3 +1,17 @@
+## [2026-07-02] Name Card v2 (symmetric NameDrop) — Phase-1 A1+A2: pref gate + NDEF codec
+Groundwork for the both-background NDEF+AAR tap trigger (docs/NAMECARD_V2_EXECUTOR_PLAN.md Appendix A).
+- `NameCardPreferences`: added `isV2Enabled()/setV2Enabled()` (key `v2_symmetric`, DEFAULT OFF) — dev
+  gate; shipped asymmetric flow untouched until flipped on and device-proven.
+- NEW `nfc/NameCardNdef.kt`: pure raw-byte NDEF codec — `build(token,pkg)` = external record
+  `superdrop.dev:namecard [0x01][16B token]` + AAR(pkg); `parseToken(ndefBytes)` extracts it, matching
+  our exact external type (ignores the AAR, which is also an external record). Hand-rolled raw bytes
+  (no android.nfc) to match the existing `SuperDropNdefApduService.buildUriNdefMessage` house style AND
+  be unit-testable under the repo's plain junit4 (no Robolectric). Reader side will call
+  `parseToken(ndefMessage.toByteArray())`.
+- NEW `test/.../nfc/NameCardNdefTest.kt`: 7 pure-JVM tests (round-trip, framing, AAR-ignored,
+  foreign-type/wrong-version rejected, truncated→null, bad token length). VERIFIED: compileDebugKotlin
+  + testDebugUnitTest exit 0, 7 tests 0 failures. On-device tap UNVERIFIED (no NFC hardware here).
+
 ## [2026-07-01] Name Card — drop in the tester's card + AirDrop-style animation
 Replaced the Name Card transfer screen's simple fade/rise entrance with the choreography perfected in
 the standalone `namecard-tester` app (its live TUNE sliders are NOT included; the tuned values are baked

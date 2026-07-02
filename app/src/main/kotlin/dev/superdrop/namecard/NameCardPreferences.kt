@@ -35,9 +35,27 @@ internal class NameCardPreferences(
         prefs.edit().putBoolean(KEY_ENABLED, enabled).apply()
     }
 
+    /**
+     * **Name Card v2 (symmetric NameDrop) dev gate.** When true, the both-background
+     * NDEF+AAR tap trigger is live: [dev.superdrop.nfc.SuperDropNdefApduService] serves
+     * the Name Card NDEF (token + AAR) whenever the QR pairing link is NOT armed, and
+     * [dev.superdrop.MainActivity] does NOT arm the legacy foreground
+     * [dev.superdrop.nfc.NameCardTapReader] (reader-mode would suppress our own card and
+     * break the symmetric model). Default **false** while the v2 flow is device-unproven —
+     * flipping the default to true (Name Card = the always-on default NFC feature per the
+     * three-feature priority ladder) is the post-verification step. See
+     * docs/NAMECARD_V2_EXECUTOR_PLAN.md Appendix A1/A5.
+     */
+    fun isV2Enabled(): Boolean = prefs.getBoolean(KEY_V2, false)
+
+    fun setV2Enabled(enabled: Boolean) {
+        prefs.edit().putBoolean(KEY_V2, enabled).apply()
+    }
+
     companion object {
         private const val PREFS_NAME = "bada.name_card_prefs"
         private const val KEY_ENABLED = "enabled"
+        private const val KEY_V2 = "v2_symmetric"
 
         fun from(context: Context): NameCardPreferences =
             NameCardPreferences(

@@ -1,5 +1,33 @@
 # Super Drop — NameDrop-style Contact Exchange (NFC tap → share contact when not sending a file)
 
+> **PLANNED NEXT (not started):** symmetric consent / waiting-flow redesign + persistent live BLE link
+> + NDEF/AAR both-background trigger. Full plan + to-do: **`docs/NAMECARD_CONSENT_REDESIGN_PLAN.md`**.
+> Holding in planning mode until the user says go.
+>
+> **⭐ CURRENT STATE 2026-07-02 (build in progress, paused for grounding):** Phase-0 harness BUILT
+> (`namecard-tap-harness`, commit 8a129ba, served) — diagnostic tool, NOT a gate (user decision).
+> AID conflict found + resolved: v2 NDEF trigger goes in `SuperDropNdefApduService`'s at-rest
+> branch (plan §G2), NOT a second aid-group. THREE-NFC-FEATURE MAP grounded + saved
+> (memory `reference_bada_three_nfc_features_map_2026_07_02`): (1) QR-link tap D276 armed only
+> while QR panel open; (2) send-sheet Quick Share tap F00000FE2C (reader + receiver halves);
+> (3) Name Card = **DEFAULT, always running whenever 1/2 aren't** (user requirement). NEXT =
+> execute **APPENDIX A (PHASE 1 EXACT STEP-BY-STEP)** at the bottom of `docs/NAMECARD_V2_EXECUTOR_PLAN.md`
+> — A1 add `nameCardV2` pref (default OFF) → A2 new `nfc/NameCardNdef.kt` (build/parseToken + unit test)
+> → A3 merge Name Card NDEF into `SuperDropNdefApduService.refreshNdefForCurrentLink()` at-rest branch +
+> fire `NameCardExchangeService.start` on first NDEF READ → A4 manifest NDEF_DISCOVERED filter +
+> reader-side token parse in `NameCardTransferActivity` → A5 park `NameCardTapReader` when v2 on → A6
+> exit checks. Build cmd + every signature code-verified 2026-07-02 in Appendix A. All gated by
+> `nameCardV2` (default OFF) → shipped flow untouched. HAND OPUS THIS FILE, start at Appendix A.
+>
+> **⭐ EXECUTOR-GRADE BUILD PLAN (approved by user 2026-07-02, NOT yet built):**
+> **`docs/NAMECARD_V2_EXECUTOR_PLAN.md`** — byte-exact, self-contained spec written so ANY model can
+> build Name Card v2 (both-background NDEF+AAR tap trigger → symmetric consent over a live GATT
+> CONSENT channel → §3 matrix UI states) without improvising: full T4T APDU table, consent wire
+> opcodes + state-machine table, per-file steps, 10 pre-decided gotchas (G1–G10), build order with
+> a Phase-0 20-tap hardware gate, and user test scripts. A fresh/lower-model session should READ
+> THAT FILE FIRST and follow its §0 execution rules. Feasibility research behind it:
+> memory `reference_android_both_background_nfc_trigger_apis_2026_07_01.md` (AOSP+ECMA-340, resolved).
+
 ## CURRENT STATE / NEXT STEP (2026-07-01 — tester card+animation ported into the transfer screen)
 **Task:** drop the perfected `namecard-tester` card + animation into the real Name Card page
 (`NameCardTransferActivity`), NO TUNE/sliders, keep the tap→BLE→save engine wired. User decision:
@@ -38,8 +66,21 @@ left this worktree on the wrong branch):**
   Proof: PRs #227–#234 MERGED, #246 (auto-update) OPEN on kyujin-cho/Bada.
 - Two uncommitted edits on fork/superdrop-ui (themes.xml + manifest) are KEPT (user), part of this port.
 
-**NEXT STEP:** read the background compile result; fix any errors; then commit on fork/superdrop-ui +
-CHANGELOG; hand the user a device test-script for the animation look; LATER debrand via reverse_rebrand → PR.
+**DONE (fork):** animation ported, compile + assembleDebug + committed (49d39a8 on fork/superdrop-ui).
+
+**DONE (debrand + upstream PR — 2026-07-01):** ported the WHOLE Name Card feature into `bada-debrand`
+(dev.bluehouse.bada) on branch `superdrop-pr/name-card` off `upstream/main`: 22 new files via
+`reverse_rebrand.py` (+ manual `git mv superdrop_namecard_apduservice.xml → bada_namecard_apduservice.xml`
+— reverse_rebrand does NOT rename lowercase `superdrop_` basenames), and hand-ported the 6 shared-file
+additions (AndroidManifest, MainActivity, SettingsFragment, fragment_settings.xml, strings.xml, themes.xml)
+onto upstream's versions. Fixed detekt (CI gate) with house-style `@Suppress` + wrapped long lines; scrubbed
+all oversharing from code comments (removed Status/compile-only/device-verified/UNVERIFIED essays,
+namecard-tester / airdrop-ripple-demo refs, "user requirement"). VERIFIED on box: assembleDebug + detekt +
+:core-protocol:test + :app:testDebugUnitTest all exit 0. Pushed via classic PAT + Decodo proxy.
+**PR OPEN: https://github.com/kyujin-cho/Bada/pull/247** (commit efcded1; body = clean human copy, no hedging).
+
+**NEXT STEP:** user device-tests the animation look (2 phones) via `docs/NAMECARD_ON_DEVICE_TEST.md`; watch
+PR #247 CI + review. GPU/UI look still device-UNVERIFIED (internal note; not in the public PR).
 
 ## EARLIER STATE
 **Goal:** When two phones running Super Drop are tapped back-to-back and *neither* is
