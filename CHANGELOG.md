@@ -11,6 +11,12 @@ Groundwork for the both-background NDEF+AAR tap trigger (docs/NAMECARD_V2_EXECUT
 - NEW `test/.../nfc/NameCardNdefTest.kt`: 7 pure-JVM tests (round-trip, framing, AAR-ignored,
   foreign-type/wrong-version rejected, truncated→null, bad token length). VERIFIED: compileDebugKotlin
   + testDebugUnitTest exit 0, 7 tests 0 failures. On-device tap UNVERIFIED (no NFC hardware here).
+- A3: `SuperDropNdefApduService` now serves TWO payloads on D2760000850101 — the QR pairing link
+  when armed (feature 1, UNCHANGED, always wins), else the Name Card NDEF+AAR when v2+enabled+unlocked
+  (feature 3, the always-on default), else empty NDEF (dead tap, as before). On the first NDEF-file
+  READ it starts `NameCardExchangeService` (once, best-effort) mirroring the legacy EXCHANGE. With
+  `nameCardV2` OFF (default) the at-rest branch is byte-identical to before → iPhone tap unchanged.
+  VERIFIED compileDebugKotlin exit 0. On-device UNVERIFIED.
 
 ## [2026-07-01] Name Card — drop in the tester's card + AirDrop-style animation
 Replaced the Name Card transfer screen's simple fade/rise entrance with the choreography perfected in
