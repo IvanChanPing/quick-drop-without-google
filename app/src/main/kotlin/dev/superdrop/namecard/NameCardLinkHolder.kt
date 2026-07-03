@@ -78,6 +78,15 @@ internal object NameCardLinkHolder {
         @Volatile
         var onClosed: (() -> Unit)? = null
 
+        /**
+         * The card actually transmitted on Share — [localCard] filtered by the field-picker
+         * (which of phone/email the user checked to share). The activity updates this as the user
+         * toggles the share checkboxes; defaults to the full [localCard]. See
+         * [NameCardTransferActivity]'s share-field picker.
+         */
+        @Volatile
+        var shareCard: NameCard? = localCard
+
         // ---- driven by the UI (main thread) ----
 
         fun onLocalShare() = apply(machine.onEvent(Event.LocalShare))
@@ -119,7 +128,7 @@ internal object NameCardLinkHolder {
                 uiObserver?.onConsentEffect(effect)
                 when (effect) {
                     is Effect.SendChoice -> exchange.sendLocalChoice(effect.share)
-                    Effect.TransmitCard -> localCard?.let { exchange.transmitCard(it) }
+                    Effect.TransmitCard -> shareCard?.let { exchange.transmitCard(it) }
                     Effect.CloseLink -> {
                         exchange.sendByeAndClose()
                         onClosed?.invoke()

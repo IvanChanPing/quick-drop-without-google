@@ -16,28 +16,36 @@ import android.animation.ValueAnimator
 import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.graphics.Bitmap
 import android.graphics.BitmapShader
 import android.graphics.Canvas
+import android.graphics.Color
 import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.RenderEffect
 import android.graphics.RuntimeShader
 import android.graphics.Shader
+import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.GradientDrawable
 import android.nfc.NdefMessage
 import android.nfc.NfcAdapter
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
 import android.view.animation.AccelerateDecelerateInterpolator
 import android.view.animation.AccelerateInterpolator
 import android.view.animation.DecelerateInterpolator
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.FrameLayout
 import android.widget.ImageView
+import android.widget.LinearLayout
+import android.widget.PopupWindow
 import android.widget.TextView
 import android.content.pm.PackageManager
 import androidx.activity.result.contract.ActivityResultContracts
@@ -118,6 +126,12 @@ internal class NameCardTransferActivity : AppCompatActivity() {
     /** True while the consent heads-up notification is posted (so it's cancelled exactly once). */
     private var v2NotificationShown = false
 
+    /** Which of your card's fields you share; toggled in the nameCardShareBox menu. Name is always shared. */
+    private enum class ShareKey { PHONE, EMAIL }
+
+    /** The currently-checked share fields (default: everything present). Filters what's transmitted. */
+    private val selectedShares = linkedSetOf<ShareKey>()
+
     /**
      * Bridges the live [NameCardLinkHolder.Session] to this screen. The holder already delivers on the
      * main thread; the extra [runOnUiThread] is a cheap safety net.
@@ -163,6 +177,12 @@ internal class NameCardTransferActivity : AppCompatActivity() {
     private val nameView by lazy { findViewById<TextView>(R.id.nameCardName) }
     private val phoneView by lazy { findViewById<TextView>(R.id.nameCardPhone) }
     private val emailView by lazy { findViewById<TextView>(R.id.nameCardEmail) }
+
+    /** nameCardShareBox — the one rounded pill wrapping phone+email; tap opens the field-share menu. */
+    private val shareBox by lazy { findViewById<LinearLayout>(R.id.nameCardShareBox) }
+
+    /** nameCardShareChevron — the ▾ arrow on the pill; shown only on the v2 own-card screen. */
+    private val shareChevron by lazy { findViewById<TextView>(R.id.nameCardShareChevron) }
     private val connecting by lazy { findViewById<TextView>(R.id.nameCardConnecting) }
     private val primary by lazy { findViewById<Button>(R.id.nameCardPrimary) }
     private val secondary by lazy { findViewById<Button>(R.id.nameCardSecondary) }
@@ -398,6 +418,7 @@ internal class NameCardTransferActivity : AppCompatActivity() {
     private fun attachAndShowV2() {
         v2Session?.uiObserver = v2Observer
         localCard?.let { bindCard(it) }
+        setupShareFieldPicker()
         connecting.visibility = View.GONE
         // nameCardPrimary → "Share"; nameCardSecondary → "Receive Only". Disabled until onV2Ready().
         primary.text = getString(R.string.name_card_transfer_share)
@@ -423,6 +444,7 @@ internal class NameCardTransferActivity : AppCompatActivity() {
     private fun onV2LocalChoice(share: Boolean) {
         if (committed) return
         committed = true
+        lockShareFields() // freeze which fields are shared once you've chosen
         primary.isEnabled = false
         secondary.isEnabled = false
         pressAnim(if (share) primary else secondary)
@@ -534,6 +556,153 @@ internal class NameCardTransferActivity : AppCompatActivity() {
     /** Peer only speaks v1 — log; the receive still works (its card write/read reaches the machine). */
     private fun onV2LegacyPeer() {
         DiagnosticLog.w(TAG, "v2: legacy peer — falling back to a plain receive (device-tuned)")
+    }
+
+    // ---- v2 share-field picker (ported from namecard-tester DemoActivity checkbox menu) ----
+
+    /**
+     * Set up the `nameCardShareBox` pill (own-card, v2 only): seed [selectedShares] to every present
+     * field (share everything by default), reveal the ▾ chevron, and make the WHOLE pill open the
+     * checkbox menu. Hidden if the card has neither phone nor email (nothing to pick).
+     */
+    private fun setupShareFieldPicker() {
+        val card = localCard
+        val hasPhone = card?.phoneNumber?.isNotBlank() == true
+        val hasEmail = card?.email?.isNotBlank() == true
+        if (!hasPhone && !hasEmail) {
+            shareBox.visibility = View.GONE
+            return
+        }
+        selectedShares.clear()
+        if (hasPhone) selectedShares.add(ShareKey.PHONE)
+        if (hasEmail) selectedShares.add(ShareKey.EMAIL)
+        shareChevron.visibility = View.VISIBLE
+        applyShareDim()
+        updateSessionShareCard()
+        shareBox.setOnClickListener { showShareFieldMenu(shareBox) }
+    }
+
+    /** Build + show the checkbox pop-up ABOVE the pill: one row per present field, blue checks. */
+    private fun showShareFieldMenu(anchor: View) {
+        val card = localCard ?: return
+        val d = resources.displayMetrics.density
+        val menu =
+            LinearLayout(this).apply {
+                orientation = LinearLayout.VERTICAL
+                background =
+                    GradientDrawable().apply {
+                        cornerRadius = 16 * d
+                        setColor(Color.WHITE)
+                    }
+                elevation = 24 * d
+                val vp = (8 * d).toInt()
+                setPadding(0, vp, 0, vp)
+            }
+        val rows = mutableListOf<Pair<ShareKey, String>>()
+        card.phoneNumber?.takeIf { it.isNotBlank() }?.let { rows.add(ShareKey.PHONE to it) }
+        card.email?.takeIf { it.isNotBlank() }?.let { rows.add(ShareKey.EMAIL to it) }
+        for ((i, entry) in rows.withIndex()) {
+            val (key, label) = entry
+            val cb =
+                CheckBox(this).apply {
+                    isChecked = selectedShares.contains(key)
+                    isClickable = false // the row handles the toggle
+                    buttonTintList = ColorStateList.valueOf(SHARE_CHECK_COLOR)
+                }
+            val text =
+                TextView(this).apply {
+                    this.text = label
+                    textSize = 16f
+                    setTextColor(SHARE_MENU_TEXT_COLOR)
+                    layoutParams =
+                        LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply {
+                            leftMargin = (10 * d).toInt()
+                        }
+                }
+            val row =
+                LinearLayout(this).apply {
+                    orientation = LinearLayout.HORIZONTAL
+                    gravity = Gravity.CENTER_VERTICAL
+                    setPadding((14 * d).toInt(), (12 * d).toInt(), (18 * d).toInt(), (12 * d).toInt())
+                    addView(cb)
+                    addView(text)
+                    setOnClickListener {
+                        toggleShare(key)
+                        cb.isChecked = selectedShares.contains(key)
+                    }
+                }
+            menu.addView(row)
+            if (i < rows.size - 1) {
+                menu.addView(
+                    View(this).apply {
+                        layoutParams =
+                            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, maxOf(1, (0.5f * d).toInt()))
+                        setBackgroundColor(0x1F000000)
+                    },
+                )
+            }
+        }
+        val menuW = (240 * d).toInt()
+        val pop = PopupWindow(menu, menuW, ViewGroup.LayoutParams.WRAP_CONTENT, true)
+        pop.setBackgroundDrawable(ColorDrawable(Color.TRANSPARENT))
+        pop.elevation = 24 * d
+        menu.measure(
+            View.MeasureSpec.makeMeasureSpec(menuW, View.MeasureSpec.EXACTLY),
+            View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED),
+        )
+        val menuH = menu.measuredHeight
+        val loc = IntArray(2)
+        anchor.getLocationInWindow(loc)
+        val x = loc[0] + anchor.width / 2 - menuW / 2
+        val y = loc[1] - menuH - (8 * d).toInt()
+        pop.showAtLocation(anchor, Gravity.NO_GRAVITY, x, y)
+    }
+
+    /** Toggle a field in/out of [selectedShares]; refuse to leave a card with zero fields when it has no name. */
+    private fun toggleShare(key: ShareKey) {
+        if (selectedShares.contains(key)) {
+            if (selectedShares.size == 1 && localCard?.displayName.isNullOrBlank()) {
+                return // a NameCard needs at least one of name/phone/email
+            }
+            selectedShares.remove(key)
+        } else {
+            selectedShares.add(key)
+        }
+        applyShareDim()
+        updateSessionShareCard()
+    }
+
+    /** Dim the phone/email lines that aren't currently selected to share. */
+    private fun applyShareDim() {
+        phoneView.alpha = if (ShareKey.PHONE in selectedShares) 1f else SHARE_DIM_ALPHA
+        emailView.alpha = if (ShareKey.EMAIL in selectedShares) 1f else SHARE_DIM_ALPHA
+    }
+
+    /** Push the filtered card onto the live session so `TransmitCard` sends only the checked fields. */
+    private fun updateSessionShareCard() {
+        v2Session?.shareCard = filteredShareCard()
+    }
+
+    private fun filteredShareCard(): NameCard? {
+        val base = localCard ?: return null
+        return runCatching {
+            NameCard(
+                version = base.version,
+                displayName = base.displayName,
+                phoneNumber = if (ShareKey.PHONE in selectedShares) base.phoneNumber else null,
+                email = if (ShareKey.EMAIL in selectedShares) base.email else null,
+                extraFields = base.extraFields,
+            )
+        }.getOrElse {
+            DiagnosticLog.w(TAG, "share filter produced an invalid card → sending the full card")
+            base
+        }
+    }
+
+    /** After a choice is committed, freeze the selection: the pill no longer opens the menu. */
+    private fun lockShareFields() {
+        shareBox.setOnClickListener(null)
+        shareBox.isClickable = false
     }
 
     // ---- entrance / exit / ripple (ported from namecard-tester, values baked in [Anim]) ----
@@ -926,6 +1095,11 @@ internal class NameCardTransferActivity : AppCompatActivity() {
         private const val DECLINE_FADE_MS = 300L
         private const val CONSENT_CHANNEL_ID = "namecard_consent"
         private const val CONSENT_NOTIFICATION_ID = 4311
+
+        // Share-field picker (nameCardShareBox menu).
+        private const val SHARE_CHECK_COLOR = 0xFF0A84FF.toInt() // blue check tint
+        private const val SHARE_MENU_TEXT_COLOR = 0xFF1C1C1E.toInt() // near-black menu label
+        private const val SHARE_DIM_ALPHA = 0.35f // unchecked phone/email line dim
 
         /**
          * The AirDrop "suck into the Dynamic Island" ripple — VERBATIM AGSL from the

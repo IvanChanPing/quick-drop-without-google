@@ -78,23 +78,63 @@
                 android:textStyle="bold"
                 tools:ignore="HardcodedText" />
 
-            <!-- nameCardPhone — phone number line (hidden if absent). -->
-            <TextView
-                android:id="@+id/nameCardPhone"
+            <!-- nameCardShareBox — ONE rounded pill wrapping the phone + email lines together with a
+                 single down-chevron on the right. Tapping the WHOLE box (not the fields individually)
+                 opens the "which fields to share" checkbox menu; unchecked fields dim inside the box.
+                 Hidden entirely if neither phone nor email is present. -->
+            <LinearLayout
+                android:id="@+id/nameCardShareBox"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="8dp"
-                android:textAppearance="@style/TextAppearance.AppCompat.Medium"
-                android:textColor="?android:attr/textColorSecondary" />
+                android:layout_marginTop="12dp"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:background="@drawable/name_card_share_box_bg"
+                android:paddingStart="16dp"
+                android:paddingEnd="12dp"
+                android:paddingTop="8dp"
+                android:paddingBottom="8dp"
+                android:clickable="true"
+                android:focusable="true">
 
-            <!-- nameCardEmail — email line (hidden if absent). -->
-            <TextView
-                android:id="@+id/nameCardEmail"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
-                android:textAppearance="@style/TextAppearance.AppCompat.Medium"
-                android:textColor="?android:attr/textColorSecondary" />
+                <LinearLayout
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:orientation="vertical">
+
+                    <!-- nameCardPhone — phone number line (dimmed when unchecked; gone if absent). -->
+                    <TextView
+                        android:id="@+id/nameCardPhone"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textAppearance="@style/TextAppearance.AppCompat.Medium"
+                        android:textColor="?android:attr/textColorSecondary" />
+
+                    <!-- nameCardEmail — email line (dimmed when unchecked; gone if absent). -->
+                    <TextView
+                        android:id="@+id/nameCardEmail"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="2dp"
+                        android:textAppearance="@style/TextAppearance.AppCompat.Medium"
+                        android:textColor="?android:attr/textColorSecondary" />
+
+                </LinearLayout>
+
+                <!-- nameCardShareChevron — the single ▾ arrow showing the pill opens a picker menu.
+                     Hidden by default; shown only on the v2 own-card screen (setupShareFieldPicker). -->
+                <TextView
+                    android:id="@+id/nameCardShareChevron"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="10dp"
+                    android:text="▾"
+                    android:textColor="?android:attr/textColorSecondary"
+                    android:textSize="16sp"
+                    android:visibility="gone"
+                    tools:ignore="HardcodedText" />
+
+            </LinearLayout>
 
         </LinearLayout>
 

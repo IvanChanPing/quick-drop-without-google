@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  name_card_share_box_bg — PILL (capsule) background for nameCardShareBox on the Name Card transfer
+  screen: a soft translucent grey fill + a faint 1dp border, fully-rounded ends (radius clamps to
+  half-height). Wraps the phone + email lines so the whole pill reads as one tappable control that
+  opens the "which fields to share" menu.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <corners android:radius="999dp" />
+    <solid android:color="#0F888888" />
+    <stroke
+        android:width="1dp"
+        android:color="#33888888" />
+</shape>

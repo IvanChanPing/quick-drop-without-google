@@ -1,3 +1,15 @@
+## [2026-07-03] Name Card v2 — share-field picker pill (ported from tester; compile-only)
+Ported the checkbox share-field picker from `namecard-tester` into the real v2 transfer screen (user
+request). `NameCardTransferActivity` + layout: phone + email are now wrapped in ONE rounded **pill**
+(`nameCardShareBox`, capsule `name_card_share_box_bg.xml`) with a single ▾ chevron; tapping the whole
+pill opens a checkbox pop-up (`showShareFieldMenu`) to pick which fields to share. Toggling dims the
+unchecked line and updates `selectedShares`; the transmitted card is filtered to the checked fields
+via a new `NameCardLinkHolder.Session.shareCard` (TransmitCard now sends `shareCard`, not the full
+card). Name is always shared; a guard keeps ≥1 field when the card has no name. The pill/chevron +
+tap are v2-own-card only (hidden/inert on the legacy peer-card screen); the selection freezes once a
+choice is committed (`lockShareFields`). Build + unit tests + assembleDebug green. bada-fork only —
+NOT in PR #251 (which never had the picker). UI DEVICE-UNVERIFIED.
+
 ## [2026-07-03] Shizuku in-app radio path — Phase 1: user service + AIDL (compile-only)
 Scaffolding for "Path B": when Shizuku is present the main app does all silent Wi-Fi/BT toggling
 itself (as the shell UID, via Shizuku), so the separate `radio-helper` APK isn't needed — the helper

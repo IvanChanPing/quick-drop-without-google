@@ -83,6 +83,33 @@
 > **NEXT = USER on-device 2-phone test** (enable the toggle on both phones, run the script). After it
 > passes: debrand-port to bada-debrand + upstream PR. TODO-DEVICE residuals unchanged (close grace,
 > legacy UX).
+> **REVIEW-PASS FIX (Opus, 2026-07-03, commit 7a21684):** user asked me to review the engine ("if it
+> seems to work + nothing wrong found → good enough") — found + fixed 1 real bug: v2 terminal states
+> (declined/no-response/failed) reused the card's INTERNAL button as Done + faded only the panel;
+> since the buttons live inside `nameCardCard` (INVISIBLE until entrance runs), a terminal fired
+> before reveal (connect-failure) drew NO Done button. Fix (structural, not the easy patch): new
+> top-level `nameCardDone` full-width pill + reuse the top-level `nameCardConnecting` for the message
+> — both siblings of the card, render regardless of card animation state; terminal now fades the WHOLE
+> card. Matches §8 `doneButtonFullWidth`. Build+tests green; APK re-served. Rest of engine reviewed
+> (machine unit-tested; client read-on-CHOICE_SHARE + server read-gate verified in code) — no other
+> logic bug found.
+> **UPSTREAM PR OPENED (Opus, 2026-07-03): https://github.com/kyujin-cho/Bada/pull/251** —
+> "previous version of namedrop rewritten" (user's exact text) + the video from #247 re-embedded
+> (`user-attachments/assets/01d37027-...`; #247 keeps its own copy untouched). USER DECISION: a NEW
+> PR (not updating #247) — #247 defined it but said "don't use, redesigning"; #251 is the go-ahead.
+> Ported the FULL v2 name-card feature into `bada-debrand` on branch `superdrop-pr/name-card-v2` off
+> `upstream/main` (ec503aa): 14 owned files via `reverse_rebrand.py` + 4 shared hunks hand-applied
+> debranded (AndroidManifest NDEF filter + DISPATCH_NFC_MESSAGE perm, MainActivity v2-park,
+> BadaNdefApduService at-rest Name Card NDEF branch [adapted to its NdefTagCodec refactor], strings).
+> Dropped `NameCardNdefTest` (needs Robolectric, not wired upstream). Debrand :app compiles + JVM
+> tests + assembleDebug all exit 0. 35 files +5491/-6, ZERO docs/APK/infra (oversharing kept only in
+> bada-fork). Pushed via Decodo proxy + classic PAT. **NEXT = maintainer review / user on-device test.**
+> **FUTURE UI REFINEMENT (plan only, 2026-07-03): `docs/NAMECARD_CONSENT_UI_HOLD_PLAN.md`** — on a
+> local Share/Receive-Only tap, DON'T ripple/exit; merge both buttons into one Done + lock the info
+> control + stay on screen ("chosen, waiting"). Play ripple/send/fade only once BOTH chose (or Done).
+> Per-side data transmission (D1) UNCHANGED — only the on-screen animation/exit defers. Presentation-
+> only change to NameCardTransferActivity. 3 open items to confirm before building (esp. the
+> "change-what-info pop-up" does NOT exist on the transfer screen yet).
 >
 > **⭐ EXECUTOR-GRADE BUILD PLAN (approved by user 2026-07-02, NOT yet built):**
 > **`docs/NAMECARD_V2_EXECUTOR_PLAN.md`** — byte-exact, self-contained spec written so ANY model can
