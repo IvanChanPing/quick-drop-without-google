@@ -566,4 +566,46 @@
          service broadcasts the current pairing link to a tapped iPhone so it
          opens that link in Safari. -->
     <string name="nfc_hce_service_description">Bada NFC link</string>
+
+    <!-- ===== Name Card (tap-to-share contacts) ===== -->
+    <!-- HCE service description shown in system NFC settings for the Name Card
+         tap (proprietary AID F0534443415244). -->
+    <string name="nfc_namecard_hce_service_description">Bada Name Card</string>
+    <!-- Settings row that opens the Name Card setup screen. -->
+    <string name="settings_name_card_row_title">Name Card</string>
+    <string name="settings_name_card_row_subtitle">Set up the contact card you share by tapping phones</string>
+    <!-- NameCardSetupActivity (the setup page) -->
+    <string name="name_card_activity_label">Name Card</string>
+    <string name="name_card_setup_title">My Name Card</string>
+    <string name="name_card_setup_subtitle">Shared with another Bada phone when you tap them together. Leave blank to fall back to your phone’s own name and number.</string>
+    <string name="name_card_enable_title">Share my card when phones tap</string>
+    <string name="name_card_field_name">Name</string>
+    <string name="name_card_field_phone">Phone</string>
+    <string name="name_card_field_email">Email</string>
+    <string name="name_card_use_phone_info">Use my phone info</string>
+    <string name="name_card_use_phone_info_filled">Filled from your phone</string>
+    <string name="name_card_use_phone_info_empty">Nothing found on your phone to fill</string>
+    <string name="name_card_use_phone_info_denied">Permission denied — enter your details manually</string>
+    <string name="name_card_save">Save</string>
+    <string name="name_card_saved">Name card saved</string>
+    <string name="name_card_clear">Clear</string>
+    <string name="name_card_cleared">Name card cleared</string>
+    <string name="name_card_save_empty">Enter a name, phone, or email first</string>
+    <!-- Transfer/exchange screen (NameCardTransferActivity) + exchange service -->
+    <string name="name_card_transfer_connecting">Connecting…</string>
+    <string name="name_card_transfer_failed">Couldn’t connect</string>
+    <string name="name_card_transfer_share">Share</string>
+    <string name="name_card_transfer_receive_only">Receive Only</string>
+    <string name="name_card_transfer_save">Save</string>
+    <string name="name_card_transfer_done">Done</string>
+    <string name="name_card_transfer_no_name">(No name)</string>
+    <string name="name_card_v2_title">Symmetric consent (beta)</string>
+    <string name="name_card_transfer_waiting">Waiting…</string>
+    <string name="name_card_transfer_declined">They declined to share their contact info</string>
+    <string name="name_card_transfer_no_response">No response</string>
+    <string name="name_card_consent_headsup_waiting">Waiting for the other person to respond</string>
+    <string name="name_card_consent_headsup_declined">They declined to share their info</string>
+    <string name="name_card_consent_channel">Name Card consent</string>
+    <string name="name_card_exchange_channel">Name Card exchange</string>
+    <string name="name_card_exchange_notification">Sharing your name card…</string>
 </resources>

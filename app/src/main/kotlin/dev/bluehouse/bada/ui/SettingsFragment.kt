@@ -5,6 +5,7 @@
  */
 package dev.bluehouse.bada.ui
 
+import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.util.Log
@@ -22,6 +23,8 @@ import dev.bluehouse.bada.R
 import dev.bluehouse.bada.battery.BatteryOptimizationOemHelper
 import dev.bluehouse.bada.bugreport.BugReportPreferences
 import dev.bluehouse.bada.consent.FullScreenIntentPermission
+import dev.bluehouse.bada.namecard.NameCardProfileStore
+import dev.bluehouse.bada.namecard.NameCardSetupActivity
 import dev.bluehouse.bada.service.downloads.SaveLocationDisplayName
 import dev.bluehouse.bada.service.downloads.SaveLocationPreferences
 import dev.bluehouse.bada.service.receiver.AdvertisedDeviceNames
@@ -95,6 +98,11 @@ internal class SettingsFragment : Fragment(R.layout.fragment_settings) {
     ) {
         super.onViewCreated(view, savedInstanceState)
 
+        // "Name Card" row → My Name Card setup page (tap-to-share contacts).
+        view.findViewById<View>(R.id.settings_name_card_row).setOnClickListener {
+            startActivity(Intent(requireContext(), NameCardSetupActivity::class.java))
+        }
+
         view.findViewById<Button>(R.id.main_save_location_pick).setOnClickListener {
             saveLocationLauncher.launch(null)
         }
@@ -159,6 +167,20 @@ internal class SettingsFragment : Fragment(R.layout.fragment_settings) {
         refreshFullScreenIntentSection()
         refreshBugReportSwitch()
         refreshTransferSwitches()
+        refreshNameCardDot()
+    }
+
+    /**
+     * Show the small red dot on the "Name Card" row when the user hasn't set up a
+     * card yet (mirrors the update badge). Re-checked on every onStart so it clears
+     * immediately after the user saves a card in NameCardSetupActivity and returns.
+     * The dot reflects the in-app card only — a device fallback (SIM / "Me" contact)
+     * still counts as "not set up" so the user is nudged to fill it in.
+     */
+    private fun refreshNameCardDot() {
+        val dot = view?.findViewById<View>(R.id.settings_name_card_dot) ?: return
+        val configured = NameCardProfileStore.from(requireContext()).isConfigured()
+        dot.visibility = if (configured) View.GONE else View.VISIBLE
     }
 
     override fun onResume() {

@@ -49,6 +49,68 @@
         android:paddingTop="8dp"
         android:paddingBottom="@dimen/settings_content_bottom_padding">
 
+        <!-- ============ Card 0: Name Card (tap-to-share contacts) ============
+             settings_name_card_row — clickable card (title "Name Card" + subtitle
+             + a "›" chevron) that opens NameCardSetupActivity, the My Name Card
+             setup page. Wired in SettingsFragment.onViewCreated. -->
+        <LinearLayout
+            android:id="@+id/settings_name_card_row"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:background="@drawable/settings_card_background"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:padding="20dp">
+
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/settings_name_card_row_title"
+                    android:textAppearance="@style/TextAppearance.AppCompat.Subhead"
+                    android:textColor="?android:attr/textColorPrimary"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="6dp"
+                    android:text="@string/settings_name_card_row_subtitle"
+                    android:textAppearance="@style/TextAppearance.AppCompat.Small"
+                    android:textColor="?android:attr/textColorSecondary" />
+
+            </LinearLayout>
+
+            <!-- settings_name_card_dot — 8dp red dot (same as the update badge) shown
+                 when no Name Card is set up yet. Toggled in SettingsFragment by
+                 NameCardProfileStore.isConfigured(). -->
+            <View
+                android:id="@+id/settings_name_card_dot"
+                android:layout_width="8dp"
+                android:layout_height="8dp"
+                android:layout_marginStart="12dp"
+                android:background="@drawable/update_badge_dot"
+                android:visibility="gone" />
+
+            <!-- chevron — ">" affordance signalling this row opens a sub-page -->
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="12dp"
+                android:text="›"
+                android:textColor="?android:attr/textColorSecondary"
+                android:textSize="22sp"
+                tools:ignore="HardcodedText" />
+
+        </LinearLayout>
+
         <!-- ============ Card 1: Save location ============ -->
         <LinearLayout
             android:layout_width="match_parent"

@@ -5,9 +5,12 @@
  */
 package dev.bluehouse.bada.nfc
 
+import android.app.KeyguardManager
 import android.nfc.cardemulation.HostApduService
 import android.os.Bundle
 import android.util.Log
+import dev.bluehouse.bada.namecard.NameCardExchangeService
+import dev.bluehouse.bada.namecard.NameCardPreferences
 
 /**
  * Host Card Emulation service that exposes the current Bada pairing link
@@ -61,6 +64,16 @@ public class BadaNdefApduService : HostApduService() {
     private var ndefFile: ByteArray = NdefTagCodec.buildNdefFile(EMPTY_NDEF_MESSAGE)
     private var ccFile: ByteArray = NdefTagCodec.buildCapabilityContainer(ndefFile.size)
 
+    /**
+     * Name Card v2: the token minted for the at-rest Name Card tap of THIS read session, or null
+     * when this session is not a Name Card tap (QR link armed / feature off / locked). Set in
+     * [refreshNdefForCurrentLink], consumed once by [maybeStartNameCardServer] on the first NDEF read.
+     */
+    private var pendingNameCardToken: ByteArray? = null
+
+    /** Name Card v2: guards the one-shot BLE-server start so it fires on the first NDEF read only. */
+    private var nameCardServerStarted = false
+
     override fun processCommandApdu(
         apdu: ByteArray?,
         extras: Bundle?,
@@ -110,6 +123,14 @@ public class BadaNdefApduService : HostApduService() {
                     Selected.NONE -> return SW_FILE_NOT_FOUND
                 }
 
+            // Name Card v2: the reader is actually pulling our NDEF file → this is a real tap, not a
+            // stray SELECT. Bring up the BLE GATT server (once) so the tapping phone can read our card
+            // over Bluetooth using the token embedded in the NDEF. No-op unless this session minted a
+            // Name Card token (pendingNameCardToken).
+            if (selected == Selected.NDEF) {
+                maybeStartNameCardServer()
+            }
+
             if (offset > file.size) {
                 return SW_WRONG_LENGTH
             }
@@ -126,6 +147,35 @@ public class BadaNdefApduService : HostApduService() {
 
     override fun onDeactivated(reason: Int) {
         selected = Selected.NONE
+        // Name Card v2: end the read session so the next tap mints a fresh token + can restart the server.
+        pendingNameCardToken = null
+        nameCardServerStarted = false
+    }
+
+    /**
+     * Name Card v2: bring up the BLE GATT server ONCE per read session, using the token embedded in
+     * the NDEF we're serving. No-op unless this session is a Name Card tap ([pendingNameCardToken] set).
+     * Best-effort — a failed FGS start must never break the NFC response.
+     */
+    private fun maybeStartNameCardServer() {
+        val token = pendingNameCardToken ?: return
+        if (nameCardServerStarted) return
+        nameCardServerStarted = true
+        runCatching {
+            NameCardExchangeService.start(this, token)
+        }.onFailure { Log.w(TAG, "Name Card NDEF read: start exchange service failed: ${it.message}") }
+        Log.d(TAG, "Name Card NDEF read → server FGS (token ${token.size}B)")
+    }
+
+    /**
+     * Name Card v2: is this at-rest tap a Name Card tap? True only when the master switch is ON, the
+     * v2 symmetric gate is ON, AND the device is UNLOCKED (privacy — a locked/lost phone shares nothing).
+     */
+    private fun nameCardActive(): Boolean {
+        val prefs = NameCardPreferences.from(this)
+        if (!prefs.isEnabled() || !prefs.isV2Enabled()) return false
+        val keyguard = getSystemService(KeyguardManager::class.java)
+        return keyguard?.isDeviceLocked != true
     }
 
     /**
@@ -135,14 +185,33 @@ public class BadaNdefApduService : HostApduService() {
      * is a no-op rather than opening a stale link.
      */
     private fun refreshNdefForCurrentLink() {
+        // Reset the per-session Name Card state; only the Name Card branch below re-arms it.
+        pendingNameCardToken = null
+        nameCardServerStarted = false
+
         val url = NfcLinkHolder.currentUrl
         val message =
-            if (url.isNullOrBlank()) {
-                Log.d(TAG, "SELECT NDEF app AID -> OK; no current link, serving empty NDEF")
-                EMPTY_NDEF_MESSAGE
-            } else {
-                Log.d(TAG, "SELECT NDEF app AID -> OK; will serve $url")
-                NdefTagCodec.buildUriNdefMessage(url)
+            when {
+                // Feature 1 (iPhone/QR-link tap): a pairing link is armed (QR panel open) → serve it.
+                // This ALWAYS wins over Name Card, matching NameDrop's mid-share-vs-at-rest priority.
+                !url.isNullOrBlank() -> {
+                    Log.d(TAG, "SELECT NDEF app AID -> OK; will serve $url")
+                    NdefTagCodec.buildUriNdefMessage(url)
+                }
+                // Feature 3 (Name Card v2): at rest + enabled + unlocked → serve the Name Card NDEF
+                // (external record with a fresh rendezvous token + our AAR so the reading phone launches
+                // us from closed). This is the always-on default whenever features 1/2 aren't active.
+                nameCardActive() -> {
+                    val bootstrap = NameCardBootstrapHolder.newSession()
+                    pendingNameCardToken = bootstrap.token
+                    Log.d(TAG, "SELECT NDEF app AID -> OK; serving Name Card NDEF (v2 tap)")
+                    NameCardNdef.build(bootstrap.token, packageName).toByteArray()
+                }
+                // Otherwise (feature off / locked / no link): empty NDEF = a deliberate dead tap.
+                else -> {
+                    Log.d(TAG, "SELECT NDEF app AID -> OK; no link + no Name Card, serving empty NDEF")
+                    EMPTY_NDEF_MESSAGE
+                }
             }
         ndefFile = NdefTagCodec.buildNdefFile(message)
         ccFile = NdefTagCodec.buildCapabilityContainer(ndefFile.size)

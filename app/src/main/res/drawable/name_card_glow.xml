@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  name_card_glow — the thin "light beam" strip across the top of the Name Card
+  transfer screen (NameDrop-style). A horizontal gradient that fades from
+  transparent at the edges to a bright accent in the middle; the View's alpha is
+  pulsed by a tween loop in NameCardTransferActivity.
+-->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <gradient
+        android:startColor="#00448AFF"
+        android:centerColor="#FF448AFF"
+        android:endColor="#00448AFF"
+        android:angle="0" />
+</shape>
