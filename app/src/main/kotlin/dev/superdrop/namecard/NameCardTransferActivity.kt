@@ -167,8 +167,9 @@ internal class NameCardTransferActivity : AppCompatActivity() {
     private val primary by lazy { findViewById<Button>(R.id.nameCardPrimary) }
     private val secondary by lazy { findViewById<Button>(R.id.nameCardSecondary) }
 
-    /** nameCardPanel — the avatar+name+phone+email column; faded out on a v2 terminal (declined/no-response). */
-    private val panel by lazy { findViewById<View>(R.id.nameCardPanel) }
+    /** nameCardDone — full-width blue pill at the bottom, top-level sibling of the card; shown only on
+     *  a v2 terminal state (declined / no response / failed) and closes the screen. */
+    private val done by lazy { findViewById<Button>(R.id.nameCardDone) }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -466,27 +467,31 @@ internal class NameCardTransferActivity : AppCompatActivity() {
     }
 
     /**
-     * Terminal §8 state: fade the contact panel out (300ms tween), show [message] centered
-     * (reusing nameCardConnecting), and leave a single full-width "Done" (reusing nameCardSecondary,
-     * primary hidden).
+     * Terminal §8 state: fade the whole card out (300ms tween), show [message] centered
+     * (nameCardConnecting), and raise the full-width Done (nameCardDone). Both the message and Done
+     * are top-level siblings of the card, so they render even if the card was never revealed.
      */
     private fun v2ShowTerminal(message: String) {
         if (v2TerminalShown) return
         v2TerminalShown = true
         v2CancelHeadsUp()
-        ObjectAnimator.ofFloat(panel, View.ALPHA, panel.alpha, 0f).apply {
-            duration = DECLINE_FADE_MS
-            start()
+        // Fade the whole card out and raise the terminal overlay — the centered message
+        // (nameCardConnecting) and the full-width Done (nameCardDone) are BOTH top-level siblings of
+        // the card, so they render regardless of whether the card entrance ever ran (e.g. a
+        // connect-failure terminal before reveal).
+        if (card.visibility == View.VISIBLE) {
+            card.animate()
+                .alpha(0f)
+                .setDuration(DECLINE_FADE_MS)
+                .withEndAction { card.visibility = View.INVISIBLE }
+                .start()
+        } else {
+            card.visibility = View.INVISIBLE
         }
-        // nameCardConnecting reused as the centered terminal message ("declined" / "No response").
         connecting.text = message
         connecting.visibility = View.VISIBLE
-        // nameCardPrimary hidden; nameCardSecondary → "Done" → close.
-        primary.visibility = View.GONE
-        secondary.visibility = View.VISIBLE
-        secondary.isEnabled = true
-        secondary.text = getString(R.string.name_card_transfer_done)
-        secondary.setOnClickListener { finish() }
+        done.visibility = View.VISIBLE
+        done.setOnClickListener { finish() }
     }
 
     /** Post / update the consent heads-up ("Waiting for the other person…" → "They declined…"). */

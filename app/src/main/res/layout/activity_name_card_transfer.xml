@@ -129,4 +129,17 @@
 
     </FrameLayout>
 
+    <!-- nameCardDone — full-width blue pill pinned to the bottom, hidden by default. Shown ONLY on a
+         Name Card v2 terminal state (declined / no response / couldn't connect). Top-level sibling of
+         nameCardCard so it renders regardless of the card's entrance/fade animation state. -->
+    <Button
+        android:id="@+id/nameCardDone"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:layout_marginHorizontal="24dp"
+        android:layout_marginBottom="32dp"
+        android:text="@string/name_card_transfer_done"
+        android:visibility="gone" />
+
 </FrameLayout>
