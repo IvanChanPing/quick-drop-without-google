@@ -136,6 +136,12 @@ internal class NameCardBleExchange(
     private var v2OpInFlight = false
     private val v2OpQueue = ArrayDeque<() -> Unit>()
 
+    /** Client: true while the HELLO write is outstanding, so its ack becomes the link-ready signal. */
+    @Volatile private var v2AwaitingHelloAck = false
+
+    /** Fire [ConsentBleListener.onLinkReady] exactly once per session. */
+    @Volatile private var v2ReadyFired = false
+
     /**
      * Card side: advertise [token] and serve [localCard] over GATT. Calls
      * [onPeerCard] when the connecting peer writes its card. Returns false if BLE
@@ -298,6 +304,8 @@ internal class NameCardBleExchange(
         v2ClientCardChar = null
         v2OpInFlight = false
         v2OpQueue.clear()
+        v2AwaitingHelloAck = false
+        v2ReadyFired = false
         runCatching { v2ClientGatt?.disconnect() }
         runCatching { v2ClientGatt?.close() }
         v2ClientGatt = null
@@ -714,6 +722,8 @@ internal class NameCardBleExchange(
                 if (responseNeeded) {
                     gattServer?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, null)
                 }
+                // A subscriber exists → the server can now notify choices.
+                notifyLinkReady()
             }
         }
 
@@ -768,7 +778,8 @@ internal class NameCardBleExchange(
 
             override fun onDescriptorWrite(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
                 clientOpDone()
-                // Subscribed → announce ourselves with HELLO.
+                // Subscribed → announce ourselves with HELLO; its write-ack becomes link-ready.
+                v2AwaitingHelloAck = true
                 enqueueClientOp { writeConsent(NameCardConsentCodec.helloBytes()) }
             }
 
@@ -778,6 +789,10 @@ internal class NameCardBleExchange(
                 status: Int,
             ) {
                 clientOpDone()
+                if (v2AwaitingHelloAck) {
+                    v2AwaitingHelloAck = false
+                    notifyLinkReady()
+                }
             }
 
             @Suppress("DEPRECATION")
@@ -947,6 +962,14 @@ internal class NameCardBleExchange(
         if (Looper.myLooper() == Looper.getMainLooper()) block() else mainHandler.post(block)
     }
 
+    private fun notifyLinkReady() =
+        runOnMain {
+            if (!v2ReadyFired) {
+                v2ReadyFired = true
+                consentListener?.onLinkReady()
+            }
+        }
+
     private fun notifyPeerHello() = runOnMain { consentListener?.onPeerHello() }
 
     private fun notifyPeerChoice(share: Boolean) = runOnMain { consentListener?.onPeerChoice(share) }
@@ -1040,6 +1063,13 @@ internal class NameCardBleExchange(
  * binder-thread GATT callbacks). See [NameCardBleExchange] + plan B3.
  */
 internal interface ConsentBleListener {
+    /**
+     * The link can now carry a choice: server has a subscriber / client finished its HELLO write.
+     * The UI keeps the Share/Receive-Only buttons disabled ("Connecting…") until this fires so a
+     * fast tap is never lost before the transport is ready.
+     */
+    fun onLinkReady()
+
     /** The peer sent HELLO — it speaks v2. */
     fun onPeerHello()
 

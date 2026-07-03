@@ -76,6 +76,20 @@ internal class NameCardExchangeService : Service() {
         // Force Bluetooth on via the helper (+ start the 5s keep-alive heartbeat so a
         // crash mid-swap restores radios ~20s after the last beat, not minutes later).
         shareRadios.requestRadiosOn(RadioHelperClient.RADIO_BT)
+
+        if (NameCardPreferences.from(this).isV2Enabled()) {
+            // Name Card v2 (symmetric consent): serve the gated card + CONSENT channel and launch the
+            // transfer screen immediately so BOTH phones show the card at tap (plan B4). The service
+            // stays foreground for the WHOLE session — it does NOT stop on peer-card-arrived.
+            startServerWhenBtReadyV2(localCard, token, attempt = 0)
+            timeoutHandler.postDelayed({
+                DiagnosticLog.w(TAG, "serverV2: session timeout → stop")
+                stopSelf()
+            }, SERVE_TIMEOUT_MS_V2)
+            return START_NOT_STICKY
+        }
+
+        // ---- v1 (asymmetric, unchanged) ----
         // The helper enables BT asynchronously; start serving once BT is actually on
         // (immediately if already on, else after a short grace for the helper toggle).
         startServerWhenBtReady(localCard, token, attempt = 0)
@@ -87,6 +101,42 @@ internal class NameCardExchangeService : Service() {
             stopSelf()
         }, SERVE_TIMEOUT_MS)
         return START_NOT_STICKY
+    }
+
+    private fun startServerWhenBtReadyV2(
+        localCard: NameCard,
+        token: ByteArray,
+        attempt: Int,
+    ) {
+        val adapter = getSystemService(BluetoothManager::class.java)?.adapter
+        if (adapter?.isEnabled == true || attempt >= MAX_BT_WAIT_ATTEMPTS) {
+            startServerNowV2(localCard, token)
+            return
+        }
+        DiagnosticLog.w(TAG, "serverV2: BT not on yet (attempt $attempt) → waiting for helper")
+        timeoutHandler.postDelayed({ startServerWhenBtReadyV2(localCard, token, attempt + 1) }, BT_GRACE_MS)
+    }
+
+    private fun startServerNowV2(
+        localCard: NameCard,
+        token: ByteArray,
+    ) {
+        val ble = NameCardBleExchange(this)
+        exchange = ble
+        val session = NameCardLinkHolder.startSession(ble, NameCardLinkHolder.Role.SERVER, localCard)
+        session.onClosed = { stopSelf() }
+        val started = ble.startServerV2(localCard = localCard, token = token, listener = session)
+        if (!started) {
+            DiagnosticLog.w(TAG, "startServerV2 failed (BT off / no perm) → stop")
+            stopSelf()
+            return
+        }
+        // Both screens open at tap: launch the symmetric consent UI now (peer card arrives later via
+        // the holder, not an Intent extra). Keep the FGS + radios alive until the session closes.
+        DiagnosticLog.w(TAG, "serverV2: serving → launch transfer screen (SERVER-v2)")
+        startActivity(
+            NameCardTransferActivity.serverV2Intent(this).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
     }
 
     private fun startServerWhenBtReady(
@@ -167,6 +217,9 @@ internal class NameCardExchangeService : Service() {
 
         /** Stop the service if no exchange completes (> the BLE manager's own backstop). */
         private const val SERVE_TIMEOUT_MS = 33_000L
+
+        /** v2 session backstop: > the exchange's 60s v2 backstop, so the UX timer resolves first (plan B4). */
+        private const val SERVE_TIMEOUT_MS_V2 = 65_000L
 
         /** Grace between retries while the helper turns Bluetooth on, and the cap. */
         private const val BT_GRACE_MS = 1_500L

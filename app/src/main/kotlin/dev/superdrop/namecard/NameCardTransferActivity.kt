@@ -6,6 +6,8 @@
 package dev.superdrop.namecard
 
 import android.Manifest
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.ObjectAnimator
@@ -37,8 +39,11 @@ import android.widget.Button
 import android.widget.FrameLayout
 import android.widget.ImageView
 import android.widget.TextView
+import android.content.pm.PackageManager
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import dev.superdrop.R
 import dev.superdrop.discovery.diagnostics.DiagnosticLog
 import dev.superdrop.nfc.NameCardNdef
@@ -99,6 +104,36 @@ internal class NameCardTransferActivity : AppCompatActivity() {
     /** Guards against a second Share/Receive/Save tap re-running the exit + save. */
     private var committed = false
 
+    // ---- Name Card v2 (symmetric consent) ----
+
+    /** The live consent session (from [NameCardLinkHolder]); non-null only in a v2 session. */
+    private var v2Session: NameCardLinkHolder.Session? = null
+
+    /** The peer's card once it arrives, so [NameCardConsentMachine.Effect.SaveCardAndRipple] can save it. */
+    private var v2PeerCard: NameCard? = null
+
+    /** True once a terminal §8 state has been rendered, so effects/back-taps don't re-render it. */
+    private var v2TerminalShown = false
+
+    /** True while the consent heads-up notification is posted (so it's cancelled exactly once). */
+    private var v2NotificationShown = false
+
+    /**
+     * Bridges the live [NameCardLinkHolder.Session] to this screen. The holder already delivers on the
+     * main thread; the extra [runOnUiThread] is a cheap safety net.
+     */
+    private val v2Observer =
+        object : NameCardLinkHolder.UiObserver {
+            override fun onReady() = runOnUiThread { onV2Ready() }
+
+            override fun onConsentEffect(effect: NameCardConsentMachine.Effect) =
+                runOnUiThread { onV2Effect(effect) }
+
+            override fun onPeerCard(card: NameCard) = runOnUiThread { v2PeerCard = card }
+
+            override fun onLegacyPeer() = runOnUiThread { onV2LegacyPeer() }
+        }
+
     /** Forces Bluetooth on for the swap + the 5s helper heartbeat (client role); restored on destroy. */
     private val shareRadios by lazy { ShareRadioController(this, "NameCardTransfer") }
     private val btHandler = Handler(Looper.getMainLooper())
@@ -132,6 +167,9 @@ internal class NameCardTransferActivity : AppCompatActivity() {
     private val primary by lazy { findViewById<Button>(R.id.nameCardPrimary) }
     private val secondary by lazy { findViewById<Button>(R.id.nameCardSecondary) }
 
+    /** nameCardPanel — the avatar+name+phone+email column; faded out on a v2 terminal (declined/no-response). */
+    private val panel by lazy { findViewById<View>(R.id.nameCardPanel) }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         overrideOpenTransition() // kill the OEM window-open anim; only our view entrance plays
@@ -140,9 +178,13 @@ internal class NameCardTransferActivity : AppCompatActivity() {
         setContentView(R.layout.activity_name_card_transfer)
         startGlowLoop()
 
+        val v2 = NameCardPreferences.from(this).isV2Enabled()
         when {
-            // Reader-side wake (Name Card v2): the OS launched us via our AAR after a both-background
-            // tap; the rendezvous token is inside the NDEF, not an Intent extra.
+            // v2 server: launched by the service at tap; attach to the live consent session.
+            intent.getStringExtra(EXTRA_ROLE) == ROLE_SERVER_V2 -> setupServerV2()
+            // v2 reader-side wake: AAR-launched with the token in the NDEF → run the consent client.
+            intent.action == NfcAdapter.ACTION_NDEF_DISCOVERED && v2 -> setupClientV2FromNdef()
+            // Legacy reader-side wake (v2 off): the token is inside the NDEF, not an Intent extra.
             intent.action == NfcAdapter.ACTION_NDEF_DISCOVERED -> setupClientFromNdef()
             intent.getStringExtra(EXTRA_ROLE) == ROLE_SERVER -> setupServer()
             else -> setupClient()
@@ -291,6 +333,202 @@ internal class NameCardTransferActivity : AppCompatActivity() {
             exchange?.declineShare()
             commitWithSendRipple(secondary) { saveAndFinish(peer) }
         }
+    }
+
+    // ================= Name Card v2 (symmetric consent) UI =================
+    // Reuses the SAME screen + animations as v1. Both v2 roles show OWN card + [Share][Receive Only];
+    // the buttons stay disabled ("connecting") until the link is ready. Effects from the shared
+    // NameCardConsentMachine (via NameCardLinkHolder) drive the waiting / declined / no-response
+    // states on the EXISTING views — no new layout. See docs/NAMECARD_V2_EXECUTOR_PLAN.md B5.
+
+    /** v2 SERVER: attach to the live session the service started at tap and render the consent screen. */
+    private fun setupServerV2() {
+        val session = NameCardLinkHolder.current()
+        if (session == null) {
+            DiagnosticLog.w(TAG, "serverV2 screen: no live session → finish")
+            finish()
+            return
+        }
+        v2Session = session
+        session.peerCard?.let { v2PeerCard = it }
+        localCard = session.localCard
+        attachAndShowV2()
+    }
+
+    /** v2 CLIENT (AAR wake): start the consent client for the NDEF token, then render the same screen. */
+    private fun setupClientV2FromNdef() {
+        val token = readNameCardTokenFromIntent()
+        if (token == null) {
+            DiagnosticLog.w(TAG, "NDEF v2: no Name Card token → finish")
+            finish()
+            return
+        }
+        localCard =
+            NameCardResolver(
+                storedCard = NameCardProfileStore.from(this)::load,
+                deviceSources = AndroidDeviceContactSources(this),
+            ).resolve()
+        val ble = NameCardBleExchange(this)
+        exchange = ble
+        v2Session = NameCardLinkHolder.startSession(ble, NameCardLinkHolder.Role.CLIENT, localCard)
+        attachAndShowV2()
+        shareRadios.requestRadiosOn(RadioHelperClient.RADIO_BT)
+        startClientWhenBtReadyV2(ble, token, attempt = 0)
+    }
+
+    private fun startClientWhenBtReadyV2(
+        ble: NameCardBleExchange,
+        token: ByteArray,
+        attempt: Int,
+    ) {
+        if (isFinishing) return
+        val adapter = getSystemService(BluetoothManager::class.java)?.adapter
+        if (adapter?.isEnabled != true && attempt < MAX_BT_WAIT_ATTEMPTS) {
+            btHandler.postDelayed({ startClientWhenBtReadyV2(ble, token, attempt + 1) }, BT_GRACE_MS)
+            return
+        }
+        val session = v2Session ?: return
+        if (!ble.startClientV2(token, session)) {
+            v2ShowTerminal(getString(R.string.name_card_transfer_failed))
+        }
+    }
+
+    /** Shared v2 screen setup: bind our card, wire the two buttons (disabled until ready), start the 30s timer. */
+    private fun attachAndShowV2() {
+        v2Session?.uiObserver = v2Observer
+        localCard?.let { bindCard(it) }
+        connecting.visibility = View.GONE
+        // nameCardPrimary → "Share"; nameCardSecondary → "Receive Only". Disabled until onV2Ready().
+        primary.text = getString(R.string.name_card_transfer_share)
+        secondary.text = getString(R.string.name_card_transfer_receive_only)
+        primary.isEnabled = false
+        secondary.isEnabled = false
+        primary.setOnClickListener { onV2LocalChoice(share = true) }
+        secondary.setOnClickListener { onV2LocalChoice(share = false) }
+        playTriggerRipple { revealAndEnter() }
+        // 30s no-response timer (the machine has none of its own).
+        ui.postDelayed({ v2Session?.onTimeout() }, V2_TIMEOUT_MS)
+    }
+
+    /** Link is ready to carry a choice → enable the buttons. */
+    private fun onV2Ready() {
+        if (v2TerminalShown) return
+        primary.isEnabled = true
+        secondary.isEnabled = true
+        DiagnosticLog.w(TAG, "v2: link ready → buttons enabled")
+    }
+
+    /** A choice was tapped: pop the button, disable both, feed the machine. */
+    private fun onV2LocalChoice(share: Boolean) {
+        if (committed) return
+        committed = true
+        primary.isEnabled = false
+        secondary.isEnabled = false
+        pressAnim(if (share) primary else secondary)
+        val session = v2Session ?: return
+        if (share) session.onLocalShare() else session.onLocalReceiveOnly()
+    }
+
+    /** Render a machine effect on the existing views. BLE effects (SendChoice/TransmitCard) are the holder's. */
+    private fun onV2Effect(effect: NameCardConsentMachine.Effect) {
+        DiagnosticLog.w(TAG, "v2 effect: $effect")
+        when (effect) {
+            // Buttons already disabled after the tap; waiting is conveyed by that + the heads-up.
+            NameCardConsentMachine.Effect.ShowWaiting -> Unit
+            NameCardConsentMachine.Effect.ShowHeadsUpWaiting ->
+                v2HeadsUp(getString(R.string.name_card_consent_headsup_waiting))
+            NameCardConsentMachine.Effect.SaveCardAndRipple -> v2SaveReceived()
+            NameCardConsentMachine.Effect.UpdateHeadsUpDeclined -> {
+                v2HeadsUp(getString(R.string.name_card_consent_headsup_declined))
+                v2ShowTerminal(getString(R.string.name_card_transfer_declined))
+            }
+            NameCardConsentMachine.Effect.FadeToDeclined ->
+                v2ShowTerminal(getString(R.string.name_card_transfer_declined))
+            NameCardConsentMachine.Effect.ShowNoResponse ->
+                v2ShowTerminal(getString(R.string.name_card_transfer_no_response))
+            NameCardConsentMachine.Effect.CloseLink -> v2CancelHeadsUp()
+            else -> Unit // SendChoice / TransmitCard handled by the holder → BLE
+        }
+    }
+
+    /** Peer shared: their card arrived — play the receive ripple, save it, open the contact. */
+    private fun v2SaveReceived() {
+        v2CancelHeadsUp()
+        val peer = v2PeerCard
+        if (peer == null) {
+            DiagnosticLog.w(TAG, "v2: SaveCardAndRipple but no peer card yet")
+            return
+        }
+        if (v2TerminalShown) return
+        v2TerminalShown = true
+        playSendRipple()
+        ui.postDelayed({ if (!isFinishing) saveAndFinish(peer) }, Anim.SENT_RIPPLE_MS + Anim.AUTO_OPEN_DELAY_MS)
+    }
+
+    /**
+     * Terminal §8 state: fade the contact panel out (300ms tween), show [message] centered
+     * (reusing nameCardConnecting), and leave a single full-width "Done" (reusing nameCardSecondary,
+     * primary hidden).
+     */
+    private fun v2ShowTerminal(message: String) {
+        if (v2TerminalShown) return
+        v2TerminalShown = true
+        v2CancelHeadsUp()
+        ObjectAnimator.ofFloat(panel, View.ALPHA, panel.alpha, 0f).apply {
+            duration = DECLINE_FADE_MS
+            start()
+        }
+        // nameCardConnecting reused as the centered terminal message ("declined" / "No response").
+        connecting.text = message
+        connecting.visibility = View.VISIBLE
+        // nameCardPrimary hidden; nameCardSecondary → "Done" → close.
+        primary.visibility = View.GONE
+        secondary.visibility = View.VISIBLE
+        secondary.isEnabled = true
+        secondary.text = getString(R.string.name_card_transfer_done)
+        secondary.setOnClickListener { finish() }
+    }
+
+    /** Post / update the consent heads-up ("Waiting for the other person…" → "They declined…"). */
+    private fun v2HeadsUp(text: String) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            DiagnosticLog.w(TAG, "v2: POST_NOTIFICATIONS not granted → skip heads-up (in-app state still shows)")
+            return
+        }
+        val mgr = getSystemService(NotificationManager::class.java) ?: return
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            mgr.createNotificationChannel(
+                NotificationChannel(
+                    CONSENT_CHANNEL_ID,
+                    getString(R.string.name_card_consent_channel),
+                    NotificationManager.IMPORTANCE_HIGH,
+                ),
+            )
+        }
+        val notification =
+            NotificationCompat.Builder(this, CONSENT_CHANNEL_ID)
+                .setSmallIcon(R.mipmap.ic_launcher)
+                .setContentTitle(getString(R.string.nfc_namecard_hce_service_description))
+                .setContentText(text)
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setAutoCancel(false)
+                .build()
+        mgr.notify(CONSENT_NOTIFICATION_ID, notification)
+        v2NotificationShown = true
+    }
+
+    private fun v2CancelHeadsUp() {
+        if (!v2NotificationShown) return
+        getSystemService(NotificationManager::class.java)?.cancel(CONSENT_NOTIFICATION_ID)
+        v2NotificationShown = false
+    }
+
+    /** Peer only speaks v1 — log; the receive still works (its card write/read reaches the machine). */
+    private fun onV2LegacyPeer() {
+        DiagnosticLog.w(TAG, "v2: legacy peer — falling back to a plain receive (device-tuned)")
     }
 
     // ---- entrance / exit / ripple (ported from namecard-tester, values baked in [Anim]) ----
@@ -617,6 +855,11 @@ internal class NameCardTransferActivity : AppCompatActivity() {
     override fun onDestroy() {
         btHandler.removeCallbacksAndMessages(null)
         ui.removeCallbacksAndMessages(null)
+        v2CancelHeadsUp()
+        // Detach from the live session so we don't leak the activity; the client-side exchange is
+        // ours to stop (below), the server-side one is owned by NameCardExchangeService.
+        v2Session?.uiObserver = null
+        v2Session = null
         exchange?.stop()
         exchange = null
         shareRadios.restoreRadios()
@@ -664,6 +907,7 @@ internal class NameCardTransferActivity : AppCompatActivity() {
         private const val EXTRA_PEER_CARD = "peer_card"
         private const val ROLE_CLIENT = "client"
         private const val ROLE_SERVER = "server"
+        private const val ROLE_SERVER_V2 = "server_v2"
 
         private const val GLOW_MS = 1100L
         private const val GLOW_MIN = 0.35f
@@ -671,6 +915,12 @@ internal class NameCardTransferActivity : AppCompatActivity() {
         private const val CONNECT_TIMEOUT_MS = 18_000L
         private const val BT_GRACE_MS = 1_500L
         private const val MAX_BT_WAIT_ATTEMPTS = 2
+
+        // Name Card v2.
+        private const val V2_TIMEOUT_MS = 30_000L
+        private const val DECLINE_FADE_MS = 300L
+        private const val CONSENT_CHANNEL_ID = "namecard_consent"
+        private const val CONSENT_NOTIFICATION_ID = 4311
 
         /**
          * The AirDrop "suck into the Dynamic Island" ripple — VERBATIM AGSL from the
@@ -785,5 +1035,14 @@ internal class NameCardTransferActivity : AppCompatActivity() {
             Intent(context, NameCardTransferActivity::class.java)
                 .putExtra(EXTRA_ROLE, ROLE_SERVER)
                 .putExtra(EXTRA_PEER_CARD, peerCard.serialize())
+
+        /**
+         * Name Card v2 server side: open the symmetric-consent screen at tap. No peer card yet — it
+         * attaches to the live [NameCardLinkHolder] session the [NameCardExchangeService] started and
+         * receives the peer card + consent effects through it.
+         */
+        fun serverV2Intent(context: Context): Intent =
+            Intent(context, NameCardTransferActivity::class.java)
+                .putExtra(EXTRA_ROLE, ROLE_SERVER_V2)
     }
 }

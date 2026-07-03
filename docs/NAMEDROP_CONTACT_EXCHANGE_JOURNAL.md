@@ -66,8 +66,23 @@
 > (1) server has NO read-completion callback → the 1.5s SESSION_CLOSE_GRACE_MS before teardown is a
 > heuristic guarding the client's final read; tune on hardware. (2) legacy-fallback UX after the v2
 > activity has launched is best-effort (onLegacyPeer hook exists; coordinator handling in B5 is
-> minimal). NEXT = B4: `NameCardLinkHolder` singleton + `NameCardExchangeService` v2 restructure
-> (launch UI at serve-start, no self-stop on peer card, 65s timeout).
+> minimal).
+> **B4+B5+B6+B7 DONE (Opus, 2026-07-03) — v2 FEATURE CODE-COMPLETE, DEVICE-UNVERIFIED.**
+> B4: `NameCardLinkHolder` coordinator (owns machine, is ConsentBleListener, maps effects→BLE+UI) +
+> `NameCardExchangeService` v2 branch (startServerV2, launch UI at tap, 65s backstop) + a `onLinkReady`
+> signal so a fast tap isn't lost. B5: `NameCardTransferActivity` REUSES the existing screen (no new
+> views) — both v2 roles show own card + Share/Receive-Only (disabled until ready); effects → waiting
+> heads-up / SaveCardAndRipple (existing ripple+save) / fade-panel + reuse connecting for
+> declined/no-response + relabel secondary→Done; 30s timer; namecard_consent channel; onDestroy
+> cleanup. Setup screen: new **"Symmetric consent (beta)"** switch (`nameCardV2Switch`) → isV2Enabled
+> + POST_NOTIFICATIONS request (the enable path for testing). B6 exit checks ALL green: zero android
+> imports in the 2 pure files; testDebugUnitTest + robolectricDebugUnitTest + assembleDebug exit 0.
+> APK at repo root `super-drop-debug.apk` + served
+> `https://204-168-163-118.sslip.io/trackers/static/super-drop-namecard-v2-debug.apk` (HTTP 200). B7
+> test script appended to `docs/NAMECARD_ON_DEVICE_TEST.md` (4 scenarios + no-response + legacy).
+> **NEXT = USER on-device 2-phone test** (enable the toggle on both phones, run the script). After it
+> passes: debrand-port to bada-debrand + upstream PR. TODO-DEVICE residuals unchanged (close grace,
+> legacy UX).
 >
 > **⭐ EXECUTOR-GRADE BUILD PLAN (approved by user 2026-07-02, NOT yet built):**
 > **`docs/NAMECARD_V2_EXECUTOR_PLAN.md`** — byte-exact, self-contained spec written so ANY model can

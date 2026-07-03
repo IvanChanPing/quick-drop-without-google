@@ -55,3 +55,48 @@ Send the lines from both phones. Key checkpoints:
   Receive Only/Share choice is on the reader (tapper) side. Refine to two-way consent later if wanted.
 - `saveDirect` runs on a background thread (no ANR).
 - Look/animation of the transfer screen is a first pass — tell me what to change after you see it.
+
+---
+
+# Name Card v2 (symmetric consent) — on-device test
+
+**Status: compile + JVM-unit-tested only. The BLE consent transport + the whole v2 UI click-path are
+DEVICE-UNVERIFIED** (no radio / no display in the build env). Only the codec + choice state machine
+are unit-tested. This script proves the rest on hardware.
+
+APK: `super-drop-debug.apk` (repo root) or
+`https://204-168-163-118.sslip.io/trackers/static/super-drop-namecard-v2-debug.apk`.
+
+## 0. Enable v2 (once per phone)
+1. Install the APK on **both** phones; open Super Drop once (stopped-state → NFC intents dispatch).
+2. Settings → **Name Card** → set up your card (as in the v1 script above).
+3. On the same screen, turn ON **"Symmetric consent (beta)"** (new switch under the master switch).
+   Accept the notification-permission prompt (so the "waiting/declined" heads-up can show).
+4. Do this on **both** phones. Keep NFC on; Bluetooth is force-enabled at tap by the Radio Helper.
+
+## 1. The tap (both phones idle)
+- Both phones **awake + unlocked**, Super Drop **closed on both**.
+- Tap the backs together.
+- **Expected:** BOTH phones open the full-screen Name Card screen showing **their OWN** card with
+  **Share** / **Receive Only** — buttons briefly disabled ("connecting") then enabled.
+
+## 2. The four consent scenarios (run each on a fresh tap)
+| # | Phone A taps | Phone B taps | Expected |
+|---|---|---|---|
+| 1 | **Share** | **Share** | both get the receive ripple + save each other's contact (opens Contacts) |
+| 2 | **Share** | **Receive Only** | A: heads-up "waiting" → "they declined", card fades to "declined", Done. B: saves A's card |
+| 3 | **Receive Only** | **Share** | A: saves B's card (ripple). B: heads-up "waiting" → "declined" screen, Done |
+| 4 | **Receive Only** | **Receive Only** | both fade to "They declined to share their contact info", Done only, NO ripple |
+| 5 | **Share**, other never taps | (leave 30s) | tapper: heads-up "waiting" → screen fades to "No response", Done |
+
+## 3. Mixed-version (legacy fallback)
+- Put the **v1** APK (symmetric consent OFF) on one phone, v2 on the other, tap.
+- **Expected:** it still completes as a one-sided v1 receive (no crash). This path is best-effort /
+  device-tuned — report exactly what happens.
+
+## v2 make-or-break unknowns (device-only)
+1. Does the both-idle tap open the screen on BOTH phones? (Phase-1 wake — the prerequisite.)
+2. Does each side's Share/Receive-Only reach the other **live** over the CONSENT channel?
+3. Timing: the ~1.5s post-BYE close grace and the server-side card read — watch for a truncated
+   card or a link that closes a beat too early. Tell me and I'll tune the two grace constants.
+4. Heads-up notification text switching "waiting" → "declined".

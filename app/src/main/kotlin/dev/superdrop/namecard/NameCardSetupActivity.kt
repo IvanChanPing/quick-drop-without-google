@@ -75,10 +75,32 @@ internal class NameCardSetupActivity : AppCompatActivity() {
             setOnCheckedChangeListener { _, checked -> enablePrefs.setEnabled(checked) }
         }
 
+        // "Symmetric consent (beta)" toggle — turns on the both-phones-choose Name Card v2 flow.
+        // When enabled, ask for notification permission so the "waiting / declined" heads-up can show.
+        findViewById<SwitchCompat>(R.id.nameCardV2Switch).apply {
+            isChecked = enablePrefs.isV2Enabled()
+            setOnCheckedChangeListener { _, checked ->
+                enablePrefs.setV2Enabled(checked)
+                if (checked) requestNotificationPermissionIfNeeded()
+            }
+        }
+
         findViewById<Button>(R.id.nameCardSaveButton).setOnClickListener { save() }
         findViewById<Button>(R.id.nameCardClearButton).setOnClickListener { clear() }
         findViewById<Button>(R.id.nameCardUsePhoneInfoButton).setOnClickListener {
             pullInfoPermission.launch(devicePermissions())
+        }
+    }
+
+    /** POST_NOTIFICATIONS request (API 33+) for the v2 consent heads-up; result is advisory (heads-up is optional). */
+    private val notificationPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* heads-up degrades gracefully if denied */ }
+
+    private fun requestNotificationPermissionIfNeeded() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+        ) {
+            notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
     }
 

@@ -18,6 +18,26 @@ path once; the two paths are fully separate copies so the device-proven helper r
   wiring, no call-site changes) → compile-only, on-device UNVERIFIED. Helper route unchanged.
   Journal: `docs/SHIZUKU_PREFERRED_PATH_PLAN.md`.
 
+## [2026-07-03] Name Card v2 — Phase 2–3 B4+B5: session coordinator + consent UI (compile-only)
+Completes the symmetric NameDrop flow (plan Appendix B4/B5). All gated by the "Symmetric consent
+(beta)" toggle (default OFF); the shipped v1 flow is untouched when off.
+- NEW `namecard/NameCardLinkHolder.kt` — process-wide session coordinator: owns the shared
+  `NameCardConsentMachine`, IS the `ConsentBleListener`, maps effects to the exchange (BLE) and to the
+  attached activity (UI). Lets the service (server) and activity (client) share one live session.
+- `NameCardExchangeService`: v2 branch — starts `startServerV2`, launches the transfer screen at tap
+  (both screens open), no self-stop on peer card, 65s backstop. v1 path byte-identical.
+- `NameCardTransferActivity`: reuses the EXISTING screen + animations. Both v2 roles show OWN card +
+  Share/Receive-Only (disabled until link-ready); effects drive waiting (heads-up), SaveCardAndRipple
+  (existing send-ripple + save), fade-to-declined and no-response terminals (fade `nameCardPanel`,
+  reuse `nameCardConnecting` for the message, relabel `nameCardSecondary` → Done). 30s timeout,
+  `namecard_consent` heads-up channel, onDestroy cleanup. NO new layout views.
+- Added a "link-ready" signal to the BLE layer so a fast tap isn't lost before the transport is up.
+- `NameCardSetupActivity` + layout: new **"Symmetric consent (beta)"** switch (`nameCardV2Switch`)
+  toggling `isV2Enabled`; requests POST_NOTIFICATIONS when turned on (G9). Makes v2 testable.
+- EXIT CHECKS green: zero `android` imports in the two pure files; `testDebugUnitTest` +
+  `robolectricDebugUnitTest` + `assembleDebug` all exit 0. APK at repo root + served. On-device test
+  script appended to `docs/NAMECARD_ON_DEVICE_TEST.md`. STATUS: BLE + UI click-path DEVICE-UNVERIFIED.
+
 ## [2026-07-03] Name Card v2 — Phase 2 B3: BLE consent layer (compile-only)
 Added the v2 symmetric-consent transport to `namecard/NameCardBleExchange.kt` as PARALLEL methods so
 the device-verified v1 path stays byte-identical (structural note: plan B3 said "edit startServer";
