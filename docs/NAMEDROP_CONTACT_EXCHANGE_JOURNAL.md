@@ -18,6 +18,13 @@
 > reader-side token parse in `NameCardTransferActivity` → A5 park `NameCardTapReader` when v2 on → A6
 > exit checks. Build cmd + every signature code-verified 2026-07-02 in Appendix A. All gated by
 > `nameCardV2` (default OFF) → shipped flow untouched. HAND OPUS THIS FILE, start at Appendix A.
+> **PHASE 1 DONE (2026-07-02, commits 65c6aa8→9c6900f):** A1 pref, A2 `NameCardNdef` (real
+> android.nfc, Robolectric-tested), A3 `SuperDropNdefApduService` at-rest branch, A4 manifest
+> NDEF filter + `NameCardTransferActivity` NDEF parse, A5 `MainActivity` parks legacy reader.
+> Robolectric wired into :app (memory `reference_bada_app_robolectric_wiring_2026_07_02`). VERIFIED
+> offline: assembleDebug + testDebugUnitTest 7/7 + robolectricDebugUnitTest 6/6, all exit 0.
+> NEXT = user on-device test: flip `nameCardV2` on, install on 2 phones (open once each), tap with
+> both closed+awake+unlocked → both open the Name Card screen. THEN Phases 2–3 (consent GATT + UI).
 >
 > **⭐ EXECUTOR-GRADE BUILD PLAN (approved by user 2026-07-02, NOT yet built):**
 > **`docs/NAMECARD_V2_EXECUTOR_PLAN.md`** — byte-exact, self-contained spec written so ANY model can
