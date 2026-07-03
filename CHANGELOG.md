@@ -1,3 +1,17 @@
+## [2026-07-03] Name Card v2 — Phase 2 B1+B2: consent codec + state machine (JVM-tested)
+Pure-Kotlin core of the symmetric consent protocol (plan Appendix B1/B2), zero `android.*` imports:
+- NEW `namecard/NameCardConsentCodec.kt` + `ConsentMessage` — the CONSENT-channel wire language:
+  `HELLO(0x01 ver)` / `CHOICE_SHARE(0x02)` / `CHOICE_RECEIVE_ONLY(0x03)` / `BYE(0x04)`. Decode
+  tolerates trailing bytes (forward-compat) and returns null on empty/unknown/short-HELLO.
+- NEW `namecard/NameCardConsentMachine.kt` — role-agnostic, timer-free state machine. Encodes the §3
+  matrix + D1 per-side consent (your card sends the moment YOU tap Share). Key correctness point:
+  `CloseLink` is deferred until the peer's incoming card actually arrives, so closing on "both chose"
+  never aborts a pending read.
+- Tests: `NameCardConsentCodecTest` (round-trip + malformed + trailing-byte tolerance) and
+  `NameCardConsentMachineTest` (all 9 cells, both orderings, card-timing permutations, timeout/
+  disconnect rows, resolved-but-card-failed edge, post-terminal/duplicate guards). Both green under
+  `:app:testDebugUnitTest` (plain JVM). BLE/UI wiring (B3–B5) is the next, compile-only step.
+
 ## [2026-07-03] Name Card v2 — Phase 2–3 consent design pinned (docs only, no code)
 Design for the symmetric consent protocol + UI, written so the implementing model has zero decisions
 left (per user feedback after the Phase-1 hand-rolled-NDEF deviation). In

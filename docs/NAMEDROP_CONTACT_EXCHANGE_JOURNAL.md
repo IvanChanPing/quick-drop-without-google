@@ -44,6 +44,16 @@
 > commitWithSendRipple) + G9; B6 exit checks; B7 user script incl. mixed-version run. **D1 per-side
 > consent semantic USER-CONFIRMED 2026-07-03** ("if you tap share you could send your card").
 > NEXT = hand Opus the plan: implement Appendix B in order (B1→B7). CHANGELOG entry 2026-07-03 logged.
+> **B1+B2 BUILT + JVM-VERIFIED (Opus, 2026-07-03):** `NameCardConsentCodec.kt`+`ConsentMessage` and
+> `NameCardConsentMachine.kt` (Event/Effect/State) written, both zero-android-import; tests
+> `NameCardConsentCodecTest` + `NameCardConsentMachineTest` GREEN under `:app:testDebugUnitTest`
+> (exit 0). Machine covers all 9 matrix cells + both orderings + card-timing permutations +
+> timeout/disconnect + post-terminal/dup guards. KEY DESIGN RESOLUTION (correctness): CloseLink is
+> DEFERRED until PeerCardArrived when the peer shared — closing on "both chose" would abort a
+> pending card read; BLE separately defers teardown for the outgoing write. Machine `state` enum
+> exposes DONE_MUTUAL/SHARED_PEER_DECLINED/RECEIVED_PEER_SHARED/BOTH_DECLINED/NO_RESPONSE. NEXT =
+> B3 (BLE consent layer in NameCardBleExchange — compile-only) then B4 (LinkHolder+service) then B5
+> (UI). Commit for B1+B2 next.
 >
 > **⭐ EXECUTOR-GRADE BUILD PLAN (approved by user 2026-07-02, NOT yet built):**
 > **`docs/NAMECARD_V2_EXECUTOR_PLAN.md`** — byte-exact, self-contained spec written so ANY model can
