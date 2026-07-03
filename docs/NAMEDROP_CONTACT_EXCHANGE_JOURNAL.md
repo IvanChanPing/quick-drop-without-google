@@ -54,6 +54,20 @@
 > exposes DONE_MUTUAL/SHARED_PEER_DECLINED/RECEIVED_PEER_SHARED/BOTH_DECLINED/NO_RESPONSE. NEXT =
 > B3 (BLE consent layer in NameCardBleExchange — compile-only) then B4 (LinkHolder+service) then B5
 > (UI). Commit for B1+B2 next.
+> **B3 BUILT + COMPILES (Opus, 2026-07-03, device-UNVERIFIED):** v2 consent transport added to
+> `NameCardBleExchange.kt` as PARALLEL `...V2` methods (NOT branched into v1 — keeps v1 byte-identical;
+> structural deviation from B3's "edit startServer" wording, journaled per B0, satisfies B6 better).
+> New: CONSENT char(WRITE+NOTIFY)+CCCD on the existing service; `startServerV2`/`startClientV2`;
+> effect surface `sendLocalChoice`/`transmitCard`/`sendByeAndClose`; `ConsentBleListener`. Gated CARD
+> read (server serves only if v2LocalSharing); read-before-HELLO→legacy served unconditionally;
+> client legacy-detect via CONSENT-absent; single-op client queue; CCCD always-answered; API-33
+> overloads guarded; cross-thread fields @Volatile; 60s backstop + 1.5s close grace.
+> `:app:compileDebugKotlin` exit 0. **TODO-DEVICE residuals (surface on the on-device run):**
+> (1) server has NO read-completion callback → the 1.5s SESSION_CLOSE_GRACE_MS before teardown is a
+> heuristic guarding the client's final read; tune on hardware. (2) legacy-fallback UX after the v2
+> activity has launched is best-effort (onLegacyPeer hook exists; coordinator handling in B5 is
+> minimal). NEXT = B4: `NameCardLinkHolder` singleton + `NameCardExchangeService` v2 restructure
+> (launch UI at serve-start, no self-stop on peer card, 65s timeout).
 >
 > **⭐ EXECUTOR-GRADE BUILD PLAN (approved by user 2026-07-02, NOT yet built):**
 > **`docs/NAMECARD_V2_EXECUTOR_PLAN.md`** — byte-exact, self-contained spec written so ANY model can

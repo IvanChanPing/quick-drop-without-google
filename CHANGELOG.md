@@ -1,3 +1,20 @@
+## [2026-07-03] Name Card v2 — Phase 2 B3: BLE consent layer (compile-only)
+Added the v2 symmetric-consent transport to `namecard/NameCardBleExchange.kt` as PARALLEL methods so
+the device-verified v1 path stays byte-identical (structural note: plan B3 said "edit startServer";
+parallel `...V2` methods better satisfy the B6 "v1 unchanged" check — journaled per B0):
+- CONSENT characteristic (WRITE+NOTIFY) + CCCD on the existing GATT service; `startServerV2` /
+  `startClientV2`; effect surface `sendLocalChoice(share)` / `transmitCard(card)` / `sendByeAndClose()`;
+  `ConsentBleListener` (peer hello/choice/card/legacy/disconnect, delivered on main).
+- CARD read GATED behind the server's own Share (`v2LocalSharing`); read-before-HELLO ⇒ legacy v1
+  peer served unconditionally (deterministic detection, plan D3). Client detects legacy by CONSENT
+  char absence. Single-GATT-op client queue (Android one-op-in-flight trap). CCCD descriptor-write
+  ALWAYS answered. API-33 notify/write/descriptor overloads guarded; cross-thread fields @Volatile.
+- v2 session backstop 60s; CloseLink/BYE + a 1.5s teardown grace so a final read/write drains.
+- STATUS: compiles clean; NO device/BLE radio here → behavior UNVERIFIED. TODO-DEVICE residuals:
+  (a) server has no read-completion callback → the 1.5s close grace is a heuristic to tune;
+  (b) legacy-fallback UX after a v2 activity has already launched is best-effort. Both flagged for
+  the on-device run.
+
 ## [2026-07-03] Name Card v2 — Phase 2 B1+B2: consent codec + state machine (JVM-tested)
 Pure-Kotlin core of the symmetric consent protocol (plan Appendix B1/B2), zero `android.*` imports:
 - NEW `namecard/NameCardConsentCodec.kt` + `ConsentMessage` — the CONSENT-channel wire language:
