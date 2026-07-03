@@ -163,6 +163,49 @@ FadeToDeclined, ShowNoResponse, CloseLink. Encode the §3 matrix EXACTLY:
 Disconnect before both chose → NoResponse (never a crash). Exhaustive JVM test: all 9 cells + both
 timeout rows + early-disconnect + legacy-peer fallback.
 
+### 7b. Pinned design decisions (Fable, 2026-07-03 — verified against NameCardBleExchange.kt this session; Opus implements EXACTLY this)
+**D1 — Consent semantic is PER-SIDE, not mutual-gated (user's Scenario B, redesign plan §2):** your
+card is transmitted the moment YOUR user taps Share, regardless of whether the peer has chosen yet
+("my card still reached them" when the peer later declines). Never wait for both choices before
+transmitting; only the LOCAL choice gates the local card. What v2 removes is v1's zero-consent serve.
+
+**D2 — Card transport mechanisms (reuse v1's proven paths, add gates; no new chunking protocol):**
+- CLIENT card → server: unchanged `shareBack()` write (NameCardBleExchange.kt:222) — already fires
+  only after the local Share tap; already gated correctly. Server's write handler (:284) unchanged.
+- SERVER card → client: keep the CARD-characteristic READ path (offset-aware long read, :272-282 —
+  needed because a card can exceed one MTU; do NOT push the card through notifies). Gate it:
+  `onCharacteristicReadRequest` answers card bytes ONLY when server `localChoice == SHARE` for a
+  v2 peer; otherwise respond `GATT_READ_NOT_PERMITTED`. Remove the `it.value = cardBytes` bake at
+  :141 (the read handler is the single source; no cached-value leak). The client performs the read
+  only AFTER receiving the server's `CHOICE_SHARE` notify — peer CHOICE_SHARE doubles as
+  "card now readable"; no extra CARD_READY opcode.
+- Ripple/save trigger = card BYTES arriving+parsing (client: read completes; server: write arrives),
+  never the CHOICE message alone.
+
+**D3 — Version/legacy detection (deterministic, no guessing):**
+- Client side: after `discoverServices`, CONSENT characteristic ABSENT from the service → legacy v1
+  server → run today's v1 flow verbatim (immediate CARD read, old UI). PRESENT → v2: subscribe CCCD
+  → write `HELLO` → consent machine. GATT ops are client-serialized, so subscribe+HELLO always
+  precede any v2 CARD read.
+- Server side: a CARD read request arriving from a device that has NOT sent `HELLO` → legacy v1
+  client → serve the card v1-style (unconditional) and run the v1 flow for that session. `HELLO`
+  seen → v2 gating (D2) applies. The 3s HELLO timer is only the backstop for a half-open peer;
+  char-absence / read-before-HELLO are the primary, deterministic detectors.
+
+**D4 — Order independence:** the consent machine consumes `localShare/localReceiveOnly/peerShare/
+peerReceiveOnly/peerCardArrived` as independent events in ANY interleaving (both-tap-simultaneously
+race included) and must be tested for permuted orderings, not just the 9 matrix cells.
+
+**D5 — Timers:** the 30s no-response timer lives in the consent machine (starts at link-up = HELLO
+exchanged; cancelled on terminal). The hardware `MAX_SESSION_MS` backstop (:437, currently 30s)
+rises to 60s in v2 sessions so the UX timer, not the radio teardown, is what users see; v1/legacy
+sessions keep 30s. `BYE` is sent on every terminal state before close so the peer distinguishes
+"done" from "link dropped" (dropped before both chose → NoResponse, D4).
+
+**D6 — CONSENT characteristic:** properties WRITE+NOTIFY, CCCD `00002902-...`, client choice writes
+use WRITE_TYPE_DEFAULT (with response). Client→server = writes; server→client = notifies (§7 wire).
+HELLO carries the 1-byte protocol version (0x01) for future evolution.
+
 ## 8. Transfer-screen states (Phase 3) — NameCardTransferActivity
 Both roles render the SAME layout (own card + two buttons). Wire machine effects:
 - ShowWaiting: button pop (existing pressAnim), ripple suppressed, add "waitingLine — small gray
