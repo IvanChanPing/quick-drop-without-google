@@ -37,6 +37,15 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
 
+    buildFeatures {
+        // AIDL for the in-app Shizuku user-service interface (IRadioShell — Path B,
+        // the in-app privileged radio path that replaces the radio-helper APK when
+        // Shizuku is present). buildConfig for BuildConfig.DEBUG used by the Shizuku
+        // UserServiceArgs.debuggable(...) in the wrapper added in a later phase.
+        aidl = true
+        buildConfig = true
+    }
+
     testOptions {
         unitTests {
             // The mDNS gate (#34) and a few other paths in this module
@@ -71,6 +80,13 @@ dependencies {
     // ReceiverForegroundService (#35).
     implementation(libs.androidx.lifecycle.process)
     implementation(libs.kotlinx.coroutines.android)
+
+    // Shizuku (Path B): the in-app privileged radio path. When Shizuku is running
+    // and granted, the app binds RadioShellService (shell UID) to flip Wi-Fi/BT via
+    // `svc`/`cmd`, doing everything the radio-helper APK did WITHOUT that second APK.
+    // Same 13.1.5 line the :radio-helper module already uses.
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
 
     // Junit Jupiter is the project-wide test runtime. Aligning with
     // :core-protocol and :discovery-android keeps test discovery uniform

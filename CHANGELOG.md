@@ -1,3 +1,23 @@
+## [2026-07-03] Shizuku in-app radio path — Phase 1: user service + AIDL (compile-only)
+Scaffolding for "Path B": when Shizuku is present the main app does all silent Wi-Fi/BT toggling
+itself (as the shell UID, via Shizuku), so the separate `radio-helper` APK isn't needed — the helper
+becomes the fallback when Shizuku is absent. A single per-transfer trigger (later phase) picks the
+path once; the two paths are fully separate copies so the device-proven helper route stays untouched.
+- NEW `service-android/src/main/aidl/dev/superdrop/service/radio/IRadioShell.aidl` — Shizuku
+  user-service interface. Unlike the helper's Wi-Fi-only copy, this ALSO exposes Bluetooth
+  (`setBluetoothEnabled`/`getBluetoothState`), since the modern-targetSdk app can't use
+  `BluetoothAdapter.enable()`.
+- NEW `service-android/.../radio/RadioShellService.kt` — the shell-UID user service (copy of the
+  helper's + Bluetooth). Wi-Fi via `svc wifi` → `cmd -w wifi`; Bluetooth via an OBSERVABLE
+  `cmd bluetooth_manager` → `svc bluetooth` chain that logs which command won (BT command is
+  device-verified only).
+- `service-android/build.gradle.kts`: `buildFeatures { aidl; buildConfig }` + Shizuku api+provider
+  13.1.5 (same line as `:radio-helper`). Manifest: `uses-sdk overrideLibrary`, `API_V23` permission,
+  `ShizukuProvider` (authority per-app, can't collide with the helper APK).
+- STATUS: `:service-android:assembleDebug` = BUILD SUCCESSFUL. Nothing binds it yet (no runtime
+  wiring, no call-site changes) → compile-only, on-device UNVERIFIED. Helper route unchanged.
+  Journal: `docs/SHIZUKU_PREFERRED_PATH_PLAN.md`.
+
 ## [2026-07-03] Name Card v2 — Phase 2 B3: BLE consent layer (compile-only)
 Added the v2 symmetric-consent transport to `namecard/NameCardBleExchange.kt` as PARALLEL methods so
 the device-verified v1 path stays byte-identical (structural note: plan B3 said "edit startServer";

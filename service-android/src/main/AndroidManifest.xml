@@ -12,6 +12,16 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <!--
+      Shizuku (Path B — the in-app privileged radio path that replaces the
+      radio-helper APK when Shizuku is present; see docs/SHIZUKU_PREFERRED_PATH_PLAN.md).
+      overrideLibrary keeps the Shizuku AARs' higher minSdk from blocking this
+      module's minSdk 24. API_V23 is the permission required to talk to the
+      Shizuku/Sui service. (Verbatim from the radio-helper manifest.)
+    -->
+    <uses-sdk tools:overrideLibrary="rikka.shizuku.provider, rikka.shizuku.api, rikka.shizuku.shared, rikka.shizuku.aidl" />
+    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
+
+    <!--
       Legacy-storage write permission used by LegacyDownloadsEnvironment
       on API 24-28 (where MediaStore.Downloads does not yet exist).
 
@@ -57,6 +67,19 @@
             android:name=".receiver.ReceiverForegroundService"
             android:exported="false"
             android:foregroundServiceType="connectedDevice" />
+
+        <!-- Shizuku provider (required by the Shizuku API to talk to the
+             Shizuku/Sui service). The RadioShellService user service is NOT
+             declared here — Shizuku spawns it via app_process. Authority is
+             per-app (applicationId + ".shizuku") so it can't collide with the
+             separate radio-helper APK's provider. (Verbatim from radio-helper.) -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:enabled="true"
+            android:exported="true"
+            android:multiprocess="false"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL" />
 
     </application>
 
