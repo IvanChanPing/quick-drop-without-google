@@ -30,6 +30,20 @@
 > bake, D3 deterministic legacy detection, D4 event-order independence, D5 timers 30s machine /
 > 60s backstop + BYE, D6 CONSENT char details), each verified against `NameCardBleExchange.kt`
 > read in full this session. User division of labor: Fable designs, **Opus implements from §7+§7b+§8**.
+> **APPENDIX B ADDED (Fable, 2026-07-03, same day):** user asked for MORE explicit Opus instructions
+> (Phase-1 lesson: plan didn't say how to unit-test platform classes → Opus improvised hand-rolled
+> NDEF bytes). Executor plan now ends with **APPENDIX B (B0–B7)** = the Phase 2–3 exact step-by-step:
+> B0 stop-and-ask rule + the ALREADY-WIRED test infra (plain-JVM vs `robolectricDebugUnitTest`,
+> `@Config(sdk=[35], application=android.app.Application::class)`); B1 codec bytes+paths; B2 pinned
+> machine API (Event/Effect sealed types, role-agnostic, no timers); B3 BLE edits with traps
+> pre-answered (CCCD sendResponse, one-GATT-op-in-flight queue, binder→main marshaling, notify
+> overloads, legacy detect points, 60s session); B4 the v1 structural surprises VERIFIED w/ lines
+> (service self-stops on peer card ExchangeService:113-119; SERVE_TIMEOUT 33s :169 → 65s in v2; v1
+> server activity has no live link) + NameCardLinkHolder singleton + launch server UI at serve-start;
+> B5 effect→UI anchors in TransferActivity (:146-148 dispatch, :276 onPeerCardReceived, :401
+> commitWithSendRipple) + G9; B6 exit checks; B7 user script incl. mixed-version run. **D1 per-side
+> consent semantic USER-CONFIRMED 2026-07-03** ("if you tap share you could send your card").
+> NEXT = hand Opus the plan: implement Appendix B in order (B1→B7). CHANGELOG entry 2026-07-03 logged.
 >
 > **⭐ EXECUTOR-GRADE BUILD PLAN (approved by user 2026-07-02, NOT yet built):**
 > **`docs/NAMECARD_V2_EXECUTOR_PLAN.md`** — byte-exact, self-contained spec written so ANY model can

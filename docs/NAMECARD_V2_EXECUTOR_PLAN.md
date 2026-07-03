@@ -164,7 +164,8 @@ Disconnect before both chose → NoResponse (never a crash). Exhaustive JVM test
 timeout rows + early-disconnect + legacy-peer fallback.
 
 ### 7b. Pinned design decisions (Fable, 2026-07-03 — verified against NameCardBleExchange.kt this session; Opus implements EXACTLY this)
-**D1 — Consent semantic is PER-SIDE, not mutual-gated (user's Scenario B, redesign plan §2):** your
+**D1 — Consent semantic is PER-SIDE, not mutual-gated (user's Scenario B, redesign plan §2; user
+re-confirmed 2026-07-03: "if you tap share you could send your card"):** your
 card is transmitted the moment YOUR user taps Share, regardless of whether the peer has chosen yet
 ("my card still reached them" when the peer later declines). Never wait for both choices before
 transmitting; only the LOCAL choice gates the local card. What v2 removes is v1's zero-consent serve.
@@ -484,3 +485,167 @@ A debug build with `nameCardV2` flipped ON (or a hidden toggle), plus: "app clos
 unlocked, tap → both open the Name Card screen." That is the both-background trigger proof. If it fires,
 Phases 2–3 layer the consent/animation on top. If it doesn't, the harness (namecard-tap-harness) is the
 clean-room repro to localize whether it's routing, AAR-launch, or the OnePlus AID conflict (G1).
+
+---
+
+# APPENDIX B — PHASE 2–3 EXACT STEP-BY-STEP (for the implementing model; written by Fable 2026-07-03)
+Every fact below marked with a `file:line` was verified by reading that file IN FULL on 2026-07-03.
+You (the implementer) still re-read each file before editing it — but you do NOT need to re-derive
+any of these facts, and you MUST NOT contradict them silently.
+
+## B0. Execution rules for THIS appendix (the Phase-1 lesson, made explicit)
+1. **STOP-AND-ASK rule:** if anything you find in the code contradicts this appendix or §7/§7b/§8,
+   or an instruction is ambiguous for the concrete line you're on — STOP, write the conflict into
+   `docs/NAMEDROP_CONTACT_EXCHANGE_JOURNAL.md`, and ask the user. Do NOT pick an interpretation and
+   continue. (Phase-1 failure mode: the plan said "use android.nfc.NdefMessage" but didn't say how
+   to unit-test platform classes; the implementer improvised hand-rolled bytes instead of wiring the
+   test dependency. NEVER substitute a hand-rolled reimplementation of platform behavior to dodge a
+   missing test dependency — the dependency gets wired instead, and for this repo it already IS.)
+2. **Test infrastructure that ALREADY EXISTS (do not rediscover, do not re-invent):**
+   - Plain-JVM unit tests: `app/src/test/kotlin/dev/superdrop/...`, run by
+     `JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64 ./gradlew :app:testDebugUnitTest` (§A0).
+   - Robolectric IS wired into `:app` (`app/build.gradle.kts:230-261`): tests that need real
+     `android.*` classes are JUnit4 files annotated EXACTLY like `NameCardNdefTest.kt:27-28` —
+     `@RunWith(RobolectricTestRunner::class)` + `@Config(sdk = [35], application =
+     android.app.Application::class)` — and run by the CUSTOM task `:app:robolectricDebugUnitTest`
+     (they are EXCLUDED from testDebugUnitTest). `sdk = [35]` is mandatory (SDK 36 needs Java 21;
+     this box runs 17). `application = android.app.Application::class` is mandatory (the real
+     BadaApplication boots WorkManager and crashes the sandbox).
+   - Phase-2's codec + machine (B1/B2) must have ZERO `android.*` imports → they are plain-JVM
+     tests under testDebugUnitTest; Robolectric is NOT needed for them.
+3. Commit + CHANGELOG + journal after EVERY B-step, same cadence as Appendix A. Every claim ships
+   labeled "compile+JVM-tested on this box; on-device UNVERIFIED".
+4. All §0 rules still bind (no bounce-physics specs, "bounce" wording, APK to repo top level, etc.).
+
+## B1. `NameCardConsentCodec` — NEW file `app/src/main/kotlin/dev/superdrop/namecard/NameCardConsentCodec.kt`
+Pure Kotlin object, zero android imports. Wire messages (§7):
+- `HELLO`   = `byteArrayOf(0x01, version)` — 2 bytes; current version `0x01`.
+- `CHOICE_SHARE` = `byteArrayOf(0x02)`; `CHOICE_RECEIVE_ONLY` = `byteArrayOf(0x03)`; `BYE` = `byteArrayOf(0x04)` — 1 byte each.
+- Decode rules (pin these exactly): empty array → null. Unknown first byte → null (caller logs).
+  HELLO with length < 2 → null. **Extra trailing bytes beyond the spec are TOLERATED** (parse the
+  known prefix; forward-compat for future fields). Return a small sealed type
+  (`ConsentMessage.Hello(version)`, `.ChoiceShare`, `.ChoiceReceiveOnly`, `.Bye`).
+Test `app/src/test/kotlin/dev/superdrop/namecard/NameCardConsentCodecTest.kt` (plain JVM):
+encode/decode round-trip all 4; each malformed case above; trailing-bytes tolerance.
+
+## B2. `NameCardConsentMachine` — NEW file `app/src/main/kotlin/dev/superdrop/namecard/NameCardConsentMachine.kt`
+Pure Kotlin, zero android imports, NO internal timers/threads — time and BLE are the caller's job.
+**Pinned API (implement exactly this shape so B4/B5 wiring matches):**
+- `sealed interface Event`: `LocalShare`, `LocalReceiveOnly`, `PeerShare`, `PeerReceiveOnly`,
+  `PeerCardArrived`, `Timeout`, `Disconnected`.
+- `sealed interface Effect`: `SendChoice(val share: Boolean)`, `TransmitCard`, `SaveCardAndRipple`,
+  `ShowWaiting`, `ShowHeadsUpWaiting`, `UpdateHeadsUpDeclined`, `FadeToDeclined`, `ShowNoResponse`,
+  `CloseLink`.
+- `fun onEvent(event: Event): List<Effect>` — pure + synchronous; duplicate/late events after a
+  terminal state return emptyList() (never throw). Expose current state (an enum/sealed val) for tests.
+- The machine is ROLE-AGNOSTIC. The BLE layer maps `TransmitCard` per role (B3): client → the
+  existing `shareBack()` write; server → notify `CHOICE_SHARE` and unlock the gated CARD read (the
+  peer then reads; the server's "transmit" is completing that read). `SaveCardAndRipple` fires only
+  on `PeerCardArrived` (bytes parsed), never on a CHOICE message alone (§7b D2).
+- Semantics = the §3 matrix + §7b D1 (per-side consent, user-confirmed): `LocalShare` always emits
+  `SendChoice(true)` + `TransmitCard` immediately (plus `ShowHeadsUpWaiting` if the peer is
+  undecided); `LocalReceiveOnly` emits `SendChoice(false)` (+`ShowWaiting` if peer undecided);
+  both-declined → `FadeToDeclined`; `Timeout`/`Disconnected` before resolution → `ShowNoResponse`;
+  every terminal path ends with `CloseLink` (which the BLE layer turns into BYE + teardown, B3).
+Test `NameCardConsentMachineTest.kt` (plain JVM): all 9 matrix cells, both timeout rows,
+early-disconnect, AND **order permutations** (§7b D4): for each cell drive the events in every
+interleaving (local-first vs peer-first vs card-before-choice) and assert identical terminal
+effects. Also: events after terminal → emptyList.
+
+## B3. BLE consent layer — EDIT `app/src/main/kotlin/dev/superdrop/namecard/NameCardBleExchange.kt`
+Verified v1 facts you build on (all from the 2026-07-03 full read):
+- Server bakes card bytes into the characteristic at `:141` (`it.value = cardBytes`) and the read
+  handler `:272-282` serves them to ANY reader with no consent check. Client reads CARD immediately
+  after `discoverServices` (`:354-365`), holds the connection (`:373-375`), and `shareBack()` `:222`
+  / `declineShare()` `:240` are already gated on the local user's tap — reuse them unchanged.
+- `MAX_SESSION_MS = 30_000` `:437` auto-stops everything; `REQUESTED_MTU = 247` `:434`.
+Changes (each maps to §7/§7b):
+1. **CONSENT characteristic (server, in `startServer`):** UUID `7b2fdd3e-9a41-4e2c-b7a4-5c1e6f3d0a11`
+   (§7), properties `PROPERTY_WRITE or PROPERTY_NOTIFY`, permission `PERMISSION_WRITE`; add CCCD
+   descriptor UUID `00002902-0000-1000-8000-00805f9b34fb` with `PERMISSION_READ or PERMISSION_WRITE`.
+   Add it to the SAME service as CARD. **Remove the `:141` value bake** (the read handler is the
+   single source of card bytes; D2).
+2. **Server callback additions:** implement `onDescriptorWriteRequest` and — TRAP, pin this —
+   ALWAYS `sendResponse(device, requestId, GATT_SUCCESS, offset, null)` when `responseNeeded`,
+   or the client's subscribe stalls forever. Record the subscribing device. CONSENT
+   `onCharacteristicWriteRequest` → `NameCardConsentCodec.decode` → HELLO marks `helloSeen` for
+   that device; choices become machine events. CARD read handler gains the D2/D3 gate: peer with
+   `helloSeen` and server `localChoice != SHARE` → respond `GATT_READ_NOT_PERMITTED`; peer WITHOUT
+   `helloSeen` (legacy v1 client reads immediately, before writing anything) → serve exactly as
+   today, v1 flow. Server → client messages go out via `notifyCharacteristicChanged`; use the
+   API-33 value-passing overload behind a `Build.VERSION` check and the deprecated
+   setValue+notify below it (file is already `@file:Suppress("DEPRECATION")` for this pattern, `:7-10`).
+3. **Client flow change (in `onServicesDiscovered` `:354`):** CONSENT characteristic ABSENT →
+   legacy v1 server → today's flow verbatim (immediate CARD read). PRESENT →
+   `setCharacteristicNotification(consent, true)` + write `ENABLE_NOTIFICATION_VALUE` to the CCCD;
+   in `onDescriptorWrite` → write HELLO; then WAIT (do NOT read CARD yet). `onCharacteristicChanged`
+   (server notify) → decode → machine events; on peer `CHOICE_SHARE` → NOW `readCharacteristic(CARD)`.
+4. **One-GATT-op-in-flight — TRAP, pin this:** Android BLE allows a single outstanding GATT
+   operation per connection; a second read/write/descriptor-write before the previous callback
+   SILENTLY FAILS (returns false / drops). v1 never had two ops pending; v2 can (e.g. the user taps
+   Share while the CARD read is in flight). Keep a tiny pending-op flag + a one-slot queue for the
+   choice write; flush it from the completion callbacks. Do not skip this.
+5. **Threading:** all GATT callbacks arrive on binder threads. The machine is main-thread-only:
+   every callback marshals via `mainHandler.post { ... }` before touching the machine (same pattern
+   the activity already uses at `NameCardTransferActivity.kt:270` `runOnUiThread`).
+6. **Timers (§7b D5):** `MAX_SESSION_MS` becomes 60_000 for v2 sessions (constructor/start
+   parameter; legacy sessions keep 30_000). `CloseLink` effect → send BYE (client: write; server:
+   notify), then `stop()`. Unexpected disconnect surfaces as the machine's `Disconnected` event.
+7. **New surface (pin the contract; exact Kotlin shape is yours):** the exchange exposes
+   `sendLocalChoice(share: Boolean)`, `sendBye()`, a `localChoice` the CARD-read gate consults, and
+   a listener for {peerHello, peerChoice(share), peerCardArrived(card), disconnected, legacyPeer}.
+
+## B4. Session ownership restructure — EDIT `NameCardExchangeService.kt` + NEW `NameCardLinkHolder.kt`
+Verified v1 facts (2026-07-03 full read of `NameCardExchangeService.kt`) — these are the structural
+surprises you must NOT trip over mid-build:
+- v1 the service launches the transfer activity ONLY when the peer card arrives, then immediately
+  `ble.stop()` + `stopSelf()` (`:113-119`) — the server-side activity has NO live link; the peer
+  card travels inside `serverIntent` as an extra.
+- The service kills itself after `SERVE_TIMEOUT_MS = 33_000` (`:85-88`, `:169`) — this WOULD kill a
+  v2 consent session mid-wait. Raise to 65_000 when `nameCardV2` is on (33s stays for v1).
+- The FGS + radio heartbeat (`shareRadios`, `:47`, `:78`, `:132`) must now live for the WHOLE v2
+  session — `onDestroy` (`:127-134`) already restores radios; just don't stop early.
+Changes:
+1. NEW `app/src/main/kotlin/dev/superdrop/namecard/NameCardLinkHolder.kt` — process-wide singleton
+   (mirror the `NameCardBootstrapHolder` pattern, same package): holds the active
+   `NameCardBleExchange` + `NameCardConsentMachine` + role + peer card once arrived. The service
+   (server role) and the activity both reach the session through it; cleared on `CloseLink`/teardown.
+   This is how the activity drives choices without binder plumbing.
+2. v2 server path in the service (gated on the `nameCardV2` pref; v1 path stays byte-identical):
+   start the server, and once advertising is up launch `NameCardTransferActivity` IMMEDIATELY in a
+   new SERVER-v2 mode (both screens open at tap — the symmetric UX; do NOT wait for the peer card).
+   Do NOT stop on peer-card-arrived; the service stays foreground until the machine emits
+   `CloseLink` (or the 65s backstop). Peer card is delivered to the activity via the holder +
+   listener, not an intent extra.
+
+## B5. Phase-3 UI wiring — EDIT `NameCardTransferActivity.kt` (+ manifest for G9)
+Verified anchors (grep 2026-07-03): role dispatch `:146-148` (NDEF → `setupClientFromNdef`,
+`ROLE_SERVER` extra → `setupServer`, else `setupClient`); `onPeerCardReceived` `:276-292` (Share →
+`shareBack`, Receive Only → `declineShare` + `commitWithSendRipple`); `commitWithSendRipple` `:401`;
+main-thread `ui` handler `:105`.
+1. Add the SERVER-v2 dispatch branch (B4.2). Both v2 roles render the SAME two-button consent UI;
+   `setupServer` (v1, peer-card-in-extra → Save/Done) stays untouched for legacy sessions.
+2. Wire the machine's effects to §8's named UI elements: `waitingLine` (small gray "waiting…" text
+   under the buttons), heads-up notification channel `namecard_consent` (IMPORTANCE_HIGH,
+   "Waiting for <peer> to respond" → same-id mutate to "<peer> declined to share their info", cancel
+   on terminal + `onDestroy`), `FadeToDeclined` = 300ms alpha tween (standard easing — NO
+   bounce-physics spec) + `declinedLine` centered gray text + `doneButtonFullWidth` blue pill,
+   `ShowNoResponse` same pattern with "No response". Ripple/save (`commitWithSendRipple` path) fires
+   ONLY on `SaveCardAndRipple`.
+3. The 30s machine timeout is an activity-posted `Timeout` event (the machine has no timers, B2):
+   post on the existing `ui` handler when the link comes up; cancel on terminal.
+4. G9: request `POST_NOTIFICATIONS` (API 33+) on the Name Card setup screen with the other
+   permissions; if denied, skip the heads-up, keep the in-activity waiting state, log it.
+5. Every machine transition + every effect → `DiagnosticLog` (observability; no silent paths).
+
+## B6. Exit checks (run before calling Phase 2–3 built)
+- `:app:assembleDebug` + `:app:testDebugUnitTest` + `:app:robolectricDebugUnitTest` all exit 0.
+- `grep -n "import android" NameCardConsentCodec.kt NameCardConsentMachine.kt` → ZERO hits.
+- `nameCardV2=false` → `git diff`-level reasoning check that every touched runtime path is behind
+  the pref or the legacy-peer detect, so the shipped v1 flow is byte-identical in behavior.
+- APK copied to repo top level; commits + CHANGELOG + journal entries per step (B0.3).
+
+## B7. Hand the user (after B6)
+The served debug APK + the 4-scenario two-phone script (§11): both-Share / Share-vs-ReceiveOnly
+(each direction) / both-ReceiveOnly / no-response-30s, PLUS one mixed-version run (one phone on the
+v1 APK) to prove the legacy fallback. Everything labeled "on-device UNVERIFIED until your run".

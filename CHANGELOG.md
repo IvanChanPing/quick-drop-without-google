@@ -1,3 +1,17 @@
+## [2026-07-03] Name Card v2 — Phase 2–3 consent design pinned (docs only, no code)
+Design for the symmetric consent protocol + UI, written so the implementing model has zero decisions
+left (per user feedback after the Phase-1 hand-rolled-NDEF deviation). In
+`docs/NAMECARD_V2_EXECUTOR_PLAN.md`:
+- §7b — 6 pinned decisions (D1 per-side consent semantic, user-confirmed 2026-07-03; D2 card-transport
+  gates incl. gated CARD read; D3 deterministic legacy-peer detection; D4 event-order-independent
+  machine; D5 30s machine / 60-65s backstop timers + BYE; D6 CONSENT characteristic details).
+- NEW Appendix B — exact step-by-step B0–B7: codec/machine file paths + byte layouts + pinned APIs,
+  BLE traps pre-answered (CCCD sendResponse, one-GATT-op-in-flight, binder-thread marshaling, notify
+  overloads), the v1 structural surprises with file:line proof (service self-stop on peer card
+  NameCardExchangeService.kt:113-119, SERVE_TIMEOUT_MS 33s :169, no live link in v1 server activity),
+  NameCardLinkHolder ownership, Phase-3 effect→UI wiring anchors, exit checks, user test script.
+All file:line facts verified by full reads on 2026-07-03. Commits 94d1c5a + this one.
+
 ## [2026-07-02] Name Card v2 (symmetric NameDrop) — Phase-1 A1+A2: pref gate + NDEF codec
 Groundwork for the both-background NDEF+AAR tap trigger (docs/NAMECARD_V2_EXECUTOR_PLAN.md Appendix A).
 - `NameCardPreferences`: added `isV2Enabled()/setV2Enabled()` (key `v2_symmetric`, DEFAULT OFF) — dev
