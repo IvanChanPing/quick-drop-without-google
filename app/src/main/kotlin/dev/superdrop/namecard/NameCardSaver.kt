@@ -13,9 +13,13 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.ContactsContract
+import android.provider.ContactsContract.CommonDataKinds as ck
+import android.provider.ContactsContract.Intents.Insert as ins
 import androidx.core.content.ContextCompat
 import dev.superdrop.discovery.diagnostics.DiagnosticLog
 import dev.superdrop.protocol.namecard.NameCard
+import dev.superdrop.protocol.namecard.NameCardEntry
+import dev.superdrop.protocol.namecard.NameCardEntryKind
 
 /**
  * **Name Card → Android contact saver.** Saves a received [NameCard] as a REAL
@@ -100,6 +104,11 @@ internal object NameCardSaver {
                     ).build(),
             )
         }
+        // Richer typed fields (company, title, address, website, birthday, note, nickname,
+        // additional phones/emails) → one ContactsContract data row each.
+        for (entry in card.entries) {
+            ops.add(entryOp(entry.kind, entry.value))
+        }
         return try {
             val results = context.contentResolver.applyBatch(ContactsContract.AUTHORITY, ops)
             DiagnosticLog.w(TAG, "saved contact directly (${ops.size - 1} fields)")
@@ -148,10 +157,63 @@ internal object NameCardSaver {
             card.displayName?.let { putExtra(ContactsContract.Intents.Insert.NAME, it) }
             card.phoneNumber?.let { putExtra(ContactsContract.Intents.Insert.PHONE, it) }
             card.email?.let { putExtra(ContactsContract.Intents.Insert.EMAIL, it) }
+            // The richer fields the ACTION_INSERT screen accepts as extras (website/birthday/nickname
+            // aren't Insert extras, so they only land via saveDirect's ContactsContract path).
+            firstEntry(card, NameCardEntryKind.COMPANY)?.let { putExtra(ins.COMPANY, it) }
+            firstEntry(card, NameCardEntryKind.TITLE)?.let { putExtra(ins.JOB_TITLE, it) }
+            firstEntry(card, NameCardEntryKind.ADDRESS)?.let { putExtra(ins.POSTAL, it) }
+            firstEntry(card, NameCardEntryKind.NOTE)?.let { putExtra(ins.NOTES, it) }
+            firstEntry(card, NameCardEntryKind.PHONE)?.let { putExtra(ins.SECONDARY_PHONE, it) }
+            firstEntry(card, NameCardEntryKind.EMAIL)?.let { putExtra(ins.SECONDARY_EMAIL, it) }
         }
+
+    private fun firstEntry(
+        card: NameCard,
+        kind: NameCardEntryKind,
+    ): String? = card.entries.firstOrNull { it.kind == kind }?.value
 
     private fun dataInsert(): ContentProviderOperation.Builder =
         ContentProviderOperation
             .newInsert(ContactsContract.Data.CONTENT_URI)
             .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, 0)
+
+    /** Build the ContactsContract data-row insert for one richer [NameCardEntry]. */
+    private fun entryOp(
+        kind: NameCardEntryKind,
+        value: String,
+    ): ContentProviderOperation {
+        val b = dataInsert()
+        return when (kind) {
+            NameCardEntryKind.COMPANY ->
+                b.withValue(ContactsContract.Data.MIMETYPE, ck.Organization.CONTENT_ITEM_TYPE)
+                    .withValue(ck.Organization.COMPANY, value)
+            NameCardEntryKind.TITLE ->
+                b.withValue(ContactsContract.Data.MIMETYPE, ck.Organization.CONTENT_ITEM_TYPE)
+                    .withValue(ck.Organization.TITLE, value)
+            NameCardEntryKind.ADDRESS ->
+                b.withValue(ContactsContract.Data.MIMETYPE, ck.StructuredPostal.CONTENT_ITEM_TYPE)
+                    .withValue(ck.StructuredPostal.FORMATTED_ADDRESS, value)
+            NameCardEntryKind.WEBSITE ->
+                b.withValue(ContactsContract.Data.MIMETYPE, ck.Website.CONTENT_ITEM_TYPE)
+                    .withValue(ck.Website.URL, value)
+            NameCardEntryKind.BIRTHDAY ->
+                b.withValue(ContactsContract.Data.MIMETYPE, ck.Event.CONTENT_ITEM_TYPE)
+                    .withValue(ck.Event.START_DATE, value)
+                    .withValue(ck.Event.TYPE, ck.Event.TYPE_BIRTHDAY)
+            NameCardEntryKind.NOTE ->
+                b.withValue(ContactsContract.Data.MIMETYPE, ck.Note.CONTENT_ITEM_TYPE)
+                    .withValue(ck.Note.NOTE, value)
+            NameCardEntryKind.NICKNAME ->
+                b.withValue(ContactsContract.Data.MIMETYPE, ck.Nickname.CONTENT_ITEM_TYPE)
+                    .withValue(ck.Nickname.NAME, value)
+            NameCardEntryKind.PHONE ->
+                b.withValue(ContactsContract.Data.MIMETYPE, ck.Phone.CONTENT_ITEM_TYPE)
+                    .withValue(ck.Phone.NUMBER, value)
+                    .withValue(ck.Phone.TYPE, ck.Phone.TYPE_OTHER)
+            NameCardEntryKind.EMAIL ->
+                b.withValue(ContactsContract.Data.MIMETYPE, ck.Email.CONTENT_ITEM_TYPE)
+                    .withValue(ck.Email.ADDRESS, value)
+                    .withValue(ck.Email.TYPE, ck.Email.TYPE_OTHER)
+        }.build()
+    }
 }

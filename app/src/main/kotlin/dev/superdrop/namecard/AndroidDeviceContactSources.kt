@@ -9,9 +9,12 @@ import android.content.Context
 import android.net.Uri
 import android.os.Build
 import android.provider.ContactsContract
+import android.provider.ContactsContract.CommonDataKinds as ck
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
 import androidx.annotation.RequiresApi
+import dev.superdrop.protocol.namecard.NameCardEntry
+import dev.superdrop.protocol.namecard.NameCardEntryKind
 
 /**
  * Real [DeviceContactSources] for [NameCardResolver]: reads the device owner's
@@ -59,6 +62,77 @@ internal class AndroidDeviceContactSources(
 
     override fun profileEmail(): String? =
         firstProfileData(ContactsContract.CommonDataKinds.Email.CONTENT_ITEM_TYPE)
+
+    /**
+     * The richer typed fields from the owner profile beyond the primary
+     * name/first-phone/first-email: organization + job title, postal address,
+     * website, birthday, note, nickname, and any ADDITIONAL phones/emails (the
+     * first phone/email are returned by [profilePhoneNumber]/[profileEmail], so
+     * they're skipped here to avoid duplicates). Best-effort; needs `READ_CONTACTS`.
+     */
+    override fun profileEntries(): List<NameCardEntry> =
+        try {
+            val out = mutableListOf<NameCardEntry>()
+            queryProfileData(
+                arrayOf(
+                    ContactsContract.Data.MIMETYPE,
+                    ContactsContract.Data.DATA1,
+                    ContactsContract.Data.DATA2,
+                    ContactsContract.Data.DATA4,
+                ),
+            )?.use { c ->
+                var phoneSeen = 0
+                var emailSeen = 0
+                while (c.moveToNext()) {
+                    val mime = c.getString(0)
+                    val d1 = c.getString(1)?.ifBlank { null }
+                    val d4 = c.getString(3)?.ifBlank { null }
+                    when (mime) {
+                        ck.Phone.CONTENT_ITEM_TYPE ->
+                            if (d1 != null && phoneSeen++ > 0) out += NameCardEntry(NameCardEntryKind.PHONE, d1)
+                        ck.Email.CONTENT_ITEM_TYPE ->
+                            if (d1 != null && emailSeen++ > 0) out += NameCardEntry(NameCardEntryKind.EMAIL, d1)
+                        ck.Organization.CONTENT_ITEM_TYPE -> {
+                            if (d1 != null) out += NameCardEntry(NameCardEntryKind.COMPANY, d1)
+                            if (d4 != null) out += NameCardEntry(NameCardEntryKind.TITLE, d4)
+                        }
+                        ck.StructuredPostal.CONTENT_ITEM_TYPE ->
+                            if (d1 != null) out += NameCardEntry(NameCardEntryKind.ADDRESS, d1)
+                        ck.Website.CONTENT_ITEM_TYPE ->
+                            if (d1 != null) out += NameCardEntry(NameCardEntryKind.WEBSITE, d1)
+                        ck.Event.CONTENT_ITEM_TYPE ->
+                            if (d1 != null && safeInt(c, 2) == ck.Event.TYPE_BIRTHDAY) {
+                                out += NameCardEntry(NameCardEntryKind.BIRTHDAY, d1)
+                            }
+                        ck.Note.CONTENT_ITEM_TYPE ->
+                            if (d1 != null) out += NameCardEntry(NameCardEntryKind.NOTE, d1)
+                        ck.Nickname.CONTENT_ITEM_TYPE ->
+                            if (d1 != null) out += NameCardEntry(NameCardEntryKind.NICKNAME, d1)
+                    }
+                }
+            }
+            out
+        } catch (_: SecurityException) {
+            emptyList() // READ_CONTACTS not granted.
+        }
+
+    private fun queryProfileData(projection: Array<String>) =
+        context.contentResolver.query(
+            Uri.withAppendedPath(
+                ContactsContract.Profile.CONTENT_URI,
+                ContactsContract.Contacts.Data.CONTENT_DIRECTORY,
+            ),
+            projection,
+            null,
+            null,
+            null,
+        )
+
+    /** Reads a cursor column as int, tolerating text values (some mimetypes put text in DATA2). */
+    private fun safeInt(
+        cursor: android.database.Cursor,
+        col: Int,
+    ): Int = if (cursor.isNull(col)) 0 else runCatching { cursor.getInt(col) }.getOrDefault(0)
 
     /**
      * First value (DATA1) of the given data mimetype from the device-owner profile's

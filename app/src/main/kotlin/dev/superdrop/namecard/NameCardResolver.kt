@@ -6,6 +6,7 @@
 package dev.superdrop.namecard
 
 import dev.superdrop.protocol.namecard.NameCard
+import dev.superdrop.protocol.namecard.NameCardEntry
 
 /**
  * **Name Card source resolver** — decides WHICH card this phone shares when two
@@ -55,14 +56,24 @@ internal class NameCardResolver(
             ?: clean(deviceSources.simPhoneNumber())
         val email = stored?.email ?: clean(deviceSources.profileEmail())
 
+        // Richer typed fields: the in-app card's entries win; else the device profile's entries.
+        val entries = stored?.entries?.takeIf { it.isNotEmpty() } ?: deviceSources.profileEntries()
+
         // Drop any field the user unchecked in "Choose what to share" (null = share all).
         val selection = shareSelection()
         val outName = if (selection == null || FIELD_NAME in selection) name else null
         val outPhone = if (selection == null || FIELD_PHONE in selection) phone else null
         val outEmail = if (selection == null || FIELD_EMAIL in selection) email else null
+        val outEntries =
+            if (selection == null) entries else entries.filterIndexed { i, _ -> entryKey(i) in selection }
 
-        if (outName == null && outPhone == null && outEmail == null) return null
-        return NameCard(displayName = outName, phoneNumber = outPhone, email = outEmail)
+        if (outName == null && outPhone == null && outEmail == null && outEntries.isEmpty()) return null
+        return NameCard(
+            displayName = outName,
+            phoneNumber = outPhone,
+            email = outEmail,
+            entries = outEntries,
+        )
     }
 
     private fun clean(value: String?): String? = value?.trim()?.ifEmpty { null }
@@ -72,6 +83,9 @@ internal class NameCardResolver(
         const val FIELD_NAME = "name"
         const val FIELD_PHONE = "phone"
         const val FIELD_EMAIL = "email"
+
+        /** Stable share-selection key for the richer entry at [index] (order as shown in the picker). */
+        fun entryKey(index: Int): String = "e$index"
     }
 
     /** True when [resolve] would return a card (in-app or device fallback). */
@@ -93,6 +107,12 @@ internal interface DeviceContactSources {
 
     /** An email address from the device "Me"/profile contact, or `null`. */
     fun profileEmail(): String?
+
+    /**
+     * Richer typed fields from the device profile (company, title, address, website,
+     * birthday, note, nickname, and any additional phones/emails), or empty.
+     */
+    fun profileEntries(): List<NameCardEntry>
 
     /** The SIM/line phone number, or `null` if unavailable/denied. */
     fun simPhoneNumber(): String?

@@ -6,6 +6,8 @@
 package dev.superdrop.namecard
 
 import dev.superdrop.protocol.namecard.NameCard
+import dev.superdrop.protocol.namecard.NameCardEntry
+import dev.superdrop.protocol.namecard.NameCardEntryKind
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
@@ -22,12 +24,15 @@ class NameCardResolverTest {
         number: String? = null,
         profilePhone: String? = null,
         email: String? = null,
+        entries: List<NameCardEntry> = emptyList(),
     ) = object : DeviceContactSources {
         override fun profileDisplayName(): String? = name
 
         override fun profilePhoneNumber(): String? = profilePhone
 
         override fun profileEmail(): String? = email
+
+        override fun profileEntries(): List<NameCardEntry> = entries
 
         override fun simPhoneNumber(): String? = number
     }
@@ -81,6 +86,42 @@ class NameCardResolverTest {
         val card = NameCard(displayName = "Mike", phoneNumber = "111")
         val resolver = NameCardResolver({ card }, sources(), shareSelection = { emptySet() })
         assertNull(resolver.resolve())
+    }
+
+    @Test
+    fun `in-app entries win and pass through`() {
+        val entries = listOf(NameCardEntry(NameCardEntryKind.COMPANY, "Acme"))
+        val resolver = NameCardResolver({ NameCard(displayName = "Mike", entries = entries) }, sources())
+        assertEquals(entries, resolver.resolve()!!.entries)
+    }
+
+    @Test
+    fun `profile entries fill in when the in-app card has none`() {
+        val entries = listOf(NameCardEntry(NameCardEntryKind.WEBSITE, "https://x.dev"))
+        val resolver = NameCardResolver({ null }, sources(name = "Owner", entries = entries))
+        assertEquals(entries, resolver.resolve()!!.entries)
+    }
+
+    @Test
+    fun `share selection drops unchecked entries by index key`() {
+        val card =
+            NameCard(
+                displayName = "Mike",
+                entries =
+                    listOf(
+                        NameCardEntry(NameCardEntryKind.COMPANY, "Acme"),
+                        NameCardEntry(NameCardEntryKind.WEBSITE, "https://x.dev"),
+                    ),
+            )
+        // Share the name + only entry index 1 (the website); drop entry index 0 (company).
+        val resolver = NameCardResolver({ card }, sources(), shareSelection = { setOf("name", "e1") })
+        assertEquals(listOf(NameCardEntry(NameCardEntryKind.WEBSITE, "https://x.dev")), resolver.resolve()!!.entries)
+    }
+
+    @Test
+    fun `a card with only an entry resolves (no name or number)`() {
+        val card = NameCard(entries = listOf(NameCardEntry(NameCardEntryKind.NOTE, "hi")))
+        assertEquals(card, NameCardResolver({ card }, sources()).resolve())
     }
 
     @Test

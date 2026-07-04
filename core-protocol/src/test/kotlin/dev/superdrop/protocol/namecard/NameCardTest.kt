@@ -60,6 +60,52 @@ class NameCardTest {
     }
 
     @Test
+    fun `round-trips richer typed entries (company, address, multiple phones)`() {
+        val card =
+            NameCard(
+                displayName = "Mike Peskoff",
+                phoneNumber = "+1 415 555 0199",
+                email = "mike@example.com",
+                entries =
+                    listOf(
+                        NameCardEntry(NameCardEntryKind.COMPANY, "ContactTap"),
+                        NameCardEntry(NameCardEntryKind.TITLE, "Engineer"),
+                        NameCardEntry(NameCardEntryKind.ADDRESS, "123 Main St, City"),
+                        NameCardEntry(NameCardEntryKind.WEBSITE, "https://example.com"),
+                        NameCardEntry(NameCardEntryKind.BIRTHDAY, "1990-01-01"),
+                        NameCardEntry(NameCardEntryKind.NOTE, "met at a conference"),
+                        NameCardEntry(NameCardEntryKind.NICKNAME, "Mikey"),
+                        NameCardEntry(NameCardEntryKind.PHONE, "+1 650 555 0123"),
+                        NameCardEntry(NameCardEntryKind.EMAIL, "mike@work.com"),
+                    ),
+            )
+        val parsed = NameCard.parse(card.serialize())
+        assertThat(parsed).isEqualTo(card)
+        assertThat(parsed!!.entries).isEqualTo(card.entries)
+    }
+
+    @Test
+    fun `round-trips a card carrying only a typed entry (no name or number)`() {
+        val card = NameCard(entries = listOf(NameCardEntry(NameCardEntryKind.WEBSITE, "https://x.dev")))
+        assertThat(NameCard.parse(card.serialize())).isEqualTo(card)
+    }
+
+    @Test
+    fun `entry order is preserved (two phones stay in order)`() {
+        val card =
+            NameCard(
+                phoneNumber = "111",
+                entries =
+                    listOf(
+                        NameCardEntry(NameCardEntryKind.PHONE, "222"),
+                        NameCardEntry(NameCardEntryKind.PHONE, "333"),
+                    ),
+            )
+        val parsed = NameCard.parse(card.serialize())!!
+        assertThat(parsed.entries.map { it.value }).containsExactly("222", "333").inOrder()
+    }
+
+    @Test
     fun `preserves the version byte`() {
         val card = NameCard(version = 7, displayName = "Mike")
         assertThat(card.serialize()[0].toInt()).isEqualTo(7)
