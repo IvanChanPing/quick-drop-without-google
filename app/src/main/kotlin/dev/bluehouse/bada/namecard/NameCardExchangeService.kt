@@ -65,6 +65,7 @@ internal class NameCardExchangeService : Service() {
             NameCardResolver(
                 storedCard = NameCardProfileStore.from(this)::load,
                 deviceSources = AndroidDeviceContactSources(this),
+                shareSelection = NameCardProfileStore.from(this)::shareSelection,
             ).resolve()
         if (localCard == null) {
             // Nothing to share (no in-app card and no device fallback). The

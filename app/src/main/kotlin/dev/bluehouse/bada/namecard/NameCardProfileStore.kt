@@ -41,6 +41,22 @@ internal class NameCardProfileStore(
     fun isConfigured(): Boolean = displayName() != null || phoneNumber() != null || email() != null
 
     /**
+     * Which fields the user chose to share via the "Choose what to share" picker,
+     * or `null` when they never opened it (→ share every present field). A set of
+     * the field keys [NameCardResolver.FIELD_NAME]/[NameCardResolver.FIELD_PHONE]/
+     * [NameCardResolver.FIELD_EMAIL]. Consumed by [NameCardResolver.resolve].
+     */
+    fun shareSelection(): Set<String>? {
+        val raw = prefs.getString(KEY_SHARES, null) ?: return null
+        return raw.split(",").filter { it.isNotEmpty() }.toSet()
+    }
+
+    /** Persist the picked share fields (empty = share nothing until re-picked). */
+    fun saveShareSelection(fields: Set<String>) {
+        prefs.edit().putString(KEY_SHARES, fields.joinToString(",")).apply()
+    }
+
+    /**
      * Assemble the saved fields into a [NameCard], or `null` if nothing is set.
      * Never throws: a card requires ≥1 field, which [isConfigured] guarantees
      * before we construct it.
@@ -75,6 +91,7 @@ internal class NameCardProfileStore(
             .remove(KEY_NAME)
             .remove(KEY_PHONE)
             .remove(KEY_EMAIL)
+            .remove(KEY_SHARES)
             .apply()
     }
 
@@ -85,6 +102,7 @@ internal class NameCardProfileStore(
         private const val KEY_NAME = "name"
         private const val KEY_PHONE = "phone"
         private const val KEY_EMAIL = "email"
+        private const val KEY_SHARES = "shares"
 
         fun from(context: Context): NameCardProfileStore =
             NameCardProfileStore(
