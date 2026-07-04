@@ -161,6 +161,18 @@ attempt on boot; if Shizuku is down, re-attempt the stale-session restore on nex
    + boot recovery), Shizuku as executor.** Accept the boot-recovery residual above.
 
 ## LOG
+- 2026-07-03: PHASE 1 committed `00dc5cb` on `fork/superdrop-ui` (NOT pushed). AUDIT done:
+  `git show --numstat` = every file `+N/-0` (pure additions); `git diff HEAD` for
+  ShareRadioController.kt / RadioHelperClient.kt / radio-helper/ = EMPTY (helper route verifiably
+  untouched); working tree clean of my files. `:service-android:assembleDebug` = BUILD SUCCESSFUL.
+  - CONDITIONAL RESIDUAL found in audit: `RadioShellService` is loaded ONLY by Shizuku via
+    reflection (class name), so R8 could strip/rename it IF minify were on. Checked: app release
+    `isMinifyEnabled = false` (app/build.gradle.kts:117) and helper likewise → NOT live now. IF
+    minify is ever enabled, add `-keep class dev.superdrop.service.radio.RadioShellService { *; }`
+    + keep `IRadioShell` to `service-android/consumer-rules.pro` (currently empty).
+  - HONEST UNTESTED GAPS: BT shell command form (device-verified only); runtime Shizuku bind (no
+    device here); release build not run (low risk, no minify); service-android unit tests not run
+    (changes are additive — new files/deps/build-features, no existing code touched).
 - 2026-07-03: Research pass. Read ShareRadioController, RadioHelperClient(call sites), RadioToggler,
   ShizukuRadio, RadioShellService, IRadioShell.aidl, ShareRadioSession, gradle/manifest. Facts above.
 - 2026-07-03: User clarified intent → full in-app port (Shizuku replaces ADB), helper = fallback,
