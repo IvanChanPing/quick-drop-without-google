@@ -144,8 +144,14 @@ internal class NameCardSetupActivity : AppCompatActivity() {
             }
         }
         if (phoneInput.text.isNullOrBlank()) {
-            sources.simPhoneNumber()?.let {
+            (sources.profilePhoneNumber() ?: sources.simPhoneNumber())?.let {
                 phoneInput.setText(it)
+                filledAnything = true
+            }
+        }
+        if (emailInput.text.isNullOrBlank()) {
+            sources.profileEmail()?.let {
+                emailInput.setText(it)
                 filledAnything = true
             }
         }

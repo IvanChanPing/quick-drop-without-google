@@ -13,15 +13,21 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Pure-JVM tests for [NameCardResolver]'s fallback precedence: in-app card →
- * device "Me"/SIM → bare number → nothing.
+ * Pure-JVM tests for [NameCardResolver]'s per-field precedence: each field prefers
+ * the in-app card and falls back to the device Contacts profile (then SIM for phone).
  */
 class NameCardResolverTest {
     private fun sources(
         name: String? = null,
         number: String? = null,
+        profilePhone: String? = null,
+        email: String? = null,
     ) = object : DeviceContactSources {
         override fun profileDisplayName(): String? = name
+
+        override fun profilePhoneNumber(): String? = profilePhone
+
+        override fun profileEmail(): String? = email
 
         override fun simPhoneNumber(): String? = number
     }
@@ -31,6 +37,26 @@ class NameCardResolverTest {
         val card = NameCard(displayName = "Mike", phoneNumber = "111")
         val resolver = NameCardResolver({ card }, sources(name = "Device Owner", number = "999"))
         assertEquals(card, resolver.resolve())
+    }
+
+    @Test
+    fun `in-app fields win per field and the contacts profile fills the blanks`() {
+        val card = NameCard(displayName = "Mike") // name only; no phone/email in-app
+        val resolver =
+            NameCardResolver(
+                { card },
+                sources(name = "Device Owner", profilePhone = "222", email = "mike@work.com", number = "999"),
+            )
+        val resolved = resolver.resolve()!!
+        assertEquals("Mike", resolved.displayName) // in-app name wins
+        assertEquals("222", resolved.phoneNumber) // profile phone fills the blank (before SIM)
+        assertEquals("mike@work.com", resolved.email) // profile email fills the blank
+    }
+
+    @Test
+    fun `profile phone is preferred over the SIM number when filling a blank`() {
+        val resolver = NameCardResolver({ null }, sources(profilePhone = "222", number = "999"))
+        assertEquals("222", resolver.resolve()!!.phoneNumber)
     }
 
     @Test
