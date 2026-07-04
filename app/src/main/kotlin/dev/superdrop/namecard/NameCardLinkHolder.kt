@@ -98,12 +98,12 @@ internal object NameCardLinkHolder {
         // ---- ConsentBleListener: peer events from the BLE layer (already on main) ----
 
         override fun onLinkReady() {
-            DiagnosticLog.w(TAG, "session(${role}): link ready")
+            DiagnosticLog.w(TAG, "session($role): link ready")
             uiObserver?.onReady()
         }
 
         override fun onPeerHello() {
-            DiagnosticLog.w(TAG, "session(${role}): peer HELLO (v2)")
+            DiagnosticLog.w(TAG, "session($role): peer HELLO (v2)")
         }
 
         override fun onPeerChoice(share: Boolean) =
@@ -116,7 +116,7 @@ internal object NameCardLinkHolder {
         }
 
         override fun onLegacyPeer() {
-            DiagnosticLog.w(TAG, "session(${role}): peer is legacy v1")
+            DiagnosticLog.w(TAG, "session($role): peer is legacy v1")
             uiObserver?.onLegacyPeer()
         }
 

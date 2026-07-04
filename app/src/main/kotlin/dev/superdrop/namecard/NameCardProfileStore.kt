@@ -41,8 +41,7 @@ internal class NameCardProfileStore(
     fun email(): String? = prefs.getString(KEY_EMAIL, null)?.trimToNull()
 
     /** True once the user has entered at least one of name / phone / email. */
-    fun isConfigured(): Boolean =
-        displayName() != null || phoneNumber() != null || email() != null
+    fun isConfigured(): Boolean = displayName() != null || phoneNumber() != null || email() != null
 
     /**
      * Assemble the saved fields into a [NameCard], or `null` if nothing is set.
@@ -64,7 +63,8 @@ internal class NameCardProfileStore(
         phone: String?,
         email: String?,
     ) {
-        prefs.edit()
+        prefs
+            .edit()
             .putString(KEY_NAME, name?.trimToNull())
             .putString(KEY_PHONE, phone?.trimToNull())
             .putString(KEY_EMAIL, email?.trimToNull())
@@ -73,7 +73,12 @@ internal class NameCardProfileStore(
 
     /** Wipe the saved card. */
     fun clear() {
-        prefs.edit().remove(KEY_NAME).remove(KEY_PHONE).remove(KEY_EMAIL).apply()
+        prefs
+            .edit()
+            .remove(KEY_NAME)
+            .remove(KEY_PHONE)
+            .remove(KEY_EMAIL)
+            .apply()
     }
 
     private fun String.trimToNull(): String? = trim().ifEmpty { null }

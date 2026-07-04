@@ -34,7 +34,13 @@ class NameCardConsentMachineTest {
     fun `both share - mutual - local first`() {
         val (fx, state) = run(Event.LocalShare, Event.PeerShare, Event.PeerCardArrived)
         assertEquals(
-            listOf(share(true), Effect.TransmitCard, Effect.ShowHeadsUpWaiting, Effect.SaveCardAndRipple, Effect.CloseLink),
+            listOf(
+                share(true),
+                Effect.TransmitCard,
+                Effect.ShowHeadsUpWaiting,
+                Effect.SaveCardAndRipple,
+                Effect.CloseLink,
+            ),
             fx,
         )
         assertEquals(State.DONE_MUTUAL, state)
@@ -44,7 +50,13 @@ class NameCardConsentMachineTest {
     fun `share vs receive-only - peer declines - local first`() {
         val (fx, state) = run(Event.LocalShare, Event.PeerReceiveOnly)
         assertEquals(
-            listOf(share(true), Effect.TransmitCard, Effect.ShowHeadsUpWaiting, Effect.UpdateHeadsUpDeclined, Effect.CloseLink),
+            listOf(
+                share(true),
+                Effect.TransmitCard,
+                Effect.ShowHeadsUpWaiting,
+                Effect.UpdateHeadsUpDeclined,
+                Effect.CloseLink,
+            ),
             fx,
         )
         assertEquals(State.DONE_SHARED_PEER_DECLINED, state)
@@ -54,7 +66,13 @@ class NameCardConsentMachineTest {
     fun `share then no response - timeout`() {
         val (fx, state) = run(Event.LocalShare, Event.Timeout)
         assertEquals(
-            listOf(share(true), Effect.TransmitCard, Effect.ShowHeadsUpWaiting, Effect.ShowNoResponse, Effect.CloseLink),
+            listOf(
+                share(true),
+                Effect.TransmitCard,
+                Effect.ShowHeadsUpWaiting,
+                Effect.ShowNoResponse,
+                Effect.CloseLink,
+            ),
             fx,
         )
         assertEquals(State.DONE_NO_RESPONSE, state)
@@ -165,7 +183,13 @@ class NameCardConsentMachineTest {
     fun `disconnect after I shared, peer silent - no response`() {
         val (fx, state) = run(Event.LocalShare, Event.Disconnected)
         assertEquals(
-            listOf(share(true), Effect.TransmitCard, Effect.ShowHeadsUpWaiting, Effect.ShowNoResponse, Effect.CloseLink),
+            listOf(
+                share(true),
+                Effect.TransmitCard,
+                Effect.ShowHeadsUpWaiting,
+                Effect.ShowNoResponse,
+                Effect.CloseLink,
+            ),
             fx,
         )
         assertEquals(State.DONE_NO_RESPONSE, state)

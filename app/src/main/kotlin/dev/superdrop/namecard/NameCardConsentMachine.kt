@@ -48,6 +48,7 @@ package dev.superdrop.namecard
  * (all 9 matrix cells, both timeout rows, early disconnect, and event-order permutations per D4;
  * post-terminal events → empty). The BLE/activity wiring that drives it is compile-only on this box.
  */
+@Suppress("ReturnCount")
 internal class NameCardConsentMachine {
     /** A side's decision. */
     enum class Choice { SHARE, RECEIVE_ONLY }
@@ -103,7 +104,9 @@ internal class NameCardConsentMachine {
     /** Outputs the caller performs. See the class KDoc for the per-role BLE mapping. */
     sealed interface Effect {
         /** Tell the peer my choice ([share] = Share vs Receive Only). Client writes; server notifies. */
-        data class SendChoice(val share: Boolean) : Effect
+        data class SendChoice(
+            val share: Boolean,
+        ) : Effect
 
         /** Send my card now (client `shareBack` write / server opens its gated CARD read). */
         data object TransmitCard : Effect

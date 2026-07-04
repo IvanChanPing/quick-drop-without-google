@@ -103,8 +103,14 @@ class NameCardTest {
         val blob =
             byteArrayOf(
                 1,
-                NameCard.TYPE_DISPLAY_NAME.toByte(), 0x00, 0x01, 'A'.code.toByte(),
-                NameCard.TYPE_DISPLAY_NAME.toByte(), 0x00, 0x01, 'B'.code.toByte(),
+                NameCard.TYPE_DISPLAY_NAME.toByte(),
+                0x00,
+                0x01,
+                'A'.code.toByte(),
+                NameCard.TYPE_DISPLAY_NAME.toByte(),
+                0x00,
+                0x01,
+                'B'.code.toByte(),
             )
         assertThat(NameCard.parse(blob)!!.displayName).isEqualTo("A")
     }

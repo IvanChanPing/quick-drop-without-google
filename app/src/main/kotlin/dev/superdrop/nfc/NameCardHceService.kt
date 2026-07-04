@@ -80,7 +80,8 @@ public class NameCardHceService : HostApduService() {
             // Wake the card-side Bluetooth server (foreground service) so the tapping
             // phone can read our card over BLE using this token.
             runCatching {
-                dev.superdrop.namecard.NameCardExchangeService.start(this, bootstrap.token)
+                dev.superdrop.namecard.NameCardExchangeService
+                    .start(this, bootstrap.token)
             }.onFailure { DiagnosticLog.w(TAG, "EXCHANGE: start exchange service failed: ${it.message}") }
             DiagnosticLog.w(TAG, "Name Card EXCHANGE → bootstrap(${bootstrap.serialize().size}B) + server FGS")
             return bootstrap.serialize() + SW_OK
@@ -147,8 +148,7 @@ public class NameCardHceService : HostApduService() {
         }
 
         /** Build the EXCHANGE APDU `80 10 00 00 00` (used by the reader). */
-        internal fun buildExchangeApdu(): ByteArray =
-            byteArrayOf(CLA_PROPRIETARY, INS_EXCHANGE, 0x00, 0x00, 0x00)
+        internal fun buildExchangeApdu(): ByteArray = byteArrayOf(CLA_PROPRIETARY, INS_EXCHANGE, 0x00, 0x00, 0x00)
 
         /** Whether [resp] ends with the `9000` success status word. */
         internal fun endsWithOk(resp: ByteArray): Boolean =

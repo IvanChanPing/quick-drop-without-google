@@ -110,6 +110,24 @@
 > Per-side data transmission (D1) UNCHANGED — only the on-screen animation/exit defers. Presentation-
 > only change to NameCardTransferActivity. 3 open items to confirm before building (esp. the
 > "change-what-info pop-up" does NOT exist on the transfer screen yet).
+> **SHARE-FIELD PICKER PILL PORTED + IN PR #251 (2026-07-03):** the tester's checkbox picker is now in
+> the real screen — phone+email wrapped in ONE rounded PILL (`nameCardShareBox`, capsule drawable
+> `name_card_share_box_bg.xml`) + single ▾ chevron; tap pill → checkbox pop-up (`showShareFieldMenu`);
+> unchecked line dims; transmitted card filtered via `NameCardLinkHolder.Session.shareCard`; name
+> always shared; ≥1-field guard; frozen on choice (`lockShareFields`); v2-own-card only. Built in
+> bada-fork (commit bad29f4) then debranded-ported into PR branch `superdrop-pr/name-card-v2`
+> (amended commit ed6075d, force-pushed) → **PR #251 now 36 files +5729/-6**. Concept was verified in
+> the tester; this bada-fork re-implementation is compile+test-green, UI DEVICE-UNVERIFIED. The
+> broader "hold-on-screen" flow (`docs/NAMECARD_CONSENT_UI_HOLD_PLAN.md`) is still PLAN-ONLY.
+> **OVERSHARING SCRUB of PR #251 (2026-07-03, user asked to double-check):** infra was already clean
+> (0 IPs/Caddy/APK/tokens), but the ported KDoc comments leaked internal names — `docs/NAMECARD_V2_
+> EXECUTOR_PLAN.md` + `docs/NAMEDROP_CONTACT_EXCHANGE_JOURNAL.md` (incl. the core-protocol NameCard/
+> NameCardBootstrap) and prototype repo names `namecard-tester` / `airdrop-ripple-demo`. Scrubbed all
+> to "the Name Card design notes" / "a design prototype", rebuilt (compile 0), amended+force-pushed
+> (…→ad019ef, = origin). Final scan CLEAN. Durable fix: added these scrubs to
+> `bada-port-tools/reverse_rebrand.py` MAPPING so every future upstream port auto-strips internal
+> doc/prototype names (bada-fork keeps the real refs; only the upstream copy is scrubbed). PR #251 =
+> 36 files, leak-free, video preserved.
 >
 > **⭐ EXECUTOR-GRADE BUILD PLAN (approved by user 2026-07-02, NOT yet built):**
 > **`docs/NAMECARD_V2_EXECUTOR_PLAN.md`** — byte-exact, self-contained spec written so ANY model can

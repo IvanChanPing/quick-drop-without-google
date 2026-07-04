@@ -6,16 +6,17 @@
 package dev.superdrop.namecard
 
 import android.Manifest
-import android.app.NotificationChannel
-import android.app.NotificationManager
 import android.animation.Animator
 import android.animation.AnimatorListenerAdapter
 import android.animation.ObjectAnimator
 import android.animation.PropertyValuesHolder
 import android.animation.ValueAnimator
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.res.ColorStateList
 import android.graphics.Bitmap
 import android.graphics.BitmapShader
@@ -47,7 +48,6 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.PopupWindow
 import android.widget.TextView
-import android.content.pm.PackageManager
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.NotificationCompat
@@ -104,6 +104,7 @@ import dev.superdrop.service.radio.ShareRadioController
  * device-verified from the prior build, but the NEW animation/ripple visuals are
  * GPU/UI-UNVERIFIED here (no display / device) — the user device-tests the look.
  */
+@Suppress("TooManyFunctions", "LargeClass", "MagicNumber", "ReturnCount")
 internal class NameCardTransferActivity : AppCompatActivity() {
     private var exchange: NameCardBleExchange? = null
     private var localCard: NameCard? = null
@@ -140,8 +141,7 @@ internal class NameCardTransferActivity : AppCompatActivity() {
         object : NameCardLinkHolder.UiObserver {
             override fun onReady() = runOnUiThread { onV2Ready() }
 
-            override fun onConsentEffect(effect: NameCardConsentMachine.Effect) =
-                runOnUiThread { onV2Effect(effect) }
+            override fun onConsentEffect(effect: NameCardConsentMachine.Effect) = runOnUiThread { onV2Effect(effect) }
 
             override fun onPeerCard(card: NameCard) = runOnUiThread { v2PeerCard = card }
 
@@ -502,7 +502,8 @@ internal class NameCardTransferActivity : AppCompatActivity() {
         // the card, so they render regardless of whether the card entrance ever ran (e.g. a
         // connect-failure terminal before reveal).
         if (card.visibility == View.VISIBLE) {
-            card.animate()
+            card
+                .animate()
                 .alpha(0f)
                 .setDuration(DECLINE_FADE_MS)
                 .withEndAction { card.visibility = View.INVISIBLE }
@@ -536,7 +537,8 @@ internal class NameCardTransferActivity : AppCompatActivity() {
             )
         }
         val notification =
-            NotificationCompat.Builder(this, CONSENT_CHANNEL_ID)
+            NotificationCompat
+                .Builder(this, CONSENT_CHANNEL_ID)
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentTitle(getString(R.string.nfc_namecard_hce_service_description))
                 .setContentText(text)
@@ -945,7 +947,10 @@ internal class NameCardTransferActivity : AppCompatActivity() {
      * pixels over the translucent window; reads its own size each frame so there's no
      * first-frame size-gate). Used for the pre-entrance over-background ripple cue.
      */
-    private class RippleBgView(context: Context, private val sh: RuntimeShader) : View(context) {
+    private class RippleBgView(
+        context: Context,
+        private val sh: RuntimeShader,
+    ) : View(context) {
         private val paint =
             Paint().apply {
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) shader = sh

@@ -76,6 +76,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * [NameCardTransferActivity] (client); a [ShareRadioController] in each forces
  * Bluetooth on (+ heartbeat) before this runs.
  */
+@Suppress("TooManyFunctions", "ReturnCount", "MagicNumber")
 internal class NameCardBleExchange(
     context: Context,
 ) {
@@ -188,11 +189,12 @@ internal class NameCardBleExchange(
                 .also { it.addCharacteristic(characteristic) }
         server.addService(service)
 
-        val advertiser = adapter.bluetoothLeAdvertiser ?: run {
-            DiagnosticLog.w(TAG, "server: no advertiser → skip")
-            stop()
-            return false
-        }
+        val advertiser =
+            adapter.bluetoothLeAdvertiser ?: run {
+                DiagnosticLog.w(TAG, "server: no advertiser → skip")
+                stop()
+                return false
+            }
         this.advertiser = advertiser
         val cb = advertiseCallbackImpl()
         advertiseCallback = cb
@@ -201,7 +203,9 @@ internal class NameCardBleExchange(
             mainHandler.postDelayed({ stop() }, MAX_SESSION_MS)
             DiagnosticLog.w(TAG, "server: advertising token + GATT serving card(${cardBytes.size}B)")
             true
-        } catch (@Suppress("TooGenericExceptionCaught") t: Throwable) {
+        } catch (
+            @Suppress("TooGenericExceptionCaught") t: Throwable,
+        ) {
             DiagnosticLog.w(TAG, "server: startAdvertising threw: ${t.message}")
             stop()
             false
@@ -230,18 +234,21 @@ internal class NameCardBleExchange(
             running.set(false)
             return false
         }
-        val scanner = adapter.bluetoothLeScanner ?: run {
-            DiagnosticLog.w(TAG, "client: no scanner → skip")
-            running.set(false)
-            return false
-        }
+        val scanner =
+            adapter.bluetoothLeScanner ?: run {
+                DiagnosticLog.w(TAG, "client: no scanner → skip")
+                running.set(false)
+                return false
+            }
         this.scanner = scanner
         val filter =
-            ScanFilter.Builder()
+            ScanFilter
+                .Builder()
                 .setServiceData(ParcelUuid(SERVICE_DATA_UUID), token)
                 .build()
         val settings =
-            ScanSettings.Builder()
+            ScanSettings
+                .Builder()
                 .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY)
                 .build()
         val cb = scanCallbackImpl(onPeerCard)
@@ -251,7 +258,9 @@ internal class NameCardBleExchange(
             mainHandler.postDelayed({ stop() }, MAX_SESSION_MS)
             DiagnosticLog.w(TAG, "client: scanning for token")
             true
-        } catch (@Suppress("TooGenericExceptionCaught") t: Throwable) {
+        } catch (
+            @Suppress("TooGenericExceptionCaught") t: Throwable,
+        ) {
             DiagnosticLog.w(TAG, "client: startScan threw: ${t.message}")
             stop()
             false
@@ -337,8 +346,10 @@ internal class NameCardBleExchange(
                 characteristic: BluetoothGattCharacteristic,
             ) {
                 // Offset-aware so a card larger than one MTU is read in chunks.
-                val slice = if (offset in 0..cardBytes.size) cardBytes.copyOfRange(offset, cardBytes.size) else ByteArray(0)
-                val status = if (offset in 0..cardBytes.size) BluetoothGatt.GATT_SUCCESS else BluetoothGatt.GATT_INVALID_OFFSET
+                val slice =
+                    if (offset in 0..cardBytes.size) cardBytes.copyOfRange(offset, cardBytes.size) else ByteArray(0)
+                val status =
+                    if (offset in 0..cardBytes.size) BluetoothGatt.GATT_SUCCESS else BluetoothGatt.GATT_INVALID_OFFSET
                 gattServer?.sendResponse(device, requestId, status, offset, slice)
             }
 
@@ -366,9 +377,7 @@ internal class NameCardBleExchange(
 
     // ---- client callbacks ----
 
-    private fun scanCallbackImpl(
-        onPeerCard: (NameCard) -> Unit,
-    ): ScanCallback =
+    private fun scanCallbackImpl(onPeerCard: (NameCard) -> Unit): ScanCallback =
         object : ScanCallback() {
             override fun onScanResult(
                 callbackType: Int,
@@ -386,9 +395,7 @@ internal class NameCardBleExchange(
             }
         }
 
-    private fun gattClientCallback(
-        onPeerCard: (NameCard) -> Unit,
-    ): BluetoothGattCallback =
+    private fun gattClientCallback(onPeerCard: (NameCard) -> Unit): BluetoothGattCallback =
         object : BluetoothGattCallback() {
             override fun onConnectionStateChange(
                 gatt: BluetoothGatt,
@@ -531,11 +538,12 @@ internal class NameCardBleExchange(
             }
         server.addService(service)
 
-        val advertiser = adapter.bluetoothLeAdvertiser ?: run {
-            DiagnosticLog.w(TAG, "serverV2: no advertiser → skip")
-            stop()
-            return false
-        }
+        val advertiser =
+            adapter.bluetoothLeAdvertiser ?: run {
+                DiagnosticLog.w(TAG, "serverV2: no advertiser → skip")
+                stop()
+                return false
+            }
         this.advertiser = advertiser
         val cb = advertiseCallbackImpl()
         advertiseCallback = cb
@@ -544,7 +552,9 @@ internal class NameCardBleExchange(
             mainHandler.postDelayed({ stop() }, MAX_SESSION_MS_V2)
             DiagnosticLog.w(TAG, "serverV2: advertising token + serving CARD(gated)+CONSENT")
             true
-        } catch (@Suppress("TooGenericExceptionCaught") t: Throwable) {
+        } catch (
+            @Suppress("TooGenericExceptionCaught") t: Throwable,
+        ) {
             DiagnosticLog.w(TAG, "serverV2: startAdvertising threw: ${t.message}")
             stop()
             false
@@ -573,11 +583,12 @@ internal class NameCardBleExchange(
             running.set(false)
             return false
         }
-        val scanner = adapter.bluetoothLeScanner ?: run {
-            DiagnosticLog.w(TAG, "clientV2: no scanner → skip")
-            running.set(false)
-            return false
-        }
+        val scanner =
+            adapter.bluetoothLeScanner ?: run {
+                DiagnosticLog.w(TAG, "clientV2: no scanner → skip")
+                running.set(false)
+                return false
+            }
         v2IsServer = false
         consentListener = listener
         this.scanner = scanner
@@ -585,7 +596,10 @@ internal class NameCardBleExchange(
         val settings = ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build()
         val cb =
             object : ScanCallback() {
-                override fun onScanResult(callbackType: Int, result: ScanResult) {
+                override fun onScanResult(
+                    callbackType: Int,
+                    result: ScanResult,
+                ) {
                     if (!running.get()) return
                     runCatching { scanCallback?.let { scanner.stopScan(it) } }
                     DiagnosticLog.w(TAG, "clientV2: token match → connecting")
@@ -602,7 +616,9 @@ internal class NameCardBleExchange(
             mainHandler.postDelayed({ stop() }, MAX_SESSION_MS_V2)
             DiagnosticLog.w(TAG, "clientV2: scanning for token")
             true
-        } catch (@Suppress("TooGenericExceptionCaught") t: Throwable) {
+        } catch (
+            @Suppress("TooGenericExceptionCaught") t: Throwable,
+        ) {
             DiagnosticLog.w(TAG, "clientV2: startScan threw: ${t.message}")
             stop()
             false
@@ -647,7 +663,11 @@ internal class NameCardBleExchange(
 
     private fun serverCallbackV2(cardBytes: ByteArray): BluetoothGattServerCallback =
         object : BluetoothGattServerCallback() {
-            override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
+            override fun onConnectionStateChange(
+                device: BluetoothDevice,
+                status: Int,
+                newState: Int,
+            ) {
                 if (newState == BluetoothProfile.STATE_DISCONNECTED) {
                     DiagnosticLog.w(TAG, "serverV2: peer disconnected status=$status")
                     notifyDisconnected()
@@ -728,7 +748,12 @@ internal class NameCardBleExchange(
         }
 
     /** Server: answer a CARD read with the offset-aware slice (long-read across MTU). */
-    private fun serveCard(device: BluetoothDevice, requestId: Int, offset: Int, cardBytes: ByteArray) {
+    private fun serveCard(
+        device: BluetoothDevice,
+        requestId: Int,
+        offset: Int,
+        cardBytes: ByteArray,
+    ) {
         val ok = offset in 0..cardBytes.size
         val slice = if (ok) cardBytes.copyOfRange(offset, cardBytes.size) else ByteArray(0)
         val status = if (ok) BluetoothGatt.GATT_SUCCESS else BluetoothGatt.GATT_INVALID_OFFSET
@@ -739,7 +764,11 @@ internal class NameCardBleExchange(
 
     private fun gattClientCallbackV2(): BluetoothGattCallback =
         object : BluetoothGattCallback() {
-            override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
+            override fun onConnectionStateChange(
+                gatt: BluetoothGatt,
+                status: Int,
+                newState: Int,
+            ) {
                 if (newState == BluetoothProfile.STATE_CONNECTED) {
                     if (!gatt.requestMtu(REQUESTED_MTU)) gatt.discoverServices()
                 } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
@@ -748,11 +777,18 @@ internal class NameCardBleExchange(
                 }
             }
 
-            override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
+            override fun onMtuChanged(
+                gatt: BluetoothGatt,
+                mtu: Int,
+                status: Int,
+            ) {
                 gatt.discoverServices()
             }
 
-            override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
+            override fun onServicesDiscovered(
+                gatt: BluetoothGatt,
+                status: Int,
+            ) {
                 val service = gatt.getService(SERVICE_UUID)
                 val consent = service?.getCharacteristic(CONSENT_CHARACTERISTIC_UUID)
                 val cardChar = service?.getCharacteristic(CARD_CHARACTERISTIC_UUID)
@@ -776,7 +812,11 @@ internal class NameCardBleExchange(
                 enqueueClientOp { writeCccdEnable(gatt, cccd) }
             }
 
-            override fun onDescriptorWrite(gatt: BluetoothGatt, descriptor: BluetoothGattDescriptor, status: Int) {
+            override fun onDescriptorWrite(
+                gatt: BluetoothGatt,
+                descriptor: BluetoothGattDescriptor,
+                status: Int,
+            ) {
                 clientOpDone()
                 // Subscribed → announce ourselves with HELLO; its write-ack becomes link-ready.
                 v2AwaitingHelloAck = true
@@ -796,7 +836,10 @@ internal class NameCardBleExchange(
             }
 
             @Suppress("DEPRECATION")
-            override fun onCharacteristicChanged(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic) {
+            override fun onCharacteristicChanged(
+                gatt: BluetoothGatt,
+                characteristic: BluetoothGattCharacteristic,
+            ) {
                 if (characteristic.uuid == CONSENT_CHARACTERISTIC_UUID) handlePeerConsent(characteristic.value)
             }
 
@@ -882,7 +925,10 @@ internal class NameCardBleExchange(
             next()
         }
 
-    private fun writeCccdEnable(gatt: BluetoothGatt, cccd: BluetoothGattDescriptor) {
+    private fun writeCccdEnable(
+        gatt: BluetoothGatt,
+        cccd: BluetoothGattDescriptor,
+    ) {
         runCatching {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                 gatt.writeDescriptor(cccd, BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE)
@@ -983,14 +1029,16 @@ internal class NameCardBleExchange(
     // ---- advertising helpers (idiom from BleAdvertiser) ----
 
     private fun advertiseSettings(): AdvertiseSettings =
-        AdvertiseSettings.Builder()
+        AdvertiseSettings
+            .Builder()
             .setAdvertiseMode(AdvertiseSettings.ADVERTISE_MODE_LOW_LATENCY)
             .setTxPowerLevel(AdvertiseSettings.ADVERTISE_TX_POWER_HIGH)
             .setConnectable(true)
             .build()
 
     private fun advertiseData(token: ByteArray): AdvertiseData =
-        AdvertiseData.Builder()
+        AdvertiseData
+            .Builder()
             .addServiceData(ParcelUuid(SERVICE_DATA_UUID), token)
             .setIncludeDeviceName(false)
             .setIncludeTxPowerLevel(false)
@@ -1009,10 +1057,18 @@ internal class NameCardBleExchange(
         ContextCompat.checkSelfPermission(appContext, permission) == PackageManager.PERMISSION_GRANTED
 
     private fun advertisePermission(): String =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) Manifest.permission.BLUETOOTH_ADVERTISE else Manifest.permission.BLUETOOTH
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            Manifest.permission.BLUETOOTH_ADVERTISE
+        } else {
+            Manifest.permission.BLUETOOTH
+        }
 
     private fun scanPermission(): String =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) Manifest.permission.BLUETOOTH_SCAN else Manifest.permission.BLUETOOTH
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            Manifest.permission.BLUETOOTH_SCAN
+        } else {
+            Manifest.permission.BLUETOOTH
+        }
 
     companion object {
         private const val TAG = "NameCardBle"

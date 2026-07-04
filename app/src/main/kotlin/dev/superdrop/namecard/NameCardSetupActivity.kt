@@ -6,6 +6,7 @@
 package dev.superdrop.namecard
 
 import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.widget.Button
@@ -94,11 +95,13 @@ internal class NameCardSetupActivity : AppCompatActivity() {
 
     /** POST_NOTIFICATIONS request (API 33+) for the v2 consent heads-up; result is advisory (heads-up is optional). */
     private val notificationPermission =
-        registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* heads-up degrades gracefully if denied */ }
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+            // heads-up degrades gracefully if denied
+        }
 
     private fun requestNotificationPermissionIfNeeded() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != android.content.pm.PackageManager.PERMISSION_GRANTED
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
         ) {
             notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }

@@ -104,7 +104,9 @@ internal object NameCardSaver {
             val results = context.contentResolver.applyBatch(ContactsContract.AUTHORITY, ops)
             DiagnosticLog.w(TAG, "saved contact directly (${ops.size - 1} fields)")
             results.firstOrNull()?.uri?.let { rawContactUri -> viewUriFor(context, rawContactUri) }
-        } catch (@Suppress("TooGenericExceptionCaught") t: Throwable) {
+        } catch (
+            @Suppress("TooGenericExceptionCaught") t: Throwable,
+        ) {
             DiagnosticLog.w(TAG, "saveDirect failed: ${t.message}")
             null
         }
@@ -129,7 +131,9 @@ internal object NameCardSaver {
                         null
                     }
                 }
-        } catch (@Suppress("TooGenericExceptionCaught") t: Throwable) {
+        } catch (
+            @Suppress("TooGenericExceptionCaught") t: Throwable,
+        ) {
             DiagnosticLog.w(TAG, "viewUriFor failed: ${t.message}")
             null
         }

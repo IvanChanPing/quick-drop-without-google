@@ -8,12 +8,12 @@ package dev.superdrop.namecard
 import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.Service
+import android.bluetooth.BluetoothManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
-import android.bluetooth.BluetoothManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.ServiceCompat
 import dev.superdrop.R
@@ -39,6 +39,7 @@ import dev.superdrop.service.radio.ShareRadioController
  *
  * Status: compile-only here (no BT/NFC/2 phones); device-verified by a real tap.
  */
+@Suppress("ReturnCount")
 internal class NameCardExchangeService : Service() {
     private var exchange: NameCardBleExchange? = null
     private val timeoutHandler = android.os.Handler(android.os.Looper.getMainLooper())
@@ -195,7 +196,8 @@ internal class NameCardExchangeService : Service() {
             )
         }
         val notification =
-            NotificationCompat.Builder(this, CHANNEL_ID)
+            NotificationCompat
+                .Builder(this, CHANNEL_ID)
                 .setSmallIcon(R.mipmap.ic_launcher)
                 .setContentTitle(getString(R.string.name_card_exchange_notification))
                 .setOngoing(true)

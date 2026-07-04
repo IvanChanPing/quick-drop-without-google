@@ -84,7 +84,9 @@ internal object NameCardConsentCodec {
 /** A decoded consent-channel message. See [NameCardConsentCodec]. */
 internal sealed interface ConsentMessage {
     /** `0x01 <version>` — peer speaks v2; [version] is its protocol version. */
-    data class Hello(val version: Byte) : ConsentMessage
+    data class Hello(
+        val version: Byte,
+    ) : ConsentMessage
 
     /** `0x02` — peer tapped Share. */
     data object ChoiceShare : ConsentMessage

@@ -73,6 +73,9 @@ class NameCardConsentCodecTest {
 
     @Test
     fun `trailing bytes beyond a hello keep the version byte`() {
-        assertEquals(ConsentMessage.Hello(0x01.toByte()), NameCardConsentCodec.decode(byteArrayOf(0x01, 0x01, 0x99.toByte())))
+        assertEquals(
+            ConsentMessage.Hello(0x01.toByte()),
+            NameCardConsentCodec.decode(byteArrayOf(0x01, 0x01, 0x99.toByte())),
+        )
     }
 }
