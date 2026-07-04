@@ -8,6 +8,10 @@ package dev.bluehouse.bada.namecard
 import android.content.Context
 import android.content.SharedPreferences
 import dev.bluehouse.bada.protocol.namecard.NameCard
+import dev.bluehouse.bada.protocol.namecard.NameCardEntry
+import dev.bluehouse.bada.protocol.namecard.NameCardEntryKind
+import org.json.JSONArray
+import org.json.JSONObject
 
 /**
  * **My Name Card profile store** — persists the contact card the user sets up
@@ -37,8 +41,38 @@ internal class NameCardProfileStore(
     /** The saved email, or `null`/blank if unset. */
     fun email(): String? = prefs.getString(KEY_EMAIL, null)?.trimToNull()
 
-    /** True once the user has entered at least one of name / phone / email. */
-    fun isConfigured(): Boolean = displayName() != null || phoneNumber() != null || email() != null
+    /**
+     * The saved richer typed fields (company, title, address, website, birthday,
+     * note, nickname, additional phones/emails) — normally imported from the
+     * device Contacts profile via "Use my phone info". Empty if none.
+     */
+    fun entries(): List<NameCardEntry> {
+        val raw = prefs.getString(KEY_ENTRIES, null) ?: return emptyList()
+        return try {
+            val arr = JSONArray(raw)
+            (0 until arr.length()).mapNotNull { i ->
+                val o = arr.getJSONObject(i)
+                val kind = runCatching { NameCardEntryKind.valueOf(o.getString("k")) }.getOrNull()
+                val value = o.optString("v", "")
+                if (kind != null && value.isNotEmpty()) NameCardEntry(kind, value) else null
+            }
+        } catch (_: Exception) {
+            emptyList()
+        }
+    }
+
+    /** Persist the richer typed fields (replaces any previously stored set). */
+    fun saveEntries(entries: List<NameCardEntry>) {
+        val arr = JSONArray()
+        for (e in entries) {
+            arr.put(JSONObject().put("k", e.kind.name).put("v", e.value))
+        }
+        prefs.edit().putString(KEY_ENTRIES, arr.toString()).apply()
+    }
+
+    /** True once the user has entered at least one of name / phone / email / a typed entry. */
+    fun isConfigured(): Boolean =
+        displayName() != null || phoneNumber() != null || email() != null || entries().isNotEmpty()
 
     /**
      * Which fields the user chose to share via the "Choose what to share" picker,
@@ -67,6 +101,7 @@ internal class NameCardProfileStore(
             displayName = displayName(),
             phoneNumber = phoneNumber(),
             email = email(),
+            entries = entries(),
         )
     }
 
@@ -91,6 +126,7 @@ internal class NameCardProfileStore(
             .remove(KEY_NAME)
             .remove(KEY_PHONE)
             .remove(KEY_EMAIL)
+            .remove(KEY_ENTRIES)
             .remove(KEY_SHARES)
             .apply()
     }
@@ -102,6 +138,7 @@ internal class NameCardProfileStore(
         private const val KEY_NAME = "name"
         private const val KEY_PHONE = "phone"
         private const val KEY_EMAIL = "email"
+        private const val KEY_ENTRIES = "entries"
         private const val KEY_SHARES = "shares"
 
         fun from(context: Context): NameCardProfileStore =

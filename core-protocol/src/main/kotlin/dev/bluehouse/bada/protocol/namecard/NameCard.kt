@@ -62,6 +62,15 @@ public data class NameCard(
     /** Email address, or `null`. */
     val email: String? = null,
     /**
+     * Richer typed contact fields beyond the primary name/phone/email —
+     * organization, job title, postal address, website, birthday, note,
+     * nickname, and any *additional* phones/emails. Each is a [NameCardEntry]
+     * (kind + UTF-8 value); the list is repeatable (two phone entries = two
+     * numbers) and its order is preserved on the wire. Normally empty for a
+     * bare name+number card.
+     */
+    val entries: List<NameCardEntry> = emptyList(),
+    /**
      * TLV records whose `type` this build does not recognise, preserved
      * verbatim so a round trip through an older app never drops a newer app's
      * fields. Normally empty.
@@ -72,12 +81,17 @@ public data class NameCard(
         require(version in 0..MAX_VERSION) {
             "version must fit in 1 byte (0..$MAX_VERSION), got $version"
         }
-        require(displayName != null || phoneNumber != null || email != null) {
-            "a NameCard must carry at least one of displayName / phoneNumber / email"
+        require(displayName != null || phoneNumber != null || email != null || entries.isNotEmpty()) {
+            "a NameCard must carry at least one field (name / phone / email / a typed entry)"
         }
         requireFits(TYPE_DISPLAY_NAME, displayName)
         requireFits(TYPE_PHONE, phoneNumber)
         requireFits(TYPE_EMAIL, email)
+        for (entry in entries) {
+            require(entry.value.toByteArray(StandardCharsets.UTF_8).size <= MAX_FIELD_LEN) {
+                "entry ${entry.kind} value must fit in 2 bytes (<= $MAX_FIELD_LEN)"
+            }
+        }
         for (field in extraFields) {
             require(field.value.size <= MAX_FIELD_LEN) {
                 "extra field type ${field.type} value must fit in 2 bytes (<= $MAX_FIELD_LEN)"
@@ -97,7 +111,8 @@ public data class NameCard(
                 phoneNumber?.let { add(NameCardField(TYPE_PHONE, it.toUtf8())) }
                 email?.let { add(NameCardField(TYPE_EMAIL, it.toUtf8())) }
             }
-        val all = known + extraFields
+        val typed = entries.map { NameCardField(typeForKind(it.kind), it.value.toUtf8()) }
+        val all = known + typed + extraFields
 
         val total = HEADER_LEN + all.sumOf { TLV_HEADER_LEN + it.value.size }
         val out = ByteArray(total)
@@ -124,6 +139,7 @@ public data class NameCard(
             displayName == other.displayName &&
             phoneNumber == other.phoneNumber &&
             email == other.email &&
+            entries == other.entries &&
             extraFields == other.extraFields
     }
 
@@ -132,6 +148,7 @@ public data class NameCard(
         result = 31 * result + (displayName?.hashCode() ?: 0)
         result = 31 * result + (phoneNumber?.hashCode() ?: 0)
         result = 31 * result + (email?.hashCode() ?: 0)
+        result = 31 * result + entries.hashCode()
         result = 31 * result + extraFields.hashCode()
         return result
     }
@@ -161,6 +178,47 @@ public data class NameCard(
         /** TLV type: UTF-8 email address. */
         public const val TYPE_EMAIL: Int = 3
 
+        // TLV types for the richer [NameCardEntry] fields. New types are forward-compatible: an older
+        // build that doesn't know them keeps them verbatim in [extraFields] and round-trips them.
+        public const val TYPE_COMPANY: Int = 4
+        public const val TYPE_TITLE: Int = 5
+        public const val TYPE_ADDRESS: Int = 6
+        public const val TYPE_WEBSITE: Int = 7
+        public const val TYPE_BIRTHDAY: Int = 8
+        public const val TYPE_NOTE: Int = 9
+        public const val TYPE_NICKNAME: Int = 10
+        public const val TYPE_PHONE_EXTRA: Int = 11
+        public const val TYPE_EMAIL_EXTRA: Int = 12
+
+        /** Wire TLV type for a [NameCardEntry] kind. */
+        internal fun typeForKind(kind: NameCardEntryKind): Int =
+            when (kind) {
+                NameCardEntryKind.COMPANY -> TYPE_COMPANY
+                NameCardEntryKind.TITLE -> TYPE_TITLE
+                NameCardEntryKind.ADDRESS -> TYPE_ADDRESS
+                NameCardEntryKind.WEBSITE -> TYPE_WEBSITE
+                NameCardEntryKind.BIRTHDAY -> TYPE_BIRTHDAY
+                NameCardEntryKind.NOTE -> TYPE_NOTE
+                NameCardEntryKind.NICKNAME -> TYPE_NICKNAME
+                NameCardEntryKind.PHONE -> TYPE_PHONE_EXTRA
+                NameCardEntryKind.EMAIL -> TYPE_EMAIL_EXTRA
+            }
+
+        /** The [NameCardEntry] kind for a wire TLV type, or `null` if [type] is not an entry type. */
+        internal fun kindForType(type: Int): NameCardEntryKind? =
+            when (type) {
+                TYPE_COMPANY -> NameCardEntryKind.COMPANY
+                TYPE_TITLE -> NameCardEntryKind.TITLE
+                TYPE_ADDRESS -> NameCardEntryKind.ADDRESS
+                TYPE_WEBSITE -> NameCardEntryKind.WEBSITE
+                TYPE_BIRTHDAY -> NameCardEntryKind.BIRTHDAY
+                TYPE_NOTE -> NameCardEntryKind.NOTE
+                TYPE_NICKNAME -> NameCardEntryKind.NICKNAME
+                TYPE_PHONE_EXTRA -> NameCardEntryKind.PHONE
+                TYPE_EMAIL_EXTRA -> NameCardEntryKind.EMAIL
+                else -> null
+            }
+
         private const val UNSIGNED_BYTE_MASK: Int = 0xFF
         private const val BITS_PER_BYTE: Int = 8
 
@@ -182,6 +240,7 @@ public data class NameCard(
             var displayName: String? = null
             var phoneNumber: String? = null
             var email: String? = null
+            val typedEntries = mutableListOf<NameCardEntry>()
             val extras = mutableListOf<NameCardField>()
 
             var offset = HEADER_LEN
@@ -203,16 +262,26 @@ public data class NameCard(
                         if (phoneNumber == null) phoneNumber = decodeUtf8Strict(value) ?: return null
                     TYPE_EMAIL ->
                         if (email == null) email = decodeUtf8Strict(value) ?: return null
-                    else -> extras += NameCardField(type, value)
+                    else -> {
+                        val kind = kindForType(type)
+                        if (kind != null) {
+                            typedEntries += NameCardEntry(kind, decodeUtf8Strict(value) ?: return null)
+                        } else {
+                            extras += NameCardField(type, value)
+                        }
+                    }
                 }
             }
 
-            if (displayName == null && phoneNumber == null && email == null) return null
+            if (displayName == null && phoneNumber == null && email == null && typedEntries.isEmpty()) {
+                return null
+            }
             return NameCard(
                 version = version,
                 displayName = displayName,
                 phoneNumber = phoneNumber,
                 email = email,
+                entries = typedEntries.toList(),
                 extraFields = extras.toList(),
             )
         }
@@ -263,4 +332,32 @@ public data class NameCardField(
     }
 
     override fun hashCode(): Int = 31 * type + value.contentHashCode()
+}
+
+/**
+ * A richer, typed contact field carried by a [NameCard] beyond the primary
+ * name/phone/email — an organization, job title, postal address, website,
+ * birthday, note, nickname, or an *additional* phone/email. Repeatable within a
+ * card (two [NameCardEntryKind.PHONE] entries = two numbers). Its [value] is
+ * free UTF-8 text; the receiver maps [kind] to the right ContactsContract row
+ * when saving.
+ */
+public data class NameCardEntry(
+    /** Which kind of contact field this is. */
+    val kind: NameCardEntryKind,
+    /** The field's UTF-8 text value (a number, address, URL, date, note, …). */
+    val value: String,
+)
+
+/** The kinds of richer contact field a [NameCardEntry] can carry. */
+public enum class NameCardEntryKind {
+    COMPANY,
+    TITLE,
+    ADDRESS,
+    WEBSITE,
+    BIRTHDAY,
+    NOTE,
+    NICKNAME,
+    PHONE,
+    EMAIL,
 }

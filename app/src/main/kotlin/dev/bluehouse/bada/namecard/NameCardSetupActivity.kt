@@ -17,6 +17,8 @@ import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SwitchCompat
 import dev.bluehouse.bada.R
+import dev.bluehouse.bada.protocol.namecard.NameCardEntry
+import dev.bluehouse.bada.protocol.namecard.NameCardEntryKind
 
 /**
  * **My Name Card setup screen** — the page reached by tapping the **"Name Card"**
@@ -112,6 +114,10 @@ internal class NameCardSetupActivity : AppCompatActivity() {
                 if (n.isNotEmpty()) add(Opt(NameCardResolver.FIELD_NAME, getString(R.string.name_card_field_name) + ": " + n))
                 if (p.isNotEmpty()) add(Opt(NameCardResolver.FIELD_PHONE, getString(R.string.name_card_field_phone) + ": " + p))
                 if (e.isNotEmpty()) add(Opt(NameCardResolver.FIELD_EMAIL, getString(R.string.name_card_field_email) + ": " + e))
+                // Richer imported fields (company, address, extra phones, …) — keyed by their index.
+                store.entries().forEachIndexed { i, entry ->
+                    add(Opt(NameCardResolver.entryKey(i), entryLabel(entry) + ": " + entry.value))
+                }
             }
         if (opts.isEmpty()) {
             toast(R.string.name_card_save_empty)
@@ -131,6 +137,20 @@ internal class NameCardSetupActivity : AppCompatActivity() {
             }.setNegativeButton(android.R.string.cancel, null)
             .show()
     }
+
+    /** Readable label for a richer entry kind, shown in the "Choose what to share" picker. */
+    private fun entryLabel(entry: NameCardEntry): String =
+        when (entry.kind) {
+            NameCardEntryKind.COMPANY -> "Company"
+            NameCardEntryKind.TITLE -> "Job title"
+            NameCardEntryKind.ADDRESS -> "Address"
+            NameCardEntryKind.WEBSITE -> "Website"
+            NameCardEntryKind.BIRTHDAY -> "Birthday"
+            NameCardEntryKind.NOTE -> "Note"
+            NameCardEntryKind.NICKNAME -> "Nickname"
+            NameCardEntryKind.PHONE -> getString(R.string.name_card_field_phone)
+            NameCardEntryKind.EMAIL -> getString(R.string.name_card_field_email)
+        }
 
     /** POST_NOTIFICATIONS request (API 33+) for the v2 consent heads-up; result is advisory (heads-up is optional). */
     private val notificationPermission =
@@ -193,6 +213,13 @@ internal class NameCardSetupActivity : AppCompatActivity() {
                 emailInput.setText(it)
                 filledAnything = true
             }
+        }
+        // Pull the richer typed fields (company, title, address, website, birthday, note, nickname,
+        // extra phones/emails) from the profile into the stored card so they're shareable too.
+        val profileEntries = sources.profileEntries()
+        if (profileEntries.isNotEmpty()) {
+            store.saveEntries(profileEntries)
+            filledAnything = true
         }
         toast(if (filledAnything) R.string.name_card_use_phone_info_filled else R.string.name_card_use_phone_info_empty)
     }
