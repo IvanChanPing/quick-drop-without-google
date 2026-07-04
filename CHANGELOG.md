@@ -1,3 +1,36 @@
+## [2026-07-04] Tap-to-share glow — Google Contact-Exchange edge glow wired into the sender
+Dropped the Google Contact-Exchange edge glow (`GoogleContactGlow`, ported from the google-glow
+skill) into the tap-to-share **sender** flow via `TapShareGlowAnimator`, driven by the tap lifecycle:
+**START** (light ignites top-center, sweeps down both screen edges, idle-pulses while waiting) →
+**MATCH** (streak races to the bottom when the receiver accepts) → **NO-MATCH** (sweep retracts and
+fades on any non-success end — declined / error / unreachable / cancelled). Adds Jetpack Compose to
+`:app` (compose compiler plugin + `buildFeatures{compose=true}` + compose BOM 2024.12.01 / `ui` +
+`foundation` + `animation-core`) purely to host the glow in a full-screen `ComposeView` overlay; the
+rest of the app stays View/XML. Wired into both `SendActivity` and `SendActivityInApp` (full-screen
+translucent windows, so the glow spans the whole screen behind the send sheet). The receiver-side
+glow (a full-screen translucent overlay activity, ripple-style) is the next step. `assembleDebug`
+builds; the APK grows ~2.4 MB from the Compose runtime. Files: `send/anim/GoogleContactGlow.kt`,
+`send/anim/TapShareGlowAnimator.kt`, `gradle/libs.versions.toml`, `app/build.gradle.kts`,
+`SendActivity`/`SendActivityInApp`.
+
+## [2026-07-04] Tap-to-share animation seams — drop-in hook with success/failure branches
+Added a drop-in animation layer for the **NFC tap-to-share** file-send flow. The sequence is one
+animation with a fork, driven by a shared `TapShareAnimationController`:
+
+- **Part 1** plays the instant the phone is tapped to a peer (`onNfcPeerTapped` / `onNfcTapWake`).
+- **Success branch** plays when the receiver accepts and the payload starts sending
+  (`OutboundConnectionState.Sending`).
+- **Failure branch** plays on any non-success end — receiver declined, connection/transfer error,
+  the tapped receiver never surfaced, or cancelled.
+
+It is **tap-gated**: the controller only arms on a tap, so regular peer-icon and QR sends never
+trigger it. New files: `send/anim/TapShareAnimator.kt` (the drop-in contract + `NoOpTapShareAnimator`
+default) and `send/anim/TapShareAnimationController.kt` (owns a full-screen non-touchable overlay,
+arming, and one-shot branching). Wired identically into both `SendActivity` and `SendActivityInApp`
+(independent activities, no shared base). The default animator is a no-op, so the tap flow is
+unchanged until a real animation (the AirDrop-style glow) is assigned to the controller. Debug Kotlin
+compiles clean.
+
 ## [2026-07-04] Name Card v2 — satisfy detekt+ktlint so re-ports land CI-clean (a7a0467)
 Upstream `ci.yml` runs `./gradlew staticAnalysis` on PRs; the debranded PR #251 went **red** because
 the v2 code tripped detekt (`TooManyFunctions`/`LargeClass`/`ReturnCount`/`MagicNumber`) and ktlint

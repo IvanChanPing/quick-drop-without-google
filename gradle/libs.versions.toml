@@ -4,6 +4,11 @@ kotlin = "2.1.0"
 agp = "8.7.3"
 ksp = "2.1.0-1.0.29"
 
+# Jetpack Compose — hosts the Google Contact-Exchange edge glow (GoogleContactGlow)
+# for the NFC tap-to-share animation. The BOM pins every compose artifact version;
+# the compiler is the Kotlin 2.1.0 compose plugin (org.jetbrains.kotlin.plugin.compose).
+composeBom = "2024.12.01"
+
 # Android SDK levels
 compileSdk = "36"
 minSdk = "24"
@@ -73,6 +78,13 @@ androidx-activity-ktx = { module = "androidx.activity:activity-ktx", version.ref
 androidx-dynamicanimation = { module = "androidx.dynamicanimation:dynamicanimation", version.ref = "androidxDynamicAnimation" }
 androidx-lifecycle-runtime-ktx = { module = "androidx.lifecycle:lifecycle-runtime-ktx", version.ref = "androidxLifecycle" }
 androidx-fragment-ktx = { module = "androidx.fragment:fragment-ktx", version.ref = "androidxFragment" }
+# Jetpack Compose (artifact versions come from the BOM) — hosts GoogleContactGlow in a
+# ComposeView for the tap-to-share edge glow. ui = ComposeView + Canvas; foundation =
+# layout/Canvas; animation-core = Animatable/tween/easings used by the glow drivers.
+androidx-compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }
+androidx-compose-ui = { module = "androidx.compose.ui:ui" }
+androidx-compose-foundation = { module = "androidx.compose.foundation:foundation" }
+androidx-compose-animation-core = { module = "androidx.compose.animation:animation-core" }
 material = { module = "com.google.android.material:material", version.ref = "material" }
 # `lifecycle-process` exposes [androidx.lifecycle.ProcessLifecycleOwner],
 # the singleton LifecycleOwner that tracks "is any activity of this app
@@ -125,6 +137,8 @@ android-application = { id = "com.android.application", version.ref = "agp" }
 android-library = { id = "com.android.library", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+# Compose compiler is versioned with Kotlin (2.0+); enables @Composable in :app.
+compose-compiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 ktlint = { id = "org.jlleitschuh.gradle.ktlint", version.ref = "ktlintPlugin" }
 detekt = { id = "io.gitlab.arturbosch.detekt", version.ref = "detekt" }

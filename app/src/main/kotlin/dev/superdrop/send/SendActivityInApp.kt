@@ -53,6 +53,8 @@ import dev.superdrop.discovery.medium.MediumRegistries
 import dev.superdrop.nfc.NfcLinkHolder
 import dev.superdrop.nfc.NfcTapDiagnosticsPreferences
 import dev.superdrop.nfc.SuperDropTapReader
+import dev.superdrop.send.anim.TapShareAnimationController
+import dev.superdrop.send.anim.TapShareGlowAnimator
 import dev.superdrop.protocol.connection.CancelCause
 import dev.superdrop.protocol.connection.FileSource
 import dev.superdrop.protocol.connection.OutboundConnection
@@ -152,6 +154,16 @@ public class SendActivityInApp : AppCompatActivity() {
      * tag and auto-connect to it as if its peer-icon had been tapped.
      */
     private var tapReader: SuperDropTapReader? = null
+
+    /**
+     * Tap-to-share animation coordinator. Plays a drop-in animation whose Part 1
+     * fires on the NFC tap ([onNfcPeerTapped] / [onNfcTapWake]), then forks to a
+     * success branch when the receiver accepts (Sending) or a failure branch on
+     * any non-success end (declined / error / unreachable / cancelled). No-op by
+     * default (see [TapShareAnimationController]); tap-gated so regular
+     * peer-icon / QR sends never trigger it.
+     */
+    private var tapAnim: TapShareAnimationController? = null
 
     /**
      * Set to `true` while a connection attempt is being made AND there
@@ -263,6 +275,7 @@ public class SendActivityInApp : AppCompatActivity() {
         // only while the send sheet is up and the iPhone-link QR panel
         // (which uses the NDEF HCE) is closed.
         tapReader = SuperDropTapReader(this, ::onNfcPeerTapped, ::onNfcTapWake, ::onNfcTapDiagnostic)
+        tapAnim = TapShareAnimationController(binding.root, TapShareGlowAnimator())
 
         binding.sendCancelButton.setOnClickListener { onCancelClicked() }
         binding.sendDoneButton.setOnClickListener { finish() }
@@ -352,6 +365,9 @@ public class SendActivityInApp : AppCompatActivity() {
         // Release NFC reader-mode when the Send screen is gone.
         tapReader?.disable()
         tapReader = null
+        // Tear down any in-flight tap-to-share animation + its overlay.
+        tapAnim?.reset()
+        tapAnim = null
         // Stop NFC link broadcast when the Send screen is gone.
         NfcLinkHolder.currentUrl = null
         // Lift the gate veto so the receiver-side mDNS record can come
@@ -419,6 +435,8 @@ public class SendActivityInApp : AppCompatActivity() {
     private fun onNfcPeerTapped(tapped: SuperDropTapReader.TappedPeer) {
         runOnUiThread {
             if (isFinishing || isDestroyed) return@runOnUiThread
+            // Part 1 of the tap-to-share animation — the phone was tapped to the peer.
+            tapAnim?.onTapCommitted()
             // A tap commits us to a peer; stop reader-mode so a second tag
             // cannot race a connection that is already starting.
             tapReader?.disable()
@@ -489,6 +507,8 @@ public class SendActivityInApp : AppCompatActivity() {
     private fun onNfcTapWake() {
         runOnUiThread {
             if (isFinishing || isDestroyed) return@runOnUiThread
+            // Part 1 of the tap-to-share animation — the phone was tapped (receiver idle; its HCE woke it).
+            tapAnim?.onTapCommitted()
             val thisWindow = SystemClock.elapsedRealtime() + TAP_WAKE_WINDOW_MS
             tapWakeWindowUntilMs = thisWindow
             tapWakeConnectStarted = false
@@ -510,6 +530,8 @@ public class SendActivityInApp : AppCompatActivity() {
                                 "[hidden=${it.endpointInfo?.hidden},lan=${it.lanEndpoint != null}]" }})"
                     logOutboundDiagnostic(msg)
                     nfcTapToast(msg)
+                    // Failure branch — the tapped receiver never surfaced; the tap did not succeed.
+                    tapAnim?.onTransferFailed()
                 }
             }, TAP_WAKE_WINDOW_MS)
         }
@@ -1092,6 +1114,8 @@ public class SendActivityInApp : AppCompatActivity() {
                 binding.sendStatusMessage.setText(R.string.send_status_pin_prompt)
             }
             is OutboundConnectionState.Sending -> {
+                // Success branch of the tap-to-share animation — receiver accepted; payload sending began.
+                tapAnim?.onTransferStarted()
                 binding.sendStatusPhase.setText(R.string.send_phase_sending)
                 // PIN comparison is over once both sides have ACCEPT'd
                 // and we transition into Sending; the verbose status-
@@ -1171,6 +1195,10 @@ public class SendActivityInApp : AppCompatActivity() {
         message: String,
         isSuccess: Boolean = false,
     ) {
+        // Failure branch of the tap-to-share animation — every terminal render EXCEPT the
+        // success (Completed) case is a non-success end (declined / error / unreachable /
+        // cancelled). Tap-gated in the controller, so regular non-tap sends are unaffected.
+        if (!isSuccess) tapAnim?.onTransferFailed()
         peerPickerController.stopBleAdvertise()
         beginCardBoundsTransition(BOUNDS_DURATION_MS)
         binding.sendStatusPanel.visibility = View.VISIBLE
@@ -1236,6 +1264,8 @@ public class SendActivityInApp : AppCompatActivity() {
      * rejection arrives before the first has faded.
      */
     private fun bounceBackToPickerAfterRejection(peerName: String) {
+        // Failure branch of the tap-to-share animation — the receiver declined the transfer.
+        tapAnim?.onTransferFailed()
         beginCardBoundsTransition(BOUNDS_DURATION_MS)
 
         // Collapse the connection-state chrome.

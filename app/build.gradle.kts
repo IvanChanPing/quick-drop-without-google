@@ -8,6 +8,9 @@ import com.android.build.gradle.internal.api.BaseVariantOutputImpl
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
+    // Compose compiler (Kotlin 2.1.0 plugin) — required for the @Composable
+    // GoogleContactGlow hosted in the tap-to-share animation overlay.
+    alias(libs.plugins.compose.compiler)
 }
 
 data class ReleaseSigningInputs(
@@ -129,6 +132,9 @@ android {
 
     buildFeatures {
         viewBinding = true
+        // Compose is used ONLY to host GoogleContactGlow (the tap-to-share edge glow)
+        // in a ComposeView; the rest of the app stays View/XML-based.
+        compose = true
         // Required by the "Check for updates" feature (#211): UpdateRepository
         // reads BuildConfig.VERSION_NAME to compare against the latest GitHub release.
         buildConfig = true
@@ -199,6 +205,14 @@ dependencies {
     implementation(libs.androidx.dynamicanimation)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.kotlinx.coroutines.android)
+
+    // Jetpack Compose — ONLY to host GoogleContactGlow (the tap-to-share edge glow)
+    // inside a ComposeView. BOM pins the versions; ui = ComposeView + graphics,
+    // foundation = Canvas/layout, animation-core = Animatable/tween/easings.
+    implementation(platform(libs.androidx.compose.bom))
+    implementation(libs.androidx.compose.ui)
+    implementation(libs.androidx.compose.foundation)
+    implementation(libs.androidx.compose.animation.core)
 
     // Material Components for Android — provides BottomNavigationView for
     // the in-app bottom-nav between the Send/Receive tab and the Settings
