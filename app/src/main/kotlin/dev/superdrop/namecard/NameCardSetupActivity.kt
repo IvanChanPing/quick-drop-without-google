@@ -13,6 +13,7 @@ import android.widget.Button
 import android.widget.EditText
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.SwitchCompat
 import dev.superdrop.R
@@ -91,6 +92,44 @@ internal class NameCardSetupActivity : AppCompatActivity() {
         findViewById<Button>(R.id.nameCardUsePhoneInfoButton).setOnClickListener {
             pullInfoPermission.launch(devicePermissions())
         }
+        findViewById<Button>(R.id.nameCardChooseShareButton).setOnClickListener { chooseWhatToShare() }
+    }
+
+    /**
+     * "Choose what to share" — a checkbox popup listing ONLY the fields that
+     * currently have a value (name / phone / email); the app supports each field
+     * but shows only what's filled in. Persists the picked set via
+     * [NameCardProfileStore.saveShareSelection]; [NameCardResolver] then drops any
+     * unchecked field from the card shared on a tap.
+     */
+    private fun chooseWhatToShare() {
+        data class Opt(val key: String, val label: String)
+        val opts =
+            buildList {
+                val n = nameInput.text?.toString()?.trim().orEmpty()
+                val p = phoneInput.text?.toString()?.trim().orEmpty()
+                val e = emailInput.text?.toString()?.trim().orEmpty()
+                if (n.isNotEmpty()) add(Opt(NameCardResolver.FIELD_NAME, getString(R.string.name_card_field_name) + ": " + n))
+                if (p.isNotEmpty()) add(Opt(NameCardResolver.FIELD_PHONE, getString(R.string.name_card_field_phone) + ": " + p))
+                if (e.isNotEmpty()) add(Opt(NameCardResolver.FIELD_EMAIL, getString(R.string.name_card_field_email) + ": " + e))
+            }
+        if (opts.isEmpty()) {
+            toast(R.string.name_card_save_empty)
+            return
+        }
+        val current = store.shareSelection() // null = share every present field
+        val checked = BooleanArray(opts.size) { current == null || opts[it].key in current }
+        val labels = opts.map { it.label as CharSequence }.toTypedArray()
+        AlertDialog
+            .Builder(this)
+            .setTitle(R.string.name_card_choose_share_title)
+            .setMultiChoiceItems(labels, checked) { _, which, isChecked -> checked[which] = isChecked }
+            .setPositiveButton(android.R.string.ok) { _, _ ->
+                val selected = opts.indices.filter { checked[it] }.map { opts[it].key }.toSet()
+                store.saveShareSelection(selected)
+                toast(R.string.name_card_share_saved)
+            }.setNegativeButton(android.R.string.cancel, null)
+            .show()
     }
 
     /** POST_NOTIFICATIONS request (API 33+) for the v2 consent heads-up; result is advisory (heads-up is optional). */

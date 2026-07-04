@@ -615,6 +615,9 @@
     <string name="name_card_clear">Clear</string>
     <string name="name_card_cleared">Name card cleared</string>
     <string name="name_card_save_empty">Enter a name, phone, or email first</string>
+    <string name="name_card_choose_share">Choose what to share</string>
+    <string name="name_card_choose_share_title">Choose what to share</string>
+    <string name="name_card_share_saved">Saved what to share</string>
     <!-- Transfer/exchange screen (NameCardTransferActivity) + exchange service -->
     <string name="name_card_transfer_connecting">Connecting…</string>
     <string name="name_card_transfer_failed">Couldn’t connect</string>

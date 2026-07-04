@@ -294,6 +294,7 @@ internal class NameCardTransferActivity : AppCompatActivity() {
             NameCardResolver(
                 storedCard = NameCardProfileStore.from(this)::load,
                 deviceSources = AndroidDeviceContactSources(this),
+                shareSelection = NameCardProfileStore.from(this)::shareSelection,
             ).resolve()
 
         connecting.visibility = View.VISIBLE
@@ -388,6 +389,7 @@ internal class NameCardTransferActivity : AppCompatActivity() {
             NameCardResolver(
                 storedCard = NameCardProfileStore.from(this)::load,
                 deviceSources = AndroidDeviceContactSources(this),
+                shareSelection = NameCardProfileStore.from(this)::shareSelection,
             ).resolve()
         val ble = NameCardBleExchange(this)
         exchange = ble

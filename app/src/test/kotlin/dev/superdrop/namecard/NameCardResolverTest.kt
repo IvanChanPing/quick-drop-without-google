@@ -60,6 +60,30 @@ class NameCardResolverTest {
     }
 
     @Test
+    fun `share selection drops the unchecked fields`() {
+        val card = NameCard(displayName = "Mike", phoneNumber = "111", email = "m@e.com")
+        val resolver = NameCardResolver({ card }, sources(), shareSelection = { setOf("name", "email") })
+        val resolved = resolver.resolve()!!
+        assertEquals("Mike", resolved.displayName)
+        assertNull(resolved.phoneNumber) // "phone" unchecked -> dropped
+        assertEquals("m@e.com", resolved.email)
+    }
+
+    @Test
+    fun `null share selection shares every present field`() {
+        val card = NameCard(displayName = "Mike", phoneNumber = "111")
+        val resolver = NameCardResolver({ card }, sources(), shareSelection = { null })
+        assertEquals(card, resolver.resolve())
+    }
+
+    @Test
+    fun `an empty share selection resolves to null`() {
+        val card = NameCard(displayName = "Mike", phoneNumber = "111")
+        val resolver = NameCardResolver({ card }, sources(), shareSelection = { emptySet() })
+        assertNull(resolver.resolve())
+    }
+
+    @Test
     fun `falls back to device name and SIM number when no in-app card`() {
         val resolver = NameCardResolver({ null }, sources(name = "Device Owner", number = "999"))
         assertEquals(NameCard(displayName = "Device Owner", phoneNumber = "999"), resolver.resolve())

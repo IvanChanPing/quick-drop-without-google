@@ -139,6 +139,15 @@
                 android:layout_marginTop="16dp"
                 android:text="@string/name_card_use_phone_info" />
 
+            <!-- nameCardChooseShareButton — full-width pill: opens a checkbox popup to pick which of the
+                 filled-in fields (name/phone/email) get shared on a tap. Shows only fields that have a value. -->
+            <Button
+                android:id="@+id/nameCardChooseShareButton"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="8dp"
+                android:text="@string/name_card_choose_share" />
+
             <!-- action row: Clear (secondary) + Save (primary), mirroring the Settings two-pill rows -->
             <LinearLayout
                 android:layout_width="match_parent"

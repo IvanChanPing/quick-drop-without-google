@@ -33,6 +33,12 @@ internal class NameCardResolver(
     /** Loads the in-app My Name Card, or `null` if not set up. Normally `store::load`. */
     private val storedCard: () -> NameCard?,
     private val deviceSources: DeviceContactSources,
+    /**
+     * The fields the user chose to share (keys [FIELD_NAME]/[FIELD_PHONE]/[FIELD_EMAIL]),
+     * or `null` to share every present field. Normally `store::shareSelection`. Applied
+     * after the per-field merge so an unselected field is dropped from the shared card.
+     */
+    private val shareSelection: () -> Set<String>? = { null },
 ) {
     /**
      * Resolve the card to share, or `null` when this phone has nothing to offer
@@ -49,11 +55,24 @@ internal class NameCardResolver(
             ?: clean(deviceSources.simPhoneNumber())
         val email = stored?.email ?: clean(deviceSources.profileEmail())
 
-        if (name == null && phone == null && email == null) return null
-        return NameCard(displayName = name, phoneNumber = phone, email = email)
+        // Drop any field the user unchecked in "Choose what to share" (null = share all).
+        val selection = shareSelection()
+        val outName = if (selection == null || FIELD_NAME in selection) name else null
+        val outPhone = if (selection == null || FIELD_PHONE in selection) phone else null
+        val outEmail = if (selection == null || FIELD_EMAIL in selection) email else null
+
+        if (outName == null && outPhone == null && outEmail == null) return null
+        return NameCard(displayName = outName, phoneNumber = outPhone, email = outEmail)
     }
 
     private fun clean(value: String?): String? = value?.trim()?.ifEmpty { null }
+
+    companion object {
+        /** Share-selection field keys (persisted in [NameCardProfileStore.shareSelection]). */
+        const val FIELD_NAME = "name"
+        const val FIELD_PHONE = "phone"
+        const val FIELD_EMAIL = "email"
+    }
 
     /** True when [resolve] would return a card (in-app or device fallback). */
     fun canResolve(): Boolean = resolve() != null
