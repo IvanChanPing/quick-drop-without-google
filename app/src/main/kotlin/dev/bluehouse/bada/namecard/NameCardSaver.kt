@@ -13,13 +13,13 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.provider.ContactsContract
-import android.provider.ContactsContract.CommonDataKinds as ck
-import android.provider.ContactsContract.Intents.Insert as ins
 import androidx.core.content.ContextCompat
 import dev.bluehouse.bada.discovery.diagnostics.DiagnosticLog
 import dev.bluehouse.bada.protocol.namecard.NameCard
 import dev.bluehouse.bada.protocol.namecard.NameCardEntry
 import dev.bluehouse.bada.protocol.namecard.NameCardEntryKind
+import android.provider.ContactsContract.CommonDataKinds as ck
+import android.provider.ContactsContract.Intents.Insert as ins
 
 /**
  * **Name Card → Android contact saver.** Saves a received [NameCard] as a REAL
@@ -182,33 +182,42 @@ internal object NameCardSaver {
         val b = dataInsert()
         return when (kind) {
             NameCardEntryKind.COMPANY ->
-                b.withValue(ContactsContract.Data.MIMETYPE, ck.Organization.CONTENT_ITEM_TYPE)
+                b
+                    .withValue(ContactsContract.Data.MIMETYPE, ck.Organization.CONTENT_ITEM_TYPE)
                     .withValue(ck.Organization.COMPANY, value)
             NameCardEntryKind.TITLE ->
-                b.withValue(ContactsContract.Data.MIMETYPE, ck.Organization.CONTENT_ITEM_TYPE)
+                b
+                    .withValue(ContactsContract.Data.MIMETYPE, ck.Organization.CONTENT_ITEM_TYPE)
                     .withValue(ck.Organization.TITLE, value)
             NameCardEntryKind.ADDRESS ->
-                b.withValue(ContactsContract.Data.MIMETYPE, ck.StructuredPostal.CONTENT_ITEM_TYPE)
+                b
+                    .withValue(ContactsContract.Data.MIMETYPE, ck.StructuredPostal.CONTENT_ITEM_TYPE)
                     .withValue(ck.StructuredPostal.FORMATTED_ADDRESS, value)
             NameCardEntryKind.WEBSITE ->
-                b.withValue(ContactsContract.Data.MIMETYPE, ck.Website.CONTENT_ITEM_TYPE)
+                b
+                    .withValue(ContactsContract.Data.MIMETYPE, ck.Website.CONTENT_ITEM_TYPE)
                     .withValue(ck.Website.URL, value)
             NameCardEntryKind.BIRTHDAY ->
-                b.withValue(ContactsContract.Data.MIMETYPE, ck.Event.CONTENT_ITEM_TYPE)
+                b
+                    .withValue(ContactsContract.Data.MIMETYPE, ck.Event.CONTENT_ITEM_TYPE)
                     .withValue(ck.Event.START_DATE, value)
                     .withValue(ck.Event.TYPE, ck.Event.TYPE_BIRTHDAY)
             NameCardEntryKind.NOTE ->
-                b.withValue(ContactsContract.Data.MIMETYPE, ck.Note.CONTENT_ITEM_TYPE)
+                b
+                    .withValue(ContactsContract.Data.MIMETYPE, ck.Note.CONTENT_ITEM_TYPE)
                     .withValue(ck.Note.NOTE, value)
             NameCardEntryKind.NICKNAME ->
-                b.withValue(ContactsContract.Data.MIMETYPE, ck.Nickname.CONTENT_ITEM_TYPE)
+                b
+                    .withValue(ContactsContract.Data.MIMETYPE, ck.Nickname.CONTENT_ITEM_TYPE)
                     .withValue(ck.Nickname.NAME, value)
             NameCardEntryKind.PHONE ->
-                b.withValue(ContactsContract.Data.MIMETYPE, ck.Phone.CONTENT_ITEM_TYPE)
+                b
+                    .withValue(ContactsContract.Data.MIMETYPE, ck.Phone.CONTENT_ITEM_TYPE)
                     .withValue(ck.Phone.NUMBER, value)
                     .withValue(ck.Phone.TYPE, ck.Phone.TYPE_OTHER)
             NameCardEntryKind.EMAIL ->
-                b.withValue(ContactsContract.Data.MIMETYPE, ck.Email.CONTENT_ITEM_TYPE)
+                b
+                    .withValue(ContactsContract.Data.MIMETYPE, ck.Email.CONTENT_ITEM_TYPE)
                     .withValue(ck.Email.ADDRESS, value)
                     .withValue(ck.Email.TYPE, ck.Email.TYPE_OTHER)
         }.build()

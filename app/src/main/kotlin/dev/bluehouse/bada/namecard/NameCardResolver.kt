@@ -49,9 +49,10 @@ internal class NameCardResolver(
 
         // Per-field: in-app value wins; Contacts profile (then SIM for phone) fills any blank.
         val name = stored?.displayName ?: clean(deviceSources.profileDisplayName())
-        val phone = stored?.phoneNumber
-            ?: clean(deviceSources.profilePhoneNumber())
-            ?: clean(deviceSources.simPhoneNumber())
+        val phone =
+            stored?.phoneNumber
+                ?: clean(deviceSources.profilePhoneNumber())
+                ?: clean(deviceSources.simPhoneNumber())
         val email = stored?.email ?: clean(deviceSources.profileEmail())
 
         // Richer typed fields: the in-app card's entries win; else the device profile's entries.

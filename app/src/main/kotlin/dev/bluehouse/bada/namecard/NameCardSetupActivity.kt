@@ -105,12 +105,27 @@ internal class NameCardSetupActivity : AppCompatActivity() {
      * unchecked field from the card shared on a tap.
      */
     private fun chooseWhatToShare() {
-        data class Opt(val key: String, val label: String)
+        data class Opt(
+            val key: String,
+            val label: String,
+        )
         val opts =
             buildList {
-                val n = nameInput.text?.toString()?.trim().orEmpty()
-                val p = phoneInput.text?.toString()?.trim().orEmpty()
-                val e = emailInput.text?.toString()?.trim().orEmpty()
+                val n =
+                    nameInput.text
+                        ?.toString()
+                        ?.trim()
+                        .orEmpty()
+                val p =
+                    phoneInput.text
+                        ?.toString()
+                        ?.trim()
+                        .orEmpty()
+                val e =
+                    emailInput.text
+                        ?.toString()
+                        ?.trim()
+                        .orEmpty()
                 if (n.isNotEmpty()) {
                     add(Opt(NameCardResolver.FIELD_NAME, getString(R.string.name_card_field_name) + ": " + n))
                 }
@@ -137,7 +152,11 @@ internal class NameCardSetupActivity : AppCompatActivity() {
             .setTitle(R.string.name_card_choose_share_title)
             .setMultiChoiceItems(labels, checked) { _, which, isChecked -> checked[which] = isChecked }
             .setPositiveButton(android.R.string.ok) { _, _ ->
-                val selected = opts.indices.filter { checked[it] }.map { opts[it].key }.toSet()
+                val selected =
+                    opts.indices
+                        .filter { checked[it] }
+                        .map { opts[it].key }
+                        .toSet()
                 store.saveShareSelection(selected)
                 toast(R.string.name_card_share_saved)
             }.setNegativeButton(android.R.string.cancel, null)

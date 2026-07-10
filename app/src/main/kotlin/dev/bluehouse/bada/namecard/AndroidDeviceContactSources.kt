@@ -9,12 +9,12 @@ import android.content.Context
 import android.net.Uri
 import android.os.Build
 import android.provider.ContactsContract
-import android.provider.ContactsContract.CommonDataKinds as ck
 import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
 import androidx.annotation.RequiresApi
 import dev.bluehouse.bada.protocol.namecard.NameCardEntry
 import dev.bluehouse.bada.protocol.namecard.NameCardEntryKind
+import android.provider.ContactsContract.CommonDataKinds as ck
 
 /**
  * Real [DeviceContactSources] for [NameCardResolver]: reads the device owner's
@@ -57,8 +57,7 @@ internal class AndroidDeviceContactSources(
     override fun profilePhoneNumber(): String? =
         firstProfileData(ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE)
 
-    override fun profileEmail(): String? =
-        firstProfileData(ContactsContract.CommonDataKinds.Email.CONTENT_ITEM_TYPE)
+    override fun profileEmail(): String? = firstProfileData(ContactsContract.CommonDataKinds.Email.CONTENT_ITEM_TYPE)
 
     /**
      * The richer typed fields from the owner profile beyond the primary
