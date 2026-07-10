@@ -67,6 +67,7 @@ internal class AndroidDeviceContactSources(
      * first phone/email are returned by [profilePhoneNumber]/[profileEmail], so
      * they're skipped here to avoid duplicates). Best-effort; needs `READ_CONTACTS`.
      */
+    @Suppress("CyclomaticComplexMethod", "NestedBlockDepth", "MagicNumber")
     override fun profileEntries(): List<NameCardEntry> =
         try {
             val out = mutableListOf<NameCardEntry>()

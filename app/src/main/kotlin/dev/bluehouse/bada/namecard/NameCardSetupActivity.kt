@@ -111,9 +111,15 @@ internal class NameCardSetupActivity : AppCompatActivity() {
                 val n = nameInput.text?.toString()?.trim().orEmpty()
                 val p = phoneInput.text?.toString()?.trim().orEmpty()
                 val e = emailInput.text?.toString()?.trim().orEmpty()
-                if (n.isNotEmpty()) add(Opt(NameCardResolver.FIELD_NAME, getString(R.string.name_card_field_name) + ": " + n))
-                if (p.isNotEmpty()) add(Opt(NameCardResolver.FIELD_PHONE, getString(R.string.name_card_field_phone) + ": " + p))
-                if (e.isNotEmpty()) add(Opt(NameCardResolver.FIELD_EMAIL, getString(R.string.name_card_field_email) + ": " + e))
+                if (n.isNotEmpty()) {
+                    add(Opt(NameCardResolver.FIELD_NAME, getString(R.string.name_card_field_name) + ": " + n))
+                }
+                if (p.isNotEmpty()) {
+                    add(Opt(NameCardResolver.FIELD_PHONE, getString(R.string.name_card_field_phone) + ": " + p))
+                }
+                if (e.isNotEmpty()) {
+                    add(Opt(NameCardResolver.FIELD_EMAIL, getString(R.string.name_card_field_email) + ": " + e))
+                }
                 // Richer imported fields (company, address, extra phones, …) — keyed by their index.
                 store.entries().forEachIndexed { i, entry ->
                     add(Opt(NameCardResolver.entryKey(i), entryLabel(entry) + ": " + entry.value))

@@ -43,7 +43,7 @@ internal class NameCardResolver(
      * (no in-app card AND no device name/number) — callers then nudge the user
      * to fill in their Name Card.
      */
-    @Suppress("ReturnCount")
+    @Suppress("ReturnCount", "CyclomaticComplexMethod", "ComplexCondition")
     fun resolve(): NameCard? {
         val stored = storedCard()
 

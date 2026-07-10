@@ -232,7 +232,7 @@ public data class NameCard(
          * The first occurrence of each known type wins; later duplicates of a
          * known type are dropped. Unknown types are collected into [extraFields].
          */
-        @Suppress("ReturnCount", "CyclomaticComplexMethod")
+        @Suppress("ReturnCount", "CyclomaticComplexMethod", "ComplexCondition")
         public fun parse(bytes: ByteArray): NameCard? {
             if (bytes.size < HEADER_LEN) return null
             val version = bytes[0].toInt() and UNSIGNED_BYTE_MASK
