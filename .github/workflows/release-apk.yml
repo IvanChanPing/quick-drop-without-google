@@ -6,13 +6,18 @@ name: Release APK
 # (login required, 90-day expiry) and release.yml fires solely on `v*` tags
 # inherited from upstream, so this fork has never produced a Release. This
 # workflow builds the same shared-key-signed debug APKs and attaches them to a
-# real Release, created from the "Run workflow" button with a tag you choose.
+# real Release. Push a tag like sd-v20260803.01 on this branch to publish one;
+# the manual "Run workflow" button also works once this file reaches the
+# default branch (GitHub only offers workflow_dispatch from the default branch).
 #
 # Signing is identical to build-apk.yml: the shared Super Drop debug keystore
 # from the KEYSTORE_B64 repo secret, so the published APK drop-in-updates what
 # is already installed on device and keeps the BIND_RADIO signature permission.
 
 on:
+  push:
+    tags:
+      - 'sd-v*'
   workflow_dispatch:
     inputs:
       tag:
@@ -34,6 +39,9 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      - name: Resolve release tag
+        run: echo "TAG=${{ inputs.tag || github.ref_name }}" >> "$GITHUB_ENV"
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -70,17 +78,17 @@ jobs:
       - name: Collect release files
         run: |
           mkdir -p release-files
-          cp app/build/outputs/apk/debug/*.apk release-files/super-drop-${{ inputs.tag }}.apk
-          cp radio-helper/build/outputs/apk/debug/*.apk release-files/radio-helper-${{ inputs.tag }}.apk
+          cp app/build/outputs/apk/debug/*.apk release-files/super-drop-${{ env.TAG }}.apk
+          cp radio-helper/build/outputs/apk/debug/*.apk release-files/radio-helper-${{ env.TAG }}.apk
           ls -l release-files
 
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "${{ inputs.tag }}" \
+          gh release create "${{ env.TAG }}" \
             --target "${{ github.sha }}" \
-            --title "Super Drop ${{ inputs.tag }}" \
+            --title "Super Drop ${{ env.TAG }}" \
             --notes "Super Drop and the Radio Helper, built from ${{ github.sha }} on ${{ github.ref_name }}. Install both APKs; they share one signing key." \
             ${{ inputs.prerelease && '--prerelease' || '' }} \
             release-files/*.apk
