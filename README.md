@@ -9,11 +9,11 @@ Quick Share on Windows. AirDrop, AWDL, iPhone discovery, and Apple-side
 interop are out of scope.
 
 <p align="center">
-  <img src="docs/pr-images/superdrop-home.png" alt="Super Drop home screen" width="180">
-  <img src="docs/pr-images/superdrop-always-visible.png" alt="Super Drop always-visible receive mode" width="180">
-  <img src="docs/pr-images/send-bottom-sheet.png" alt="Super Drop send sheet" width="180">
-  <img src="docs/pr-images/send-sheet-device.jpg" alt="Super Drop discovered device" width="180">
-  <img src="docs/pr-images/receive-tile-sheet.png" alt="Super Drop ready-to-receive sheet" width="180">
+  <img src="docs/pr-images/superdrop-home.png" alt="Super Drop home screen" width="160">
+  <img src="docs/pr-images/superdrop-always-visible.png" alt="Super Drop always-visible receive mode" width="160">
+  <img src="docs/pr-images/send-bottom-sheet.png" alt="Super Drop send sheet" width="160">
+  <img src="docs/pr-images/send-sheet-device.jpg" alt="Super Drop discovered device" width="160">
+  <img src="docs/pr-images/receive-tile-sheet.png" alt="Super Drop ready-to-receive sheet" width="160">
 </p>
 
 ## What It Does
