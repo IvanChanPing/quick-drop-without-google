@@ -5,8 +5,8 @@
 해당 애플리케이션은 Android Quick Share, macOS의 NearDrop, 그리고 Windows의 Quick Share와의 상호 운용을 목표로 합니다.
 AirDrop, AWDL, iPhone 검색 및 Apple 측과의 상호 운용은 지원하지 않습니다.
 
-<img src="docs/assets/send-ui.jpg" alt="Bada send UI screenshot" width="360">
-<img src="docs/assets/settings.jpg" alt="Bada settings UI screenshot" width="360">
+<img src="docs/pr-images/send-bottom-sheet.png" alt="Super Drop send sheet screenshot" width="360">
+<img src="docs/pr-images/receive-tile-sheet.png" alt="Super Drop receive sheet screenshot" width="360">
 
 ## 주요 기능
 - 근처 Quick Share 발신자로부터 파일을 수신하여 다운로드 폴더 또는 앱에서 선택한 폴더에 저장합니다.

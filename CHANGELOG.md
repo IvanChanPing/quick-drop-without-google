@@ -1,3 +1,7 @@
+## [2026-08-14] README screenshots — show Super Drop send and receive sheets
+Replaced the two legacy Bada screenshots embedded in the English and Korean READMEs with the existing
+Super Drop send-sheet and receive-sheet captures from `docs/pr-images/`. Documentation only.
+
 ## [2026-07-04] Tap-to-share glow — Google Contact-Exchange edge glow wired into the sender
 Dropped the Google Contact-Exchange edge glow (`GoogleContactGlow`, ported from the google-glow
 skill) into the tap-to-share **sender** flow via `TapShareGlowAnimator`, driven by the tap lifecycle:
