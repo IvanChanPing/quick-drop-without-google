@@ -1,3 +1,9 @@
+## [2026-08-14] README gallery — five Super Drop screens in one row
+Expanded the English and Korean README gallery to five side-by-side sharing-flow screenshots: the
+Super Drop home, always-visible receive mode, nearby-device search, discovered peer, and ready-to-receive
+sheet. Added two current 1080×2400 emulator captures under `docs/pr-images/`; retained three existing
+send/receive captures. Documentation only.
+
 ## [2026-08-14] README screenshots — show Super Drop send and receive sheets
 Replaced the two legacy Bada screenshots embedded in the English and Korean READMEs with the existing
 Super Drop send-sheet and receive-sheet captures from `docs/pr-images/`. Documentation only.

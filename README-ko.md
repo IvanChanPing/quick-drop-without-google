@@ -5,8 +5,13 @@
 해당 애플리케이션은 Android Quick Share, macOS의 NearDrop, 그리고 Windows의 Quick Share와의 상호 운용을 목표로 합니다.
 AirDrop, AWDL, iPhone 검색 및 Apple 측과의 상호 운용은 지원하지 않습니다.
 
-<img src="docs/pr-images/send-bottom-sheet.png" alt="Super Drop send sheet screenshot" width="360">
-<img src="docs/pr-images/receive-tile-sheet.png" alt="Super Drop receive sheet screenshot" width="360">
+<p align="center">
+  <img src="docs/pr-images/superdrop-home.png" alt="Super Drop home screen" width="180">
+  <img src="docs/pr-images/superdrop-always-visible.png" alt="Super Drop always-visible receive mode" width="180">
+  <img src="docs/pr-images/send-bottom-sheet.png" alt="Super Drop send sheet" width="180">
+  <img src="docs/pr-images/send-sheet-device.jpg" alt="Super Drop discovered device" width="180">
+  <img src="docs/pr-images/receive-tile-sheet.png" alt="Super Drop ready-to-receive sheet" width="180">
+</p>
 
 ## 주요 기능
 - 근처 Quick Share 발신자로부터 파일을 수신하여 다운로드 폴더 또는 앱에서 선택한 폴더에 저장합니다.
